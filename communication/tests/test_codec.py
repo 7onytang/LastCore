@@ -44,6 +44,24 @@ def test_corrupted_payload_is_rejected():
         decode_tensor(header, bytes(corrupted))
 
 
+def test_missing_checksum_is_rejected():
+    """A peer may not opt out of integrity checking by omitting sha256."""
+    header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
+    for stripped in (None, ""):
+        broken = {key: value for key, value in header.items() if key != "sha256"}
+        if stripped is not None:
+            broken["sha256"] = stripped
+        with pytest.raises(ProtocolError, match="sha256"):
+            decode_tensor(broken, payload)
+
+
+def test_checksum_is_verified_before_the_shape_is_decoded():
+    header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
+    broken = {**header, "shape": [2, 2]}
+    with pytest.raises(ProtocolError, match="shape"):
+        decode_tensor(broken, payload)
+
+
 def test_shape_and_payload_length_must_agree():
     header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
     header = {**header, "shape": [2, 2]}

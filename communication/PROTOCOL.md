@@ -105,7 +105,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-40 项测试覆盖：编解码往返（全部 dtype）、非连续数组、截断/篡改/形状不符、magic/版本/未知帧类型、超大 header、非 JSON header、握手往返、`ERROR`→`PeerError`、`CANCEL`→`TaskCancelled`、对端关闭、读超时、绝对 deadline、阻塞读中的 cancel 事件、**持续收包中的 cancel 与 deadline（对端一直发包也不得推迟）**、监听端口与端口占用后的连接拒绝。
+42 项测试覆盖：编解码往返（全部 dtype）、非连续数组、截断/篡改/形状不符、**缺失或空 sha256 直接拒绝（对端不能通过省略摘要跳过完整性校验）**、magic/版本/未知帧类型、超大 header、非 JSON header、握手往返、`ERROR`→`PeerError`、`CANCEL`→`TaskCancelled`、对端关闭、读超时、绝对 deadline、阻塞读中的 cancel 事件、**持续收包中的 cancel 与 deadline（对端一直发包也不得推迟）**、监听端口与端口占用后的连接拒绝。
 
 ## 已知限制
 

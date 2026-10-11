@@ -133,7 +133,9 @@ def decode_tensor(header: Mapping[str, Any], payload: bytes) -> np.ndarray:
     if header.get("bytes") != len(payload):
         raise ProtocolError(f"declared {header.get('bytes')} bytes but received {len(payload)}")
     expected = header.get("sha256")
-    if expected and expected != hashlib.sha256(payload).hexdigest():
+    if not isinstance(expected, str) or not expected:
+        raise ProtocolError("tensor header must carry a sha256 checksum")
+    if expected != hashlib.sha256(payload).hexdigest():
         raise ProtocolError("tensor checksum mismatch")
     itemsize = dtype.itemsize
     expected_items = 1
