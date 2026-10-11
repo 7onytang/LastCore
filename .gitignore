@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+._*
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Temporary editor files
+*.swp
+*.swo
+*~
