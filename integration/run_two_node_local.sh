@@ -120,9 +120,20 @@ print(json.dumps(summary, indent=2, ensure_ascii=False))
 PY
 }
 
+write_rss() { # 峰值 RSS：只采样本脚本启动的 PID；失败路径也要留下内存证据
+  {
+    echo "peak_rss_kb:"
+    while read -r name pid; do
+      kill -0 "$pid" 2>/dev/null && printf '  %s: %s\n' "$name" "$(ps -o rss= -p "$pid" | tr -d ' ')"
+    done < "$PID_FILE"
+  } > "$RUN_DIR/rss.txt"
+  cat "$RUN_DIR/rss.txt" >&2
+}
+
 cleanup() {
   local code=$?
   log "tearing down (own pids only)"
+  write_rss
   stop_all
   write_summary "$code" >&2
   exit "$code"
@@ -227,13 +238,7 @@ cat "$LOG_DIR/client.log" >&2
 grep -q '"bit_identical_to_single_machine": true' "$RUN_DIR/result.json" || { log "client comparison failed"; exit 1; }
 ALL_OK=true
 
-{
-  echo "peak_rss_kb:"
-  while read -r name pid; do
-    kill -0 "$pid" 2>/dev/null && printf '  %s: %s\n' "$name" "$(ps -o rss= -p "$pid" | tr -d ' ')"
-  done < "$PID_FILE"
-} > "$RUN_DIR/rss.txt"
-cat "$RUN_DIR/rss.txt" >&2
+write_rss
 
 log "done: artifacts in $RUN_DIR"
 exit 0
