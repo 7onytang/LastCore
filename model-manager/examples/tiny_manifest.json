@@ -1,0 +1,87 @@
+{
+  "manifest_version": "1",
+  "model_id": "lastcore/tiny-cpu",
+  "revision": "tiny-20261011-seed7",
+  "architecture": "lastcore.tiny-decoder",
+  "dtype": "float32",
+  "model": {
+    "model_id": "lastcore/tiny-cpu",
+    "vocab_size": 64,
+    "d_model": 32,
+    "n_heads": 4,
+    "n_layers": 4,
+    "d_ff": 64,
+    "max_seq_len": 16,
+    "layer_norm_eps": 1e-05
+  },
+  "layer_bytes": [
+    34176,
+    34176,
+    34176,
+    34176
+  ],
+  "module_bytes": {
+    "embedding": 10240,
+    "head": 8448,
+    "layers": 136704
+  },
+  "license": {
+    "name": "LastCore generated tiny weights (no third-party weights)",
+    "identifier": null,
+    "source_url": null,
+    "redistributable": true,
+    "notes": "由 generate_weights(seed=7) 确定性生成，不含任何第三方权重；仓库级许可证未在本任务中选定，这里只如实记录来源与可再分发性。"
+  },
+  "resources": {
+    "parameter_bytes": 155392,
+    "container_bytes": 169424,
+    "runtime_memory_bytes": 161536,
+    "min_free_disk_bytes": 211780
+  },
+  "artifacts": [
+    {
+      "path": "tiny.npz",
+      "role": "checkpoint",
+      "sha256": "7b183eaa465950e21a269c2754ee3c9a37c841622caf46a5b3930e2be5c96667",
+      "size_bytes": 169190,
+      "dtype": "float32",
+      "layer_start": 0,
+      "layer_end": 4,
+      "source_path": null,
+      "media_type": "application/x-npz"
+    },
+    {
+      "path": "tokenizer.json",
+      "role": "tokenizer",
+      "sha256": "634f2fa77c7917905d403a3022adebb13ce905e8d21f86ecafbb123a52c62d80",
+      "size_bytes": 234,
+      "dtype": null,
+      "layer_start": null,
+      "layer_end": null,
+      "source_path": null,
+      "media_type": "application/json"
+    }
+  ],
+  "backends": {
+    "reference": {
+      "dtypes": [
+        "float32",
+        "float16"
+      ],
+      "max_seq_len": 16,
+      "runtime_memory_bytes": null,
+      "notes": "inference-engine 单机对照实现"
+    },
+    "inference-engine.stage": {
+      "dtypes": [
+        "float32",
+        "float16"
+      ],
+      "max_seq_len": 16,
+      "runtime_memory_bytes": 1048576,
+      "notes": "inference-engine StageServer 分段执行"
+    }
+  },
+  "publisher": "engineer-b / LC-9",
+  "notes": "tiny 样例 revision；53 个参数张量，155392 参数字节（float32）。"
+}
