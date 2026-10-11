@@ -39,6 +39,8 @@ logits = PipelineClient(server.address, model_id=config.model_id,
 
 `assignment` 只需是 PR #1 `/v1/nodes/{id}/assignments` 返回的 dict（`id/task_id/layer_start/layer_end/previous_node/next_node/request/deadline`）；`http://host:port` 形式的 endpoint 会被转成 `(host, port)`。缺字段、区间越界、端点不可解析、`model_id` 与本地配置不符都会抛 `ShardError`，不会带着错误配置启动计算。
 
+`deadline` 是 **epoch 秒**（`time.time()` 基准），与 Controller 的 `assignment.deadline` 和 node-agent 的 `ExecutionContext.deadline` 同基准，不需要调用方做时钟换算。`StageServer.serve_forever` 在 deadline 到期后抛 `ChannelTimeout` 并停止等待（不再继续轮询已被 Controller 判失败的任务）；`serve_once` 在 deadline 到期时同样抛 `ChannelTimeout`。
+
 ### node-agent 需要负责的部分（不在本模块内）
 
 1. 注册、凭据持久化、心跳、轮询 assignment，并按 assignment id 去重；

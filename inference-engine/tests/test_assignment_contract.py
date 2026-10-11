@@ -106,3 +106,24 @@ def test_model_mismatch_is_rejected(tmp_path):
     with pytest.raises(ShardError, match="targets model"):
         load_assigned_stage(assignment(request={"model_id": "other/model", "num_layers": 4}),
                             config, path)
+
+
+def test_controller_deadline_reaches_the_stage_on_the_epoch_clock(tmp_path):
+    """The Controller's ``deadline`` (epoch seconds) must actually expire the stage."""
+    from inference_engine import StageServer, generate_weights, save_weights
+    from inference_engine.config import tiny_config
+    from inference_engine.errors import ChannelTimeout
+
+    config = tiny_config()
+    path = tmp_path / "tiny.npz"
+    save_weights(path, generate_weights(config, seed=2))
+    runtime, plan = load_assigned_stage(assignment(id="a2", position=1, layer_start=2, layer_end=4,
+                                                   next_node=None, deadline=time.time() - 1),
+                                        config, path)
+    assert plan.deadline == pytest.approx(time.time() - 1, abs=5)
+    server = StageServer(runtime, timeout=5, deadline=plan.deadline)
+    try:
+        with pytest.raises(ChannelTimeout, match="deadline"):
+            server.serve_once()
+    finally:
+        server.close()
