@@ -1,10 +1,8 @@
-# 执行与 Tensor 协议（提案 v0）
+# 执行与 tensor 协议（v1，已与 inference-engine 对齐）
 
-状态：**提案**。由 Engineer-A（node-agent）起草，供 Engineer-B（`inference-engine/`、`communication/`）确认或修订。确认后本文即为两模块对接契约；双方 PR 均以此为基线。
+状态：**v1 生效**。§1 执行接口是 node-agent 的硬契约；§2 tensor 传输已由 Engineer-B 的 `communication/` v1 实现，本文的提案版本已被取代，以 `inference-engine/PROTOCOL.md` 与 `communication/PROTOCOL.md` 为准。
 
-本文分两部分：**§1 执行接口**是 node-agent 已实现并测试的硬契约（`lastcore_node_agent/executor.py`）；**§2 tensor 传输协议**是给 communication 层的提案，B 确认后落到 `communication/` 文档。
-
-## 1. 执行接口（硬契约）
+## 1. 执行接口（node-agent 侧契约）
 
 ### 1.1 分工
 
@@ -12,15 +10,11 @@
 controller-server ──HTTP──> node-agent（生命周期编排）
                                │ new Executor() per assignment
                                ▼
-                          inference-engine（计算：加载 [layer_start, layer_end)，逐层前向）
-                               │ tensor
+              inference-engine（StageServer / load_assigned_stage）
+                               │ communication v1 帧（HELLO/TENSOR/RESULT/ERROR/CANCEL/BYE）
                                ▼
-                          communication（节点间传输，§2）
+                        相邻节点 StageServer
 ```
-
-- node-agent 负责：注册/凭据/心跳/轮询/去重/上报/取消与超时编排。**不理解模型与 tensor。**
-- inference-engine 负责：模型片段加载、前向计算、输入输出组装。实现 `Executor`。
-- communication 负责：节点间 tensor 传输、上游拉取/下游推送、传输层重试。由 `Executor` 内部调用，或作为 `Executor` 的协作对象。
 
 ### 1.2 Executor 契约
 
@@ -30,66 +24,37 @@ class Executor:
     def run(self, context: ExecutionContext) -> None: ...
 ```
 
-1. **实例隔离**：每个 assignment 一个新实例（node-agent 通过 `--executor 模块:工厂名` 构造）。禁止跨任务共享实例状态；模型缓存如需跨任务复用，由引擎自行按 `task_id` 隔离。
-2. **阻塞语义**：`run()` 阻塞直到本片段完成整次推理工作，正常返回即代表"本片段完成"（node-agent 随后上报 completed）。
-3. **取消**：必须至少每 1 秒检查一次 `context.cancel`；置位后尽快（node-agent 宽限期默认 10s）抛 `ExecutionCancelled(context.cancel_reason)` 并释放计算资源（模型分片、中间 tensor、KV cache）。取消原因：`task-terminal`（任务被取消/失败）、`deadline`、`heartbeat-stall`、`shutdown`。
-4. **期限**：`run()` 应自行保证在 `context.deadline`（epoch 秒）前停止；node-agent 会在 deadline 后强制请求取消。
-5. **异常**：其他任何异常视为片段失败，node-agent 上报 `failed` 并携带异常摘要；引擎应保证异常路径同样释放资源。
-6. **上下文只读**：`ExecutionContext` 字段（`task_id`、`assignment_id`、`model_id`、`position`、`layer_start`、`layer_end`、`previous_node`、`next_node`、`deadline`）视为只读；只允许操作 `cancel`。
+1. **实例隔离**：每个 assignment 一个新实例。禁止跨任务共享实例状态。
+2. **阻塞语义**：`run()` 阻塞；正常返回即"本片段完成"（node-agent 上报 completed）。
+3. **取消**：至少每秒检查 `context.cancel`，置位后尽快抛 `ExecutionCancelled(context.cancel_reason)` 并释放资源。原因：`task-terminal` / `deadline` / `heartbeat-stall` / `shutdown`。
+4. **期限**：deadline 由 node-agent 统一监视（Controller 侧 epoch 秒），到期即请求取消。
+5. **异常**：其他异常视为片段失败，node-agent 上报 `failed`。
+6. **上下文**：`ExecutionContext` 含 `raw`（Controller 返回的原始 assignment dict，直接可交给 `load_assigned_stage`）。
 
-层区间统一左闭右开、从 0 开始：`[layer_start, layer_end)`，与 Controller 调度一致。
+### 1.3 内置执行器
 
-### 1.3 参考实现
+| id | 说明 |
+| --- | --- |
+| `demo` | `SliceDemoExecutor`：时间片模拟，验证生命周期与取消契约 |
+| `stage` | `StageExecutor`：对接 inference-engine v1（见 §2） |
+| `模块:工厂` | 任意自定义执行器工厂 |
 
-`SliceDemoExecutor`（`demo`）按时间片模拟工作并演示取消契约，用于：node-agent 单测、双节点联调中不依赖真实模型的链路验证。B 的引擎接入后配置 `--executor inference_engine.executor:ExecutorFactory`（示例）。
+## 2. StageExecutor —— inference-engine v1 对接
 
-## 2. 节点间 Tensor 传输（提案）
+- `load_assigned_stage(context.raw, model_config, weights_path)` 加载本段；层区间沿用 Controller 左闭右开约定。
+- StageServer **绑定本节点注册的 endpoint 地址**（`parse_endpoint(config.endpoint)`），注册地址即监听地址；下游地址取 assignment 的 `next_node.endpoint`。
+- 完成语义：`--complete-after N`（默认 1）——本段服务完 N 个请求后正常返回并上报 completed；`0` 表示持续服务直到取消/超时/退出。
+- 容错：单个请求失败不终止服务（重试进入下一轮）；连续 3 次失败才上报 failed。
+- 权重：默认用 inference-engine 的 `tiny_config()` + 确定性种子生成 checkpoint 存到状态目录；`--model-config` / `--weights` 可替换。
+- 依赖：`inference-engine/` 与 `communication/` 目录需在 PYTHONPATH，且需要 numpy（见 node-agent README）。
 
-### 2.1 输入与输出入口
+## 3. 与 B 的接口差异记录（待 LC-5 契约评审确认）
 
-Controller 的任务请求只含模型标识与规模（PR #1 `TaskRequest`），不携带输入文本。约定：
+1. **deadline 单位不一致**：`StageServer.deadline` 语义是 `time.monotonic()`（见 `communication/channel.py` 的 deadline 运算），而 Controller assignment 的 `deadline` 是 epoch 秒。适配器目前**不向 StageServer 传 deadline**（传 `None`），deadline 由 node-agent 统一监视并触发 cancel。建议 B 侧明确换算或改收 epoch。
+2. **serve_forever 的单请求异常会终止服务循环**：`pipeline.serve_forever` 中 `_serve` 抛出的异常直接向上传播。适配器在外层重试（连续 3 次失败才失败），建议 B 把 serve_forever 改为单请求容错（记录并继续服务）。
+3. **完成语义**：B 的接口只有"服务直到停止"；node-agent 以 `complete_after` 个已服务请求数定义"片段完成"，用于 Controller 的 completed 上报。
+4. **PipelineClient 的 deadline 参数**同样是 monotonic 语义，调用方（demo 脚本/未来 frontend）需注意。
 
-- **输入**：任务提交方（管理员脚本/未来的 frontend）在创建任务后，把 prompt 直接 POST 到流水线**第一个节点**的 peer 端点（地址来自该节点注册的 `endpoint`）。
-- **输出**：最后一个节点完成 `lm_head` 后，把结果返回给提交方（MVP 阶段：打印日志 + 存本地文件；结果回传通道是后续工作）。
+## 4. 历史提案说明
 
-### 2.2 传输方式（MVP）
-
-节点 `endpoint` 上由 communication 层提供 HTTP 服务：
-
-```
-POST /v1/peer/{to_assignment_id}/frames
-Authorization: Bearer <共享的传输密钥或任务级凭据>   # 待定，见 §2.5
-Content-Type: application/octet-stream
-
-<envelope JSON>\n<raw bytes>
-```
-
-envelope（单行 JSON，`\n` 结尾，后跟定长 payload）：
-
-```json
-{"seq": 1, "task_id": "...", "from_assignment": "...", "type": "hidden", "dtype": "float32", "shape": [1, 8, 512], "payload_length": 16384}
-```
-
-- `type: "prompt"`：仅发往第一段，payload 为 UTF-8 文本，`seq=0`。
-- `type: "hidden"`：相邻片段间的 hidden states（float32, `[batch, seq, hidden]`），`seq` 从 1 递增。
-- 接收方校验 `to_assignment_id`、`task_id` 与本地活动任务一致，否则拒绝（409），防止串任务写 tensor。
-
-### 2.3 流控与重试
-
-- 发送方推送（push）：下游 5xx/连接失败时指数退避重试（0.5s 起，上限 5s），直到成功、任务取消或 deadline。
-- MVP 不做独立 ACK（TCP 可靠传输 + 下一个分段到达即隐式确认）；B 如认为需要显式 ACK（`POST /v1/peer/{id}/acks`），在确认时提出。
-- 传输协程同样接收 `ExecutionContext.cancel`，取消时停止收发并关闭连接。
-
-### 2.4 验证模型（建议）
-
-- 目标：CPU 上秒级完成的双节点分层推理，对照单机结果。
-- 建议 `sshleifer/tiny-gpt2`（~2.6M 参数，PyTorch CPU，pip 可装）；链路打通后再换 `Qwen2.5-0.5B` 量级。
-- 分片约定：第一段额外加载 embedding，最后一段额外加载 `lm_head` + LayerNorm；中间段只含连续 decoder 层；KV cache 按片段驻留各自节点，逐 token 流水。
-
-### 2.5 待 B 确认的问题
-
-1. 传输凭据：任务级 token（Controller 签发）还是节点间预共享密钥？PR #1 尚无签发接口，MVP 可先用部署时配置的共享密钥。
-2. hidden states 是否需要 per-token 增量推送（流式 KV cache），还是整段一次推送？MVP 建议整段。
-3. ACK 与背压需求。
-4. dtype/布局是否统一 float32 + 行主序，还是跟随模型原生 dtype？
-5. 输出回传：MVP 是否接受"最后节点落盘 + 日志"？
+本文原 §2（节点间传输提案）已被 Engineer-B 的 `communication/PROTOCOL.md` v1 实现取代：帧格式 `magic("LC")|version|type|header 长度|payload 长度|JSON header|tensor 字节`、dtype 白名单小端 C 连续、长度与 SHA-256 校验先于内存分配、握手校验 model_id 与层区间接续。原提案中"prompt 由提交方直发首段节点"与 v1 数据流一致（`PipelineClient` → 首段 StageServer）。
