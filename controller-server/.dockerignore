@@ -1,0 +1,4 @@
+*
+!app/
+!app/*.py
+!requirements.txt

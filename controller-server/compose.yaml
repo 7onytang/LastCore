@@ -1,0 +1,25 @@
+services:
+  controller:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${CONTROLLER_BIND_ADDRESS:-127.0.0.1}:${CONTROLLER_PORT:-8000}:8000"
+    environment:
+      CONTROLLER_ADMIN_TOKEN: ${CONTROLLER_ADMIN_TOKEN:?Set CONTROLLER_ADMIN_TOKEN}
+      CONTROLLER_REGISTRATION_TOKEN: ${CONTROLLER_REGISTRATION_TOKEN:?Set CONTROLLER_REGISTRATION_TOKEN}
+      CONTROLLER_HEARTBEAT_TTL_SECONDS: ${CONTROLLER_HEARTBEAT_TTL_SECONDS:-30}
+      CONTROLLER_DATABASE_PATH: /data/controller.sqlite3
+    volumes:
+      - controller-data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+volumes:
+  controller-data:

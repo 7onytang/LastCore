@@ -1,0 +1,41 @@
+name: Controller
+on:
+  push:
+    paths: ["controller-server/**", ".github/workflows/controller.yml"]
+  pull_request:
+    paths: ["controller-server/**", ".github/workflows/controller.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: controller-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+      - name: Validate Compose configuration
+        env:
+          CONTROLLER_ADMIN_TOKEN: ci-admin-token-with-at-least-32-characters
+          CONTROLLER_REGISTRATION_TOKEN: ci-registration-token-with-at-least-32-characters
+        run: docker compose config --quiet
+      - name: Container smoke test
+        env:
+          CONTROLLER_ADMIN_TOKEN: ci-admin-token-with-at-least-32-characters
+          CONTROLLER_REGISTRATION_TOKEN: ci-registration-token-with-at-least-32-characters
+        run: |
+          docker compose up --build --wait --wait-timeout 120
+          curl --fail http://127.0.0.1:8000/healthz
+      - name: Container logs and cleanup
+        if: always()
+        env:
+          CONTROLLER_ADMIN_TOKEN: ci-admin-token-with-at-least-32-characters
+          CONTROLLER_REGISTRATION_TOKEN: ci-registration-token-with-at-least-32-characters
+        run: |
+          docker compose logs
+          docker compose down
