@@ -27,9 +27,12 @@
 
 ## 快速开始
 
+这两个包没有打包安装（仓库内直接运行），因此 `inference_engine` 与 `communication` 都需要在 `PYTHONPATH` 上；测试由各自 `pytest.ini` 配置好，命令行运行需显式设置：
+
 ```bash
 cd inference-engine
 pip install -r requirements-dev.txt
+export PYTHONPATH="$PWD:$PWD/../communication"        # 或每次执行前加 PYTHONPATH=... 前缀
 
 # 1) 生成 checkpoint（同时写出模型配置）
 python -m inference_engine.node generate --write-config tiny.json --out tiny.npz --seed 7
@@ -38,9 +41,11 @@ python -m inference_engine.node generate --write-config tiny.json --out tiny.npz
 python -m inference_engine.node reference --config tiny.json --weights tiny.npz --prompt "1 2 3 4"
 ```
 
+未设置 `PYTHONPATH` 时 `python -m inference_engine.node` 会报 `ModuleNotFoundError: No module named 'communication'`（或 `inference_engine`）；从仓库根运行则用 `PYTHONPATH=inference-engine:communication`。`examples/two_node_local.py` 只依赖标准库，会自己为子进程设置这两个路径，因此不需要额外配置。
+
 ## 本地双节点联调
 
-一条命令拉起两个独立进程（末段先监听，首段指向它），跑通后与单机结果对照：
+一条命令拉起两个独立进程（末段先监听，首段指向它），跑通后与单机结果对照（不需要 `PYTHONPATH`，示例会为子进程自动设置）：
 
 ```bash
 python examples/two_node_local.py                 # [0,2) + [2,4)

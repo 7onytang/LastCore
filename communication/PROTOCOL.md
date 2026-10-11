@@ -113,3 +113,25 @@ pytest -q
 - 一条连接一个任务，无多路复用与背压；大 activation 无法分块，超限直接报错。
 - 不做重试与断点续传：失败交由 Controller 的任务状态与上游节点决策。
 - 仅 AF_INET/TCP，尚未接入 PR #1 文档中规划的 BLE / WiFi Direct 二期链路。
+
+## 独立审查问题清单的处置
+
+| 问题（Reviewer-A） | 处置 |
+| --- | --- |
+| 持续收包时取消/期限检查延迟 | **已修复** `449b5c4`（每次接收迭代都重查，含 epoch deadline 对齐） |
+| deadline 到期后 `serve_forever` 空转 | **已修复** `fd6a9cf`（`inference-engine` 侧） |
+| sha256 可被省略，跳过完整性校验 | **已修复** `419ddfb`（缺失/空摘要一律拒绝） |
+| batch 维无上界 | **已修复** `0ff4de6`（`inference-engine` 侧 `MAX_BATCH_SIZE`） |
+| CLI 需 PYTHONPATH 未文档化 | **已修复**（`inference-engine/README.md` 运行前置） |
+
+## 待 LC-5 冻结（当前 v1 行为不变，开发方不得单方修改）
+
+| 开放项 | 现状 | 说明 |
+| --- | --- | --- |
+| 握手必填字段与双向校验 | 首段接受 `role=client` 且不带层区间的 HELLO（client 语义），只有段间校验接续；任何对端都可自称 client | 空 HELLO 可跳过校验，属契约变更，等 LC-5 冻结字段清单后实现 |
+| 节点间鉴权与任务级凭据 | 无鉴权 | LC-5 决定任务级派生凭据（`HMAC(node_token, task_id|…)`）或部署期共享密钥；帧格式无需改 |
+| dtype 是否进 HELLO | dtype 只随每个 tensor header 携带，握手不固定 dtype | LC-5 决定；不进握手时依赖每帧自描述 |
+| 传输形态：HTTP envelope vs 裸 TCP 分帧 | 已交付裸 TCP 分帧（node-agent `PROTOCOL.md` §2.2 提案为 HTTP envelope） | 二者不互操作，迁移需重写帧层，属 LC-5 决策 |
+| 应用层重试与幂等 | 无重试，失败即上抛 | 与 Controller 任务状态语义一起定 |
+
+**在握手必填字段、双向校验与鉴权冻结之前，`StageServer` 不得暴露到公网。**
