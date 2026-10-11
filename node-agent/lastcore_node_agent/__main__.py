@@ -12,6 +12,14 @@ from .config import AgentConfig
 from .controller import ControllerClient, ControllerError
 from .credentials import StateError, acquire_state_lock
 
+
+def _resolve_executor_factory(config: AgentConfig):
+    if config.executor == "stage":
+        from .inference_adapter import build_stage_executor
+        return build_stage_executor(config)
+    from .executor import load_executor
+    return lambda: load_executor(config.executor)
+
 LOG = logging.getLogger("lastcore.node_agent")
 
 
@@ -36,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--poll-interval", type=float,
                         default=float(os.environ.get("NODE_AGENT_POLL_INTERVAL", "1") or 1))
     parser.add_argument("--executor", default=os.environ.get("NODE_AGENT_EXECUTOR", "demo"))
+    parser.add_argument("--model-config", default=os.environ.get("NODE_AGENT_MODEL_CONFIG", ""),
+                        help="model config JSON for --executor stage (default: built-in tiny model)")
+    parser.add_argument("--weights", default=os.environ.get("NODE_AGENT_WEIGHTS", ""),
+                        help="checkpoint path for --executor stage (default: generated tiny model in state dir)")
+    parser.add_argument("--complete-after", type=int,
+                        default=int(os.environ.get("NODE_AGENT_COMPLETE_AFTER", "1") or 0),
+                        help="report completed after N served requests (0 = serve until cancelled)")
     parser.add_argument("--no-accept", action="store_true",
                         help="start in drain mode (accepting_tasks=false)")
     parser.add_argument("--request-timeout", type=float, default=10.0)
@@ -69,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
         poll_interval=args.poll_interval,
         accepting_tasks=not args.no_accept,
         executor=args.executor,
+        model_config_path=args.model_config,
+        weights_path=args.weights,
+        complete_after=args.complete_after,
         registration_token=os.environ.get("NODE_AGENT_REGISTRATION_TOKEN", ""),
         request_timeout=args.request_timeout,
     )
@@ -77,8 +95,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"state directory {config.state_dir} is in use by another agent process",
               file=sys.stderr)
         return 4
+    try:
+        executor_factory = _resolve_executor_factory(config)
+    except (RuntimeError, StateError) as exc:
+        print(f"executor {config.executor!r} cannot be loaded: {exc}", file=sys.stderr)
+        return 4
     agent = NodeAgent(config, ControllerClient(config.controller_url,
-                                               timeout=config.request_timeout))
+                                               timeout=config.request_timeout),
+                      executor_factory=executor_factory)
 
     def handle_signal(signum, frame):
         agent.shutdown()

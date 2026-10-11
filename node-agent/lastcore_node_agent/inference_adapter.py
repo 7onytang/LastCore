@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Callable
 
 from .config import AgentConfig
-from .executor import ExecutionCancelled, Executor, ExecutionContext, load_executor
+from .executor import ExecutionCancelled, Executor, ExecutionContext
 
 LOG = logging.getLogger("lastcore.node_agent.stage")
 
@@ -101,9 +100,7 @@ def _ensure_weights(model_config, weights_path: Path) -> Path:
     from inference_engine import generate_weights, save_weights
 
     weights_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = weights_path.with_name(weights_path.name + f".tmp{os.getpid()}")
-    save_weights(tmp_path, generate_weights(model_config, seed=0))
-    os.replace(tmp_path, weights_path)
+    save_weights(weights_path, generate_weights(model_config, seed=0))
     return weights_path
 
 
@@ -129,9 +126,3 @@ def build_stage_executor(config: AgentConfig) -> Callable[[], Executor]:
     complete_after = None if config.complete_after == 0 else config.complete_after
     return lambda: StageExecutor(model_config=model_config, weights_path=weights_path,
                                  endpoint=config.endpoint, complete_after=complete_after)
-
-
-def resolve_executor_factory(config: AgentConfig):
-    if config.executor == "stage":
-        return build_stage_executor(config)
-    return lambda: load_executor(config.executor)
