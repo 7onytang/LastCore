@@ -21,6 +21,9 @@ class AgentConfig:
     poll_interval: float = 1.0
     accepting_tasks: bool = True
     executor: str = "demo"
+    model_config_path: str = ""
+    weights_path: str = ""
+    complete_after: int = 1
     registration_token: str = ""
     report_retries: int = 3
     retry_backoff: float = 0.5
@@ -61,6 +64,9 @@ class AgentConfig:
             poll_interval=float(get("POLL_INTERVAL", "1") or 1),
             accepting_tasks=get("NO_ACCEPT", "") == "",
             executor=get("EXECUTOR", "demo") or "demo",
+            model_config_path=get("MODEL_CONFIG"),
+            weights_path=get("WEIGHTS"),
+            complete_after=int(get("COMPLETE_AFTER", "1") or 0),
             registration_token=get("REGISTRATION_TOKEN"),
             request_timeout=float(get("REQUEST_TIMEOUT", "10") or 10),
         )
