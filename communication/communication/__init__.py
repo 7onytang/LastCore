@@ -1,3 +1,4 @@
+from .channel import Channel, ChannelListener
 from .errors import (ChannelClosed, ChannelTimeout, PeerError, ProtocolError,
                      TaskCancelled, TransportError)
 from .protocol import (MAGIC, PREFIX_SIZE, VERSION, Frame, FrameType,
@@ -5,6 +6,8 @@ from .protocol import (MAGIC, PREFIX_SIZE, VERSION, Frame, FrameType,
                        parse_prefix)
 
 __all__ = [
+    "Channel",
+    "ChannelListener",
     "ChannelClosed",
     "ChannelTimeout",
     "PeerError",
