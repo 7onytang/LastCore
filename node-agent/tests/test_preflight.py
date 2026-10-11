@@ -74,6 +74,66 @@ def test_check_state_dir_reports_mode(tmp_path):
     assert (tmp_path / "state").is_dir()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX state-directory mode bits only")
+def test_new_state_dir_is_created_private(tmp_path):
+    state_dir = tmp_path / "state"
+    result = []
+    preflight.check_state_dir(result, state_dir)
+    assert statuses(result) == {"PASS", "WARN"}
+    assert stat.S_IMODE(state_dir.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX state-directory mode bits only")
+def test_nonprivate_state_dir_fails_without_exposing_credentials(tmp_path, monkeypatch, capsys):
+    from lastcore_node_agent.credentials import NodeCredentials, save_credentials
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    save_credentials(state_dir, NodeCredentials("node-42", "secret-token-value", 30))
+    state_dir.chmod(0o755)
+    monkeypatch.delenv("NODE_AGENT_CONTROLLER_URL", raising=False)
+    monkeypatch.delenv("NODE_AGENT_ENDPOINT", raising=False)
+    monkeypatch.delenv("NODE_AGENT_STATE_DIR", raising=False)
+    monkeypatch.setenv("NODE_AGENT_REGISTRATION_TOKEN", "secret-token-value")
+    monkeypatch.setattr(preflight, "probe_memory_mb", lambda: 2048)
+    monkeypatch.setattr(preflight, "probe_disk_free_mb", lambda _: 2048)
+
+    exit_code = preflight.main(["--json", "--state-dir", str(state_dir)])
+    output = capsys.readouterr().out
+    captured = json.loads(output)
+    assert exit_code == 1
+    assert captured["ok"] is False
+    assert any(check["status"] == "FAIL" and "group/other accessible" in check["message"]
+               for check in captured["checks"])
+    assert stat.S_IMODE(state_dir.stat().st_mode) == 0o755
+    assert "secret-token-value" not in output
+
+
+def test_unknown_memory_fails_when_minimum_is_configured(tmp_path, monkeypatch):
+    monkeypatch.setattr(preflight, "probe_memory_mb", lambda: None)
+    monkeypatch.setattr(preflight, "probe_disk_free_mb", lambda _: 2048)
+    result = []
+    preflight.check_resources(result, tmp_path, 1_000_000_000)
+    assert result[0][0] == "FAIL"
+    assert "unknown" in messages(result)[0]
+    assert "1000000000 MB" in messages(result)[0]
+
+
+def test_resource_memory_shortfall_fails_and_sufficient_memory_passes(tmp_path, monkeypatch):
+    monkeypatch.setattr(preflight, "probe_disk_free_mb", lambda _: 2048)
+    monkeypatch.setattr(preflight, "probe_memory_mb", lambda: 512)
+    insufficient = []
+    preflight.check_resources(insufficient, tmp_path, 1024)
+    assert insufficient[0][0] == "FAIL"
+    assert "below minimum 1024 MB" in messages(insufficient)[0]
+
+    monkeypatch.setattr(preflight, "probe_memory_mb", lambda: 2048)
+    sufficient = []
+    preflight.check_resources(sufficient, tmp_path, 1024)
+    assert sufficient[0][0] == "PASS"
+    assert "2048 MB" in messages(sufficient)[0]
+
+
 def test_check_state_dir_creates_missing_parent_chain(tmp_path):
     state_dir = tmp_path / "first" / "second" / "node-agent"
     result = []

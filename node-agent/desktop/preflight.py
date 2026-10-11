@@ -92,7 +92,11 @@ def check_state_dir(result: list, state_dir: Path) -> None:
         result.append((FAIL, f"nearest existing state dir ancestor not writable: {ancestor}"))
         return
     try:
-        state_dir.mkdir(parents=True, exist_ok=True)
+        # Apply a private mode only when creating the final state directory.
+        # pathlib leaves an existing directory's mode untouched, so an
+        # unsafe pre-existing directory is diagnosed below rather than fixed
+        # behind the user's back.
+        state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     except OSError as exc:
         result.append((FAIL, f"cannot create state dir {state_dir}: {exc}"))
         return
@@ -110,7 +114,8 @@ def check_state_dir(result: list, state_dir: Path) -> None:
     else:
         mode = stat.S_IMODE(state_dir.stat().st_mode)
         if mode & 0o077:
-            result.append((WARN, f"state dir mode {mode:04o} is group/other accessible; expected 0700"))
+            result.append((FAIL, f"state dir mode {mode:04o} is group/other accessible; expected 0700; "
+                                  "restrict access manually before starting the agent"))
         else:
             result.append((PASS, f"state dir mode {mode:04o}"))
     try:
@@ -231,7 +236,11 @@ def check_controller(result: list, controller_url: str | None, timeout: float) -
 def check_resources(result: list, state_dir: Path, min_memory_mb: int) -> None:
     memory = probe_memory_mb()
     if memory is None:
-        result.append((WARN, "available memory: unknown on this platform"))
+        if min_memory_mb > 0:
+            result.append((FAIL, f"available memory is unknown; cannot verify configured minimum "
+                                 f"of {min_memory_mb} MB"))
+        else:
+            result.append((WARN, "available memory: unknown on this platform"))
     elif memory >= max(min_memory_mb, 256):
         result.append((PASS, f"available memory: {memory} MB"))
     else:
