@@ -26,6 +26,7 @@ class ExecutionContext:
     deadline: float
     cancel: threading.Event = field(default_factory=threading.Event)
     cancel_reason: str = ""
+    raw: dict | None = None
 
     def request_cancel(self, reason: str) -> None:
         self.cancel_reason = reason
