@@ -1,0 +1,137 @@
+{
+  "schema": "lc10-cost-budget-validation-v1",
+  "source": {
+    "commit": "a878d6388cdd955df4bf3953619e3f056f201391",
+    "tree": "3745d77ded34cfca5409522b8e1f1c16607cf8c7",
+    "parent": "e0f463e883d18e6fab25795804cd503527686d57",
+    "clean_checkout": true,
+    "current_scheduler_interface": "uniform layer_memory_mb; sample is not integrated"
+  },
+  "formula": {
+    "weights": "sum(assigned layer bytes) + embedding on first stage + head on last stage",
+    "kv": "2 * n_kv_heads * head_dim * dtype_bytes * assigned_layers * seq_len * batch",
+    "activation": "batch * seq_len * d_model * dtype_bytes * activation_factor",
+    "peak": "weights + kv + activation",
+    "units": "integer bytes; MiB = 1024 * 1024 bytes"
+  },
+  "feasible_sample": {
+    "fixture": "synthetic_nonuniform_two_stage_fit",
+    "model": {
+      "dtype": "fp16",
+      "d_model": 512,
+      "n_layers": 4,
+      "n_kv_heads": 8,
+      "head_dim": 64,
+      "embedding_bytes": 4194304,
+      "head_bytes": 4194304,
+      "layer_bytes": [
+        8388608,
+        25165824,
+        12582912,
+        20971520
+      ]
+    },
+    "seq_len": 2048,
+    "batch": 1,
+    "activation_factor": 1,
+    "assignments_are_contiguous": true,
+    "layer_weights_are_nonuniform": true,
+    "stages": [
+      {
+        "layer_range": [
+          0,
+          2
+        ],
+        "layer_weights_bytes": 33554432,
+        "embedding_bytes": 4194304,
+        "head_bytes": 0,
+        "weights_bytes": 37748736,
+        "kv_bytes_per_token_per_layer": 2048,
+        "kv_cache_bytes": 8388608,
+        "activation_bytes": 2097152,
+        "peak_bytes": 48234496,
+        "node_id": "node-a",
+        "available_memory_bytes": 67108864,
+        "fits": true,
+        "headroom_bytes": 18874368
+      },
+      {
+        "layer_range": [
+          2,
+          4
+        ],
+        "layer_weights_bytes": 33554432,
+        "embedding_bytes": 0,
+        "head_bytes": 4194304,
+        "weights_bytes": 37748736,
+        "kv_bytes_per_token_per_layer": 2048,
+        "kv_cache_bytes": 8388608,
+        "activation_bytes": 2097152,
+        "peak_bytes": 48234496,
+        "node_id": "node-b",
+        "available_memory_bytes": 67108864,
+        "fits": true,
+        "headroom_bytes": 18874368
+      }
+    ],
+    "accepted_as_expected": true,
+    "limitation": "illustrative byte arithmetic; not runtime or production capacity evidence"
+  },
+  "over_budget_sample": {
+    "fixture": "wide_model_first_layer_fail_fast",
+    "model": {
+      "dtype": "fp16",
+      "d_model": 1024,
+      "n_layers": 8,
+      "n_kv_heads": 8,
+      "head_dim": 128,
+      "embedding_bytes": 65536000,
+      "head_bytes": 65536000,
+      "layer_bytes": [
+        8388608,
+        8388608,
+        8388608,
+        67108864,
+        8388608,
+        8388608,
+        8388608,
+        8388608
+      ]
+    },
+    "seq_len": 512,
+    "batch": 1,
+    "activation_factor": 1,
+    "node_budget_bytes": 67108864,
+    "diagnostic": {
+      "layer_range": [
+        0,
+        1
+      ],
+      "layer_weights_bytes": 8388608,
+      "embedding_bytes": 65536000,
+      "head_bytes": 0,
+      "weights_bytes": 73924608,
+      "kv_bytes_per_token_per_layer": 4096,
+      "kv_cache_bytes": 2097152,
+      "activation_bytes": 1048576,
+      "peak_bytes": 77070336,
+      "fits": false,
+      "deficit_bytes": 9961472,
+      "fail_fast": true,
+      "reason": "no node can hold the next layer plus embedding, KV, and activation bytes"
+    },
+    "rejected_as_expected": true,
+    "historical_comparison": {
+      "preserved_original": "lc10/cost_model_samples.py",
+      "recorded_original_result": "exit 1 at layer 0; no cost JSON was produced",
+      "reran_or_modified_original": false
+    }
+  },
+  "scope": {
+    "exit_zero_means": "both arithmetic expectations passed: the synthetic split fits and the oversized layer is rejected",
+    "controller_changed": false,
+    "production_manifest_integrated": false,
+    "snapshot_concurrency_or_reservation_tested": false,
+    "lc6_lc9_integration_tested": false
+  }
+}
