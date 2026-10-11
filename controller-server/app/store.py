@@ -1,11 +1,9 @@
-import hashlib
-import hmac
-import secrets
 import time
 from uuid import uuid4
 
 from fastapi import HTTPException
 
+from .nodes import NodeService
 from .repository import Repository
 from .scheduler import allocate
 
@@ -19,48 +17,25 @@ class Store:
         self.ttl = heartbeat_ttl
         self.clock = clock
         self.repository = Repository(path, heartbeat_ttl, clock)
-
-    def transaction(self):
-        return self.repository.transaction()
-
-    def _end_task(self, db, task_id, status, error=None):
-        self.repository.end_task(db, task_id, status, error)
-
-    @staticmethod
-    def _hash(token):
-        return hashlib.sha256(token.encode()).hexdigest()
+        self.node_service = NodeService(self.repository)
 
     def _node_auth(self, db, node_id, token):
-        node = self.repository.get_node(db, node_id)
-        if node is None or not hmac.compare_digest(node["token_hash"], self._hash(token)):
-            raise HTTPException(401, "invalid node credential")
-        return node
-
-    def _node_view(self, db, node):
-        return self.repository.node_view(db, node)
-
-    def register(self, request):
-        node_id, token = str(uuid4()), secrets.token_urlsafe(32)
-        with self.repository.transaction() as db:
-            self.repository.insert_node(db, node_id, self._hash(token), request, self.clock())
-        return {"node_id": node_id, "node_token": token, "heartbeat_ttl_seconds": self.ttl}
-
-    def nodes(self):
-        with self.repository.transaction() as db:
-            return [self.repository.node_view(db, n) for n in self.repository.all_nodes_by_id(db)]
-
-    def heartbeat(self, node_id, token, request):
-        with self.repository.transaction() as db:
-            self._node_auth(db, node_id, token)
-            self.repository.update_heartbeat(db, node_id, request.available_memory_mb,
-                                             request.accepting_tasks, self.clock())
-            return self.repository.node_view(db, self.repository.get_node(db, node_id))
+        return self.node_service.authenticate(db, node_id, token)
 
     def _task_view(self, db, task_id):
         task = self.repository.task_view(db, task_id)
         if task is None:
             raise HTTPException(404, "task not found")
         return task
+
+    def register(self, request):
+        return self.node_service.register(request)
+
+    def nodes(self):
+        return self.node_service.nodes()
+
+    def heartbeat(self, node_id, token, request):
+        return self.node_service.heartbeat(node_id, token, request)
 
     def create_task(self, request):
         with self.repository.transaction() as db:
