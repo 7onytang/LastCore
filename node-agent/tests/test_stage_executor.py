@@ -122,6 +122,23 @@ def test_stage_executor_invalid_endpoint_fails_fast(checkpoint):
         executor.run(make_context(free_port()))
 
 
+def test_stage_executor_tolerates_controller_trailing_slash_endpoints(checkpoint):
+    config, weights = checkpoint
+    port = free_port()
+    executor = StageExecutor(model_config=config, weights_path=weights,
+                             endpoint=f"http://127.0.0.1:{port}/", complete_after=1)
+    context = make_context(port)
+    context.raw["next_node"] = None
+    thread, captured = run_executor(executor, context)
+    assert wait_until(lambda: _port_accepts(port), timeout=10)
+    client = PipelineClient(("127.0.0.1", port), model_id=MODEL_ID, task_id="task-1")
+    logits = client.run(PROMPT, task_id="task-1")
+    expected = forward_full(PROMPT, dict(np.load(weights)), config)
+    assert np.array_equal(logits, expected)
+    assert wait_until(lambda: not thread.is_alive(), timeout=10)
+    assert "error" not in captured
+
+
 def test_stage_executor_segment_mismatch_fails(checkpoint):
     config, weights = checkpoint
     executor = StageExecutor(model_config=config, weights_path=weights,

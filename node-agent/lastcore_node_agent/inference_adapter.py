@@ -15,6 +15,25 @@ MAX_CONSECUTIVE_FAILURES = 3
 DEFAULT_WEIGHTS_NAME = "tiny-model.npz"
 
 
+def _normalized_assignment(raw: dict) -> dict:
+    """Controller HttpUrl values carry a trailing slash; inference-engine's
+    parse_endpoint expects a bare host:port, so strip it on the copy we hand over."""
+    normalized = dict(raw)
+    for peer in ("next_node", "previous_node"):
+        value = raw.get(peer)
+        if isinstance(value, dict) and isinstance(value.get("endpoint"), str):
+            copy = dict(value)
+            copy["endpoint"] = value["endpoint"].rstrip("/")
+            normalized[peer] = copy
+    return normalized
+
+
+def _parse_local_endpoint(endpoint: str) -> "tuple[str, int]":
+    from inference_engine import parse_endpoint
+
+    return parse_endpoint(endpoint.rstrip("/"))
+
+
 class StageExecutor(Executor):
     """Runs one Controller assignment on inference-engine's StageServer.
 
@@ -37,13 +56,14 @@ class StageExecutor(Executor):
         self.sleep = sleep
 
     def run(self, context: ExecutionContext) -> None:
-        from inference_engine import StageServer, load_assigned_stage, parse_endpoint
+        from inference_engine import StageServer, load_assigned_stage
 
         if context.raw is None:
             from inference_engine.errors import ShardError
             raise ShardError("execution context carries no raw assignment payload")
-        runtime, plan = load_assigned_stage(context.raw, self.model_config, self.weights_path)
-        address = parse_endpoint(self.endpoint)
+        runtime, plan = load_assigned_stage(_normalized_assignment(context.raw),
+                                            self.model_config, self.weights_path)
+        address = _parse_local_endpoint(self.endpoint)
         server = StageServer(runtime, address=address, downstream=plan.next_endpoint,
                              timeout=self.timeout, deadline=None, cancel=context.cancel)
         LOG.info("stage %s serving on %s:%s layers [%s, %s) role=%s downstream=%s",
