@@ -50,7 +50,8 @@ class Executor:
 
 ## 3. 与 B 的接口差异记录（待 LC-5 契约评审确认）
 
-1. **deadline 单位不一致**：`StageServer.deadline` 语义是 `time.monotonic()`（见 `communication/channel.py` 的 deadline 运算），而 Controller assignment 的 `deadline` 是 epoch 秒。适配器目前**不向 StageServer 传 deadline**（传 `None`），deadline 由 node-agent 统一监视并触发 cancel。建议 B 侧明确换算或改收 epoch。
+1. **Controller endpoint 带尾部斜杠**：PR #1 用 pydantic `HttpUrl`，序列化结果是 `http://host:port/`（带 `/`），而 `inference_engine.assignment.parse_endpoint` 只接受裸 `host:port`（`9102/` 判非数字直接 ShardError）。适配器已在本地下游副本上 rstrip(`/`) 兼容；建议 B 在 parse_endpoint 里容忍 HttpUrl 形式（联调实测发现，PR #2 的示例用法不会触发）。
+2. **deadline 单位不一致**：`StageServer.deadline` 语义是 `time.monotonic()`（见 `communication/channel.py` 的 deadline 运算），而 Controller assignment 的 `deadline` 是 epoch 秒。适配器目前**不向 StageServer 传 deadline**（传 `None`），deadline 由 node-agent 统一监视并触发 cancel。建议 B 侧明确换算或改收 epoch。
 2. **serve_forever 的单请求异常会终止服务循环**：`pipeline.serve_forever` 中 `_serve` 抛出的异常直接向上传播。适配器在外层重试（连续 3 次失败才失败），建议 B 把 serve_forever 改为单请求容错（记录并继续服务）。
 3. **完成语义**：B 的接口只有"服务直到停止"；node-agent 以 `complete_after` 个已服务请求数定义"片段完成"，用于 Controller 的 completed 上报。
 4. **PipelineClient 的 deadline 参数**同样是 monotonic 语义，调用方（demo 脚本/未来 frontend）需注意。
