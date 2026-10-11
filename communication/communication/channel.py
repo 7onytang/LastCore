@@ -4,6 +4,11 @@ The channel owns framing only: it never interprets model semantics. Timeouts are
 enforced twice -- a per-read socket timeout and an absolute task deadline -- and a
 caller-supplied cancel event is polled while waiting so that an operator cancel or
 a controller-side termination stops the transfer instead of blocking on a peer.
+
+``deadline`` is an absolute **epoch-seconds** instant (``time.time()`` base), the same
+base the Controller uses for ``assignment["deadline"]`` and node-agent uses for
+``ExecutionContext.deadline``. Both the cancel event and the deadline are re-checked
+on every receive iteration, so a peer that keeps streaming bytes cannot postpone them.
 """
 
 from __future__ import annotations
@@ -22,21 +27,41 @@ CANCEL_POLL_SECONDS = 0.25
 DEFAULT_CONNECT_TIMEOUT = 10.0
 
 
-def _recv_exactly(sock: socket.socket, size: int, deadline: float | None, cancel) -> bytes:
+def _remaining(deadline: float | None) -> float | None:
+    """Seconds left before an epoch-seconds deadline; ``None`` when none is set."""
+    return None if deadline is None else max(deadline - time.time(), 0.0)
+
+
+def _recv_exactly(sock: socket.socket, size: int, deadline: float | None, cancel,
+                  budget: float | None = None) -> bytes:
+    """Read ``size`` bytes, honouring the cancel event, the task deadline and a read budget.
+
+    Cancel and deadline are re-checked on every iteration rather than only when a read times
+    out, so a peer that keeps streaming bytes cannot postpone a cancel or overrun the deadline.
+    ``budget`` is the per-operation seconds allowance (``Channel.timeout``); ``None`` waits as
+    long as progress is made.
+    """
     chunks: list[bytes] = []
     remaining = size
+    started = time.monotonic()
     while remaining:
-        limit = CANCEL_POLL_SECONDS if deadline is None else min(CANCEL_POLL_SECONDS, max(deadline - time.monotonic(), 0.0))
-        if limit <= 0:
+        if cancel is not None and cancel.is_set():
+            raise TaskCancelled("cancelled while receiving")
+        left = _remaining(deadline)
+        if left is not None and left <= 0:
             raise ChannelTimeout("task deadline exceeded while receiving")
-        sock.settimeout(limit)
+        elapsed = time.monotonic() - started
+        if budget is not None and elapsed >= budget:
+            raise ChannelTimeout("timed out while receiving")
+        limit = CANCEL_POLL_SECONDS
+        if budget is not None:
+            limit = min(limit, max(budget - elapsed, 0.0))
+        if left is not None:
+            limit = min(limit, left)
+        sock.settimeout(max(limit, 0.001))
         try:
             chunk = sock.recv(remaining)
         except socket.timeout:
-            if cancel is not None and cancel.is_set():
-                raise TaskCancelled("cancelled while receiving") from None
-            if deadline is not None and time.monotonic() >= deadline:
-                raise ChannelTimeout("task deadline exceeded while receiving") from None
             continue
         except OSError as exc:
             raise ChannelClosed(f"socket closed while receiving: {exc}") from exc
@@ -70,12 +95,6 @@ class Channel:
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         return cls(sock, **kwargs)
 
-    def _deadline(self) -> float | None:
-        if self.deadline is None and self.timeout is None:
-            return None
-        limit = time.monotonic() + (self.timeout if self.timeout is not None else CANCEL_POLL_SECONDS)
-        return min(limit, self.deadline) if self.deadline is not None else limit
-
     def _check_cancel(self) -> None:
         if self.cancel is not None and self.cancel.is_set():
             raise TaskCancelled("cancelled before sending")
@@ -83,9 +102,12 @@ class Channel:
     def send_frame(self, kind: FrameType, header: Mapping[str, Any], payload: bytes = b"") -> None:
         self._check_cancel()
         raw = encode_frame(Frame(kind, header, payload))
-        limit = self._deadline()
-        if limit is not None:
-            self._sock.settimeout(max(limit - time.monotonic(), 0.001))
+        left = _remaining(self.deadline)
+        if left is not None and left <= 0:
+            raise ChannelTimeout("task deadline exceeded while sending")
+        limits = [value for value in (self.timeout, left) if value is not None]
+        if limits:
+            self._sock.settimeout(max(min(limits), 0.001))
         try:
             self._sock.sendall(raw)
         except socket.timeout as exc:
@@ -94,11 +116,12 @@ class Channel:
             raise ChannelClosed(f"socket closed while sending: {exc}") from exc
 
     def recv_frame(self) -> Frame:
-        prefix = _recv_exactly(self._sock, PREFIX_SIZE, self._deadline(), self.cancel)
+        prefix = _recv_exactly(self._sock, PREFIX_SIZE, self.deadline, self.cancel, self.timeout)
         kind, header_len, payload_len = parse_prefix(prefix)
-        deadline = self._deadline()
-        header = decode_header(_recv_exactly(self._sock, header_len, deadline, self.cancel)) if header_len else {}
-        payload = _recv_exactly(self._sock, payload_len, deadline, self.cancel) if payload_len else b""
+        header = decode_header(_recv_exactly(self._sock, header_len, self.deadline, self.cancel,
+                                             self.timeout)) if header_len else {}
+        payload = _recv_exactly(self._sock, payload_len, self.deadline, self.cancel,
+                                self.timeout) if payload_len else b""
         return Frame(kind, header, payload)
 
     def send_hello(self, **fields: Any) -> None:
@@ -181,24 +204,24 @@ class ChannelListener:
         while True:
             if cancel is not None and cancel.is_set():
                 raise TaskCancelled("cancelled while accepting")
-            now = time.monotonic()
+            left = _remaining(deadline)
+            if left is not None and left <= 0:
+                raise ChannelTimeout("task deadline exceeded while accepting")
             limit = CANCEL_POLL_SECONDS
             if timeout is not None:
-                limit = min(limit, max(timeout - (now - started), 0.0))
-            if deadline is not None:
-                limit = min(limit, max(deadline - now, 0.0))
+                limit = min(limit, max(timeout - (time.monotonic() - started), 0.0))
+            if left is not None:
+                limit = min(limit, left)
             if limit <= 0:
-                if deadline is not None and now >= deadline:
-                    raise ChannelTimeout("task deadline exceeded while accepting")
                 raise ChannelTimeout("timed out waiting for an upstream connection")
             self._sock.settimeout(limit)
             try:
                 conn, _ = self._sock.accept()
             except socket.timeout:
-                now = time.monotonic()
-                if deadline is not None and now >= deadline:
+                remaining = _remaining(deadline)
+                if remaining is not None and remaining <= 0:
                     raise ChannelTimeout("task deadline exceeded while accepting") from None
-                if timeout is not None and now - started >= timeout:
+                if timeout is not None and time.monotonic() - started >= timeout:
                     raise ChannelTimeout("timed out waiting for an upstream connection") from None
                 continue
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)

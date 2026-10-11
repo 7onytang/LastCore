@@ -31,4 +31,4 @@ pytest -q
 
 - **零依赖**：一期只跑 CPU 小模型链路，不引入 PyTorch / gRPC / ZeroMQ 等运行时可复用的重依赖，理由与调研数据见 [PROTOCOL.md](PROTOCOL.md#现成方案调研与自研理由)。
 - **显式帧边界**：长度 + SHA-256 + dtype/shape 校验，先校验后分配，损坏数据不会进入模型。
-- **可取消是一等需求**：Controller 取消任务后无法杀死远端进程（PR #1 文档第 117 行），因此读、写、accept 三个阻塞点都轮询 cancel 事件，节点能在亚秒级释放连接与缓冲。
+- **可取消是一等需求**：Controller 取消任务后无法杀死远端进程（PR #1 文档第 117 行），因此读、写、accept 三个阻塞点都轮询 cancel 事件，节点能在亚秒级释放连接与缓冲。cancel 与 deadline 在**每次接收迭代**都重新检查，对端持续发包也无法推迟取消或越过 deadline；`deadline` 为 epoch 秒（`time.time()` 基准），与 Controller `assignment.deadline`、node-agent `ExecutionContext.deadline` 同基准。

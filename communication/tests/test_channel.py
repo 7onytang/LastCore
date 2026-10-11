@@ -8,7 +8,7 @@ import pytest
 from communication.channel import Channel, ChannelListener
 from communication.errors import (ChannelClosed, ChannelTimeout, PeerError,
                                   ProtocolError, TaskCancelled)
-from communication.protocol import FrameType
+from communication.protocol import MAGIC, PREFIX, VERSION, FrameType
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def test_read_timeout_is_enforced(pair):
 
 def test_absolute_deadline_is_enforced(pair):
     client, server = pair
-    client.deadline = time.monotonic() + 0.2
+    client.deadline = time.time() + 0.2
     client.timeout = 30
     with pytest.raises(ChannelTimeout, match="deadline"):
         client.recv_frame()
@@ -103,6 +103,68 @@ def test_cancel_event_interrupts_a_blocked_read(pair):
     with pytest.raises(TaskCancelled):
         client.recv_tensor()
     assert time.monotonic() - started < 5
+
+
+def _stream_unfinished_frame(sock, *, declared_payload=64 * 1024 * 1024, streamed=4 * 1024 * 1024,
+                             chunk=16 * 1024, interval=0.004, budget=2.0):
+    """Announce a large payload, then keep sending bytes that never complete it."""
+    header = b"{}"
+    sock.sendall(PREFIX.pack(MAGIC, VERSION, int(FrameType.TENSOR), len(header), declared_payload) + header)
+    sent, started = 0, time.monotonic()
+    try:
+        while sent < streamed and time.monotonic() - started < budget:
+            size = min(chunk, streamed - sent)
+            sock.sendall(b"\x00" * size)
+            sent += size
+            time.sleep(interval)
+    except OSError:
+        pass
+    finally:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        sock.close()
+
+
+def test_cancel_is_checked_while_the_peer_keeps_streaming():
+    """A peer that never stops sending must not be able to postpone a cancel."""
+    listener = ChannelListener("127.0.0.1", 0)
+    try:
+        peer = socket.create_connection(listener.address, timeout=5)
+        stream = threading.Thread(target=_stream_unfinished_frame, args=(peer,), daemon=True)
+        stream.start()
+        conn = listener.accept(timeout=5)
+        cancel = threading.Event()
+        conn.cancel = cancel
+        conn.timeout = 30
+        threading.Timer(0.3, cancel.set).start()
+        started = time.monotonic()
+        with pytest.raises(TaskCancelled):
+            conn.recv_frame()
+        assert time.monotonic() - started < 2.0
+        conn.close()
+    finally:
+        listener.close()
+
+
+def test_deadline_is_checked_while_the_peer_keeps_streaming():
+    """A streaming peer must not be able to overrun the task deadline."""
+    listener = ChannelListener("127.0.0.1", 0)
+    try:
+        peer = socket.create_connection(listener.address, timeout=5)
+        stream = threading.Thread(target=_stream_unfinished_frame, args=(peer,), daemon=True)
+        stream.start()
+        conn = listener.accept(timeout=5)
+        conn.timeout = 30
+        conn.deadline = time.time() + 0.3
+        started = time.monotonic()
+        with pytest.raises(ChannelTimeout, match="deadline"):
+            conn.recv_frame()
+        assert time.monotonic() - started < 2.0
+        conn.close()
+    finally:
+        listener.close()
 
 
 def test_connect_to_a_closed_port_fails_fast():
