@@ -254,6 +254,38 @@ def test_agent_retries_until_controller_reachable(fake, client, clock, tmp_path)
     stop_agent(thread, captured)
 
 
+class ContextRecordingExecutor(Executor):
+    name = "record"
+
+    def __init__(self):
+        self.contexts = []
+
+    def run(self, context):
+        self.contexts.append(context)
+        for _ in range(100):
+            if context.cancel.is_set():
+                raise ExecutionCancelled(context.cancel_reason)
+            time.sleep(0.01)
+
+
+def test_execution_context_carries_raw_assignment(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state")
+    factory = FactoryRecorder(ContextRecordingExecutor)
+    agent = make_agent(fake, client, config, clock, factory.create)
+    thread, captured = run_in_thread(agent)
+    assert wait_until(lambda: fake.register_calls == 1)
+    task_id, assignment_id = fake.add_task("node-1", layers=(2, 5), model_id="m")
+    assert wait_until(lambda: agent.stats.started == [assignment_id])
+    assert wait_until(lambda: factory.instances and factory.instances[0].contexts, timeout=5)
+    context = factory.instances[0].contexts[0]
+    assert context.raw["id"] == assignment_id
+    assert context.raw["task_id"] == task_id
+    assert context.raw["request"]["model_id"] == "m"
+    assert context.raw["layer_start"] == 2
+    agent.stop_event.set()
+    stop_agent(thread, captured)
+
+
 def test_load_executor_specs():
     assert isinstance(load_executor("demo"), SliceDemoExecutor)
     with pytest.raises(ValueError):

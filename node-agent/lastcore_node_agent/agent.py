@@ -225,6 +225,7 @@ class NodeAgent:
             previous_node=row.get("previous_node"),
             next_node=row.get("next_node"),
             deadline=float(row.get("deadline") or 0.0),
+            raw=row,
         )
         worker = threading.Thread(target=self._execute, args=(context, executor),
                                   name=f"lastcore-exec-{assignment_id[:8]}", daemon=True)
