@@ -81,11 +81,21 @@ wait_status "$T1" completed 30; echo "task1 status: $S (expect completed)"
 curl -sf $BASE/v1/tasks/$T1 -H "$ADMIN" | python3 -c "import json,sys; d=json.load(sys.stdin); print('assignments:', [(a['id'][:13], a['status']) for a in d['assignments']])"
 
 echo "=== task 2: cancel while stages are serving ==="
+BEFORE_A=$(grep -c "serving on" "$WORK/node-a-run1.log" || true)
+BEFORE_B=$(grep -c "serving on" "$WORK/node-b-run1.log" || true)
 RESP=$(create_task '{"model_id":"lastcore/tiny-cpu","num_layers":4,"layer_memory_mb":512,"timeout_seconds":120}')
 T2=$(echo "$RESP" | head -1 | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-wait_serving run1 && echo "both stages serving"
+for i in $(seq 1 30); do
+  NOW_A=$(grep -c "serving on" "$WORK/node-a-run1.log" || true)
+  NOW_B=$(grep -c "serving on" "$WORK/node-b-run1.log" || true)
+  [ "$NOW_A" -gt "$BEFORE_A" ] && [ "$NOW_B" -gt "$BEFORE_B" ] && break
+  sleep 0.5
+done
+echo "both stages serving (fresh listeners for task2)"
 curl -s -X POST $BASE/v1/tasks/$T2/cancel -H "$ADMIN" -o /dev/null -w "cancel: HTTP %{http_code}\n"
 wait_status "$T2" cancelled 30; echo "task2 status: $S (expect cancelled)"
+sleep 2
+grep -c "stopped locally (task-terminal)" "$WORK/node-a-run1.log" "$WORK/node-b-run1.log"
 
 echo "=== restart agents with same state dirs ==="
 stop_agents
