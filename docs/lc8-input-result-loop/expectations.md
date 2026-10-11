@@ -1,6 +1,6 @@
 # LC-8 测试输入与预期（准备阶段）
 
-本文给出三类场景的**固定输入**与**可判定预期**，以及复现命令。用于后续接入获批契约后的回归基线；当前结论均基于基线 SHA（见 `gap-analysis.md` 首段），不代表接口已冻结。
+本文给出三类场景的**固定输入**与**可判定预期**，以及复现命令。用于后续接入获批契约后的回归基线；当前结论均基于基线 SHA（engine/communication@`b533929`、node-agent@`672b4f7`、PR #1@`ee57405`），不代表接口已冻结。
 
 ## 0. 环境与固定输入
 
@@ -28,7 +28,7 @@
 | 3 | `[1,2,3,39,16]` | `[1,5,64]` | 5 |
 | 生成序列 | — | — | `[39, 16, 5]` |
 
-- 每步 distributed logits 与单机 `forward_full` **逐字节相同**（`np.array_equal`，且 sha256 相同）。三个复现值见 `results-loop.json`（`d05af942…`、`4156d35d…`、`0a3603a9…`）。
+- 每步 distributed logits 与单机 `forward_full` **逐字节相同**（`np.array_equal`，且 sha256 相同）。三个复现值见 `evidence/results-loop.json`（`d05af942…`、`4156d35d…`、`0a3603a9…`）。
 - 末段被服务次数 = 2 次运行 × 3 步 = 6（`last_stage_served=6`）。
 
 > 注意：`[39,16,5]` 是**本次 fixed seed=7 的确定性产物**，不是“有意义的文本”；本轮无 tokenizer（G-05），token↔文本映射未实现。
@@ -51,7 +51,7 @@ LC_NODE_AGENT_DIR=$EXT/wt-node/node-agent \
 **预期**：
 - 两次运行的逐步 `logits_sha256` 列表相同；
 - 两次运行的 `generated_tokens` 相同（`[39,16,5]`）；
-- `idempotent_repeat=true`（见 `results-loop.json`）。
+- `idempotent_repeat=true`（见 `evidence/results-loop.json`）。
 
 **Controller 侧幂等（现状事实）**：同一 assignment 的 `completed` 上报重复提交返回 200 且任务仍为 `completed`（`store.py:192-193`）。
 **预期命令**：
@@ -89,8 +89,8 @@ LC_REPO_ROOT=$(pwd) LC_CONTROLLER_DIR=$EXT/wt-ctrl2/controller-server \
 ## 4. 既有回归基线（复用，非本轮新增）
 
 ```bash
-cd $EXT/wt-engine/inference-engine && $EXT/venv/bin/python -m pytest -q   # 87 passed
-cd $EXT/wt-engine/communication  && $EXT/venv/bin/python -m pytest -q   # 40 passed
+cd $EXT/wt-engine/inference-engine && $EXT/venv/bin/python -m pytest -q   # 89 passed
+cd $EXT/wt-engine/communication  && $EXT/venv/bin/python -m pytest -q   # 42 passed
 cd $EXT/wt-node/node-agent       && $EXT/venv/bin/python -m pytest -q   # 36 passed
 cd $EXT/wt-ctrl2/controller-server && $EXT/venv/bin/python -m pytest -q # 16 passed
 ```

@@ -1,7 +1,7 @@
 {
   "model_id": "lastcore/tiny-cpu",
   "seed": 7,
-  "checkpoint": "/tmp/multica-task-346102981/lc8-qhx26h1w/tiny.npz",
+  "checkpoint": "/tmp/multica-task-346102981/lc8-chjh3lg2/tiny.npz",
   "segments": [
     [
       0,

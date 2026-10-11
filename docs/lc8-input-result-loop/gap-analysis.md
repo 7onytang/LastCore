@@ -3,9 +3,11 @@
 角色：Engineer-B（DeepSeek-V4.1-Flash）｜业务时间 Asia/Shanghai
 基线（只读复用，不修改）：
 - 控制平面 PR #1 `ee57405f925a6aba44a9b3a9402599cf55b04d61`（Reviewer-A 已通过）
-- inference-engine / communication：Engineer-B 固定分支 `agent/engineer-b-b/44d462377632` @ `fd6a9cf`（含 PR #2 `dcd189e`；`fd6a9cf` 为新提交，PR #2 审查针对 `dcd189e`）
+- inference-engine / communication：Engineer-B 固定分支 `agent/engineer-b-b/44d462377632` @ `b533929`（含 PR #2 `dcd189e` 及其后修复 `449b5c4`/`fd6a9cf`/`419ddfb`/`0ff4de6` 与文档 `b533929`）
 - node-agent：Engineer-A 分支 `agent/engineer-a-a/b33d0fac979a` @ `672b4f7`
 - 参考项目 exo 结论复用 LC-1 公附 `exo-architecture-review-v2.md`（不再重复检索）
+
+本清单基于 `b533929` 复核；更早的 `fd6a9cf` 结论一致（见第 5 节）。`communication/PROTOCOL.md` 的「待 LC-5 冻结」表已列出传输形态（HTTP envelope vs 裸 TCP）、握手字段、鉴权、应用层重试与幂等四项开放项，本文的 G-02 / G-14 / G-16 与其对应，不重复主张。
 
 本文只做**对照与差距**，不代表接口已冻结。LC-5 尚未交付获批契约，故本清单中的“建议方向”一律为**提案**，不实施。
 
@@ -29,8 +31,8 @@
 | --- | --- | --- |
 | F1 | Controller 任务请求只有模型标识与规模，**无 prompt / seed / 生成参数 / session** | `controller-server/app/models.py:23-28`（`TaskRequest`） |
 | F2 | 无“提交输入”的 HTTP 入口；PROTOCOL 提案说输入直接 POST 到首节点，但该端点未实现 | `node-agent/PROTOCOL.md:48-53`；实际入口是 `PipelineClient.run`（`inference-engine/inference_engine/pipeline.py:187-204`）与 CLI `node run`（`node.py:124-130`） |
-| F3 | 首段做 token/position embedding；末段做 final layer norm + unembedding；中间段只跑 block | `inference_engine/stage.py:94-107`、`model.py:31-41`、`model.py:75-77`、`config.py:14-16` |
-| F4 | 一段一次 forward 整段序列，输出 logits `[batch, seq, vocab]`；**无 decode 循环、无 KV cache、无 sampling** | `stage.py:94-107`；README「已知限制」`inference-engine/README.md:102` |
+| F3 | 首段做 token/position embedding；末段做 final layer norm + unembedding；中间段只跑 block | `inference_engine/stage.py:94-108`、`model.py:38-48`、`model.py:83-85`、`config.py:14-16` |
+| F4 | 一段一次 forward 整段序列，输出 logits `[batch, seq, vocab]`；**无 decode 循环、无 KV cache、无 sampling** | `stage.py:94-108`；README「已知限制」`inference-engine/README.md:102` |
 | F5 | next_token 由调用方用 argmax 计算，属调用方而非任何模块 | `inference_engine/node.py:57`（`_summary`） |
 | F6 | **无 tokenizer**；CLI 直接把 prompt 里的空格分隔数字当 token id | `inference_engine/node.py:44-48`（`_tokens`） |
 | F7 | Executor 硬契约：`run(ExecutionContext)`，每 assignment 新实例，阻塞至片段完成，取消≤1s 响应，deadline 自行保证 | `node-agent/PROTOCOL.md:27-40`；`lastcore_node_agent/executor.py:16-40` |
@@ -64,8 +66,8 @@
 
 | 项 | 归属（现状事实） | 状态 |
 | --- | --- | --- |
-| 第一段 embedding（token+position） | inference-engine 首段（`layer_start==0`），`stage.py:95-98` | **明确** |
-| 末段 final layer norm + unembedding(head) | inference-engine 末段（`layer_end==n_layers`），`stage.py:107`、`model.py:75-77` | **明确** |
+| 第一段 embedding（token+position） | inference-engine 首段（`layer_start==0`），`stage.py:98` | **明确** |
+| 末段 final layer norm + unembedding(head) | inference-engine 末段（`layer_end==n_layers`），`stage.py:108`、`model.py:83-85` | **明确** |
 | sampling（temperature/top-k/seed/停止条件） | **无人实现**；仅调用方 argmax 求 next_token（`node.py:57`） | **缺失** |
 | tokenizer（文本↔token id） | **无人实现**；CLI 以空格分隔整数代填（`node.py:44-48`） | **缺失** |
 
@@ -107,9 +109,11 @@
 ## 5. 本次实测复核（不是新功能）
 
 运行环境：Python 3.14.7 / macOS arm64；venv 见本任务目录（未提交）。
-- 既有回归基线：inference-engine `87 passed`、communication `40 passed`、node-agent `36 passed`、controller `16 passed`（命令见 `expectations.md`）。
-- `input_result_loop_harness.py`：3 步贪心 decode，逐步 distributed logits 与单机参考**逐字节一致**（sha256 相同），重复运行 token/摘要一致，取消后 executor 以 `ExecutionCancelled(reason=task-terminal)` 结束、端口释放、后续请求失败（无迟到成功）。见 `results-loop.json`。
-- `controller_terminal_checks.py`：completed 上报重复幂等（200）、取消后迟到 completed 被 409 拒绝、任务读回仍 `cancelled`。见 `results-controller.json`。
+- 既有回归基线（基线 `b533929`）：inference-engine `89 passed`、communication `42 passed`、node-agent `36 passed`、controller `16 passed`（命令见 `expectations.md`）。
+- `input_result_loop_harness.py`：3 步贪心 decode，逐步 distributed logits 与单机参考**逐字节一致**（sha256 相同），重复运行 token/摘要一致，取消后 executor 以 `ExecutionCancelled(reason=task-terminal)` 结束、端口释放、后续请求失败（无迟到成功）。见 `evidence/results-loop.json`；在 `fd6a9cf` 与 `b533929` 上摘要完全一致（仅临时 checkpoint 路径不同）。
+- `controller_terminal_checks.py`：completed 上报重复幂等（200）、取消后迟到 completed 被 409 拒绝、任务读回仍 `cancelled`。见 `evidence/results-controller.json`。
+
+基线 `fd6a9cf` → `b533929` 的三个新提交（`419ddfb` sha256 强制、`0ff4de6` batch 上界、`b533929` 文档）不改变上文结论；其中 sha256 强制与 batch 上界两项此前属评审修复项，已修复、不计入差距。
 
 ## 6. 明确未验证 / 未完成
 
