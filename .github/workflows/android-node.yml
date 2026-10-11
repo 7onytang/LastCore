@@ -1,0 +1,27 @@
+name: Android Node
+on:
+  push:
+    paths: ["android-node/**", ".github/workflows/android-node.yml"]
+  pull_request:
+    paths: ["android-node/**", ".github/workflows/android-node.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-node
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      # Unit tests only: no real Android device is available in CI, and LC-13
+      # forbids passing emulator results off as real-device evidence.
+      - run: pytest -q
+      # Node-agent Executor-contract integration, when node-agent is present.
+      - name: node-agent contract (skips if absent)
+        if: hashFiles('node-agent/**/*.py') != ''
+        run: LASTCORE_NODE_AGENT_PATH="$GITHUB_WORKSPACE/node-agent" pytest -q tests/test_node_agent_contract.py
