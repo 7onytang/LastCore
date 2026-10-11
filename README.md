@@ -11,11 +11,24 @@
 - SQLite 写事务防止并发任务重复预留节点；重启保留任务与预留状态。
 - 非 root Docker 镜像、Compose 数据卷和健康检查，以及自动化测试。
 
-首版是控制平面。尚未实现 Node Agent、模型加载/分片、tensor 传输、真实推理、NAT 穿透或离线后的自动迁移。任务完成表示所有节点上报完成，不包含模型输出。当前内存预算按层均匀估算；提交方应预留权重、激活、KV cache 等开销。计算权重由节点注册时上报，尚无自动性能测量。
+## 实现状态与核心文件
+
+当前仓库的可运行交付是 **Controller 控制平面 MVP**。节点、任务、心跳、分层分配和状态回报由 HTTP API 管理；任务进入 `completed` 只表示所有分配节点都已上报完成，不包含模型生成内容或 logits。模型标识目前只是任务字段，Controller 不下载、加载或运行模型。
+
+| 文件 | 职责 | 状态 |
+| --- | --- | --- |
+| `controller-server/app/main.py` | FastAPI 应用、配置校验、Bearer 鉴权和 HTTP 路由 | 已实现 |
+| `controller-server/app/models.py` | 请求/回报数据模型及输入限制 | 已实现 |
+| `controller-server/app/scheduler.py` | 按权重、层数和内存上限分配连续层区间 | 已实现 |
+| `controller-server/app/store.py` | SQLite 持久化、凭据摘要、心跳超时、任务和分配状态 | 已实现 |
+| `controller-server/tests/test_controller.py` | Controller API、调度、并发、终态和重启行为测试 | 有自动化测试；不代表真实设备或推理已验证 |
+| `controller-server/Dockerfile`, `controller-server/compose.yaml` | 单实例容器运行、健康检查与数据卷 | 已配置；云端部署未由本仓库材料证明 |
+
+**尚无实现证据的部分**：Node Agent、模型加载/分片、节点间张量传输、真实推理输出、prefill/decode KV 交接、NAT 穿透、离线自动迁移、跨平台真机验证及云端部署。开源项目 exo 是参考材料，不代表 LastCore 已集成其代码或能力。当前内存预算按层均匀估算；提交方应预留权重、激活、KV cache 等开销。计算权重由节点注册时上报，尚无自动性能测量。更多实现边界见 [AI_USAGE.md](AI_USAGE.md) 与 [ai-logs/](ai-logs/)。
 
 ## 本地运行
 
-Python 3.12 或更高版本：
+本地运行要求 Python 3.12 或更高版本。Docker 镜像固定为 `python:3.12-slim`；Python 依赖使用仓库中的版本固定值（`fastapi==0.135.2`、`uvicorn==0.42.0`；开发依赖另含 `httpx==0.28.1`、`pytest==9.0.2`）：
 
 ```bash
 cd controller-server
