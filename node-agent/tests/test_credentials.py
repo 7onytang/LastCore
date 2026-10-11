@@ -3,6 +3,7 @@ import stat
 
 import pytest
 
+import lastcore_node_agent.credentials as credentials_module
 from lastcore_node_agent.credentials import (
     NodeCredentials,
     StateError,
@@ -24,6 +25,34 @@ def test_state_lock_is_exclusive(tmp_path):
     second = acquire_state_lock(tmp_path)
     assert second is not None
     second.close()
+
+
+def test_state_lock_windows_fallback_branch(tmp_path, monkeypatch):
+    calls = []
+    locked = []
+
+    class FakeWinLock:
+        LK_NBLCK = 2
+
+        @staticmethod
+        def locking(fileno, mode, nbytes):
+            calls.append((fileno, mode, nbytes))
+            if locked:
+                raise OSError(36, "Resource deadlock avoided")
+            locked.append(fileno)
+
+    monkeypatch.setattr(credentials_module, "fcntl", None)
+    monkeypatch.setattr(credentials_module, "msvcrt", FakeWinLock(), raising=False)
+
+    first = acquire_state_lock(tmp_path)
+    assert first is not None
+    assert calls and calls[0][1] == FakeWinLock.LK_NBLCK
+    assert acquire_state_lock(tmp_path) is None
+    first.close()
+    locked.clear()
+    third = acquire_state_lock(tmp_path)
+    assert third is not None
+    third.close()
 
 
 def test_credentials_roundtrip(tmp_path):
