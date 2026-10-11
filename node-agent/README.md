@@ -63,7 +63,10 @@ python -m lastcore_node_agent \
 | `--state-dir` | `NODE_AGENT_STATE_DIR` | `~/.lastcore/node-agent` | 凭据与执行日志目录（0600/0700） |
 | `--heartbeat-interval` | `NODE_AGENT_HEARTBEAT_INTERVAL` | `10` | 心跳间隔秒数，需小于 TTL（默认 30） |
 | `--poll-interval` | `NODE_AGENT_POLL_INTERVAL` | `1` | assignments 轮询间隔秒数 |
-| `--executor` | `NODE_AGENT_EXECUTOR` | `demo` | `demo` 或 `模块路径:工厂名`（B 的引擎接入点） |
+| `--executor` | `NODE_AGENT_EXECUTOR` | `demo` | `demo`、`stage`（真实推理）或 `模块路径:工厂名` |
+| `--model-config` | `NODE_AGENT_MODEL_CONFIG` | 内置 tiny | `stage` 模式的模型配置 JSON |
+| `--weights` | `NODE_AGENT_WEIGHTS` | 状态目录内自动生成 | `stage` 模式的 checkpoint 路径 |
+| `--complete-after` | `NODE_AGENT_COMPLETE_AFTER` | `1` | `stage` 模式服务完 N 个请求后上报 completed；`0` = 直到取消 |
 | `--no-accept` | `NODE_AGENT_NO_ACCEPT` | 关 | 排空模式，心跳 `accepting_tasks=false` |
 | `--request-timeout` | - | `10` | 单次 HTTP 超时秒数 |
 
@@ -93,10 +96,24 @@ class Executor:
 
 - 每个 assignment 创建一个新的 `Executor` 实例（`--executor 模块:工厂名`），保证任务间 tensor/模型状态隔离。
 - `run()` 阻塞执行；必须至少每秒检查一次 `context.cancel`，置位后在宽限期内抛出 `ExecutionCancelled(context.cancel_reason)` 返回。
-- `context` 提供 `task_id`、`assignment_id`、`model_id`、`[layer_start, layer_end)`、上下游节点、`deadline`。
-- `SliceDemoExecutor` 是参考实现（按时间片模拟工作，演示取消契约），用于联调与测试。
+- `context` 提供 `task_id`、`assignment_id`、`model_id`、`[layer_start, layer_end)`、上下游节点、`deadline`，以及 `raw`（Controller 返回的原始 assignment dict）。
+- `SliceDemoExecutor`（`demo`）是参考实现；`stage` 执行器对接 inference-engine v1（见下节）。协议细节见 `PROTOCOL.md`。
 
-节点间 tensor 传输协议见 `PROTOCOL.md`（提案，由 `communication/` 实现）。
+## 真实推理（--executor stage，对接 inference-engine v1）
+
+```bash
+# inference-engine 与 communication 的包目录加入 PYTHONPATH（相对仓库根）
+PYTHONPATH=../inference-engine:../communication \
+python -m lastcore_node_agent --controller-url http://127.0.0.1:8000 \
+  --endpoint http://127.0.0.1:9101 --state-dir ~/.lastcore/node-a \
+  --available-memory-mb 4096 --compute-weight 2.0 --executor stage --verbose
+```
+
+- StageServer 绑定 `--endpoint` 指定的地址：**注册给 Controller 的 endpoint 就是本段真实监听地址**，相邻节点按 assignment 的 `next_node.endpoint` 直连。
+- 模型：默认 inference-engine 的 tiny 模型（`lastcore/tiny-cpu`，4 层，确定性权重自动生成到状态目录）；`--model-config <json>` 与 `--weights <npz>` 可替换为自定义 checkpoint，任务 `model_id`/`num_layers` 必须与之一致。
+- 完成语义：`--complete-after N`（默认 1）——服务完 N 个推理请求后上报 completed；`0` = 持续服务直到取消/超时/退出。
+- 调用方（demo/未来 frontend）用 `inference_engine.PipelineClient(<首段 endpoint>).run(tokens)` 发起推理。
+- 依赖：numpy 与 `inference-engine/`、`communication/` 模块（`pip install numpy`）。
 
 ## 验证
 
@@ -135,7 +152,7 @@ curl -s http://127.0.0.1:8000/v1/tasks/<task_id> -H "Authorization: Bearer $CONT
 
 ## 已知限制
 
-- demo 执行器不产生真实推理输出；真实计算等待 `inference-engine/` 接入 `Executor` 接口。
 - 心跳内存上报为静态配置值，暂无自动探测。
 - 执行日志只防"已结束"的任务重复执行，进程崩溃窗口内的工作丢失后会重新执行（at-least-once）。
 - 执行器忽略取消超过 `stop_grace` 时，线程被遗弃（daemon），资源释放依赖执行器自身遵守契约。
+- `stage` 执行器的模型权重仍需手动/自动生成本地 checkpoint，模型下载与缓存属 `model-manager/`（LC-9）。
