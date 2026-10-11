@@ -32,11 +32,13 @@ cd model-manager
 pip install -r requirements-dev.txt          # numpy==2.5.4, pytest==9.1.1
 export PYTHONPATH="$(pwd):$(pwd)/../inference-engine:$(pwd)/../communication"
 
-# 1) 造一份 tiny 资产 + 清单（纯本地、无网络）
-python examples/build_tiny_asset.py --out-dir /tmp/lc9-assets
+# 1) 造一份 tiny 资产 + 清单（纯本地、无网络；`--out` 是输出目录，默认 examples/assets）
+python examples/build_tiny_asset.py --out /tmp/lc9-assets
 
-# 2) 端到端：清单 → 取字节 → 校验 → 原子落盘 → 用引擎加载本段
-python examples/tiny_end_to_end.py --work-dir /tmp/lc9-e2e
+# 2) 端到端：清单 → 取字节 → 校验 → 原子落盘 → 用引擎加载本段并与单机结果逐字节比对
+#    该脚本不接参数：它在自动清理的临时目录（tempfile.TemporaryDirectory）里生成资产与缓存，
+#    退出即删除，因此不会留下产物或残留；进程内仍可调用 run(workspace) 指定自己的目录。
+python examples/tiny_end_to_end.py
 
 # 3) 命令行
 python -m model_manager --help
@@ -88,7 +90,7 @@ python -m model_manager --help
 cd model-manager
 pytest -q            # 148 passed
 PYTHONPATH="$(pwd):$(pwd)/../inference-engine:$(pwd)/../communication" \
-  python examples/tiny_end_to_end.py --work-dir /tmp/lc9-e2e   # exit 0
+  python examples/tiny_end_to_end.py                          # exit 0，三组 prompt 均 bit_identical=true
 ```
 
 覆盖：清单严格性（未知字段/必填/重复路径/可执行字段/路径穿越）、架构与后端能力拒绝、dtype 与 float16 字节折半、层区间必须完整铺满且不重叠、成本清单各维度、哈希流式与吞吐、缺失/截断/超大/篡改/短写拒绝、API 与真实布局对齐、磁盘不足在写入前报错、原子落盘与完成标记、中断续做、跨进程锁与陈旧锁清理、并发同 revision 只取一次、缓存内符号链接逃逸拒绝、本地/HTTP 源（含 HTTP 缺授权 fail closed）、引擎 shard/stage 加载。
