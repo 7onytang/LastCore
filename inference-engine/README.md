@@ -89,12 +89,12 @@ server.serve_forever(should_stop=lambda: stopping)
 
 ```bash
 cd inference-engine
-pytest -q            # 87 项，含两个独立进程的端到端联调
+pytest -q            # 89 项，含两个独立进程的端到端联调
 cd ../communication
-pytest -q            # 40 项协议与通道测试
+pytest -q            # 42 项协议与通道测试
 ```
 
-inference-engine 侧覆盖：配置校验、参数集按段划分且互不重叠、只加载本段权重、单机前向确定性、attention 因果性、1/2/3/4 段切分的链路结果与单机逐字节一致、多层链路的 role 与参数字节核算、assignment 解析（endpoint/区间/deadline/model 不符拒绝）、**assignment 的 epoch deadline 传到 StageServer 并真实生效**、TCP 上的 2/3/4 段链路、非末段缺下游拒绝、区间不接续拒绝、模型不符拒绝、cancel 事件与 CANCEL 帧传播、读超时、deadline、**deadline 到期后不再空转轮询**、**deadline 未到期时正常服务**、静默对端、空闲等待不被 kill、本段失败以 `ERROR` 回传、两个独立进程的端到端比对与三段链路比对。
+inference-engine 侧覆盖：配置校验、参数集按段划分且互不重叠、只加载本段权重、单机前向确定性、attention 因果性、1/2/3/4 段切分的链路结果与单机逐字节一致、多层链路的 role 与参数字节核算、assignment 解析（endpoint/区间/deadline/model 不符拒绝）、**assignment 的 epoch deadline 传到 StageServer 并真实生效**、TCP 上的 2/3/4 段链路、非末段缺下游拒绝、区间不接续拒绝、模型不符拒绝、**token 与 hidden 的 batch 上界（超界在分配前拒绝、等于上界可正常推理）**、cancel 事件与 CANCEL 帧传播、读超时、deadline、**deadline 到期后不再空转轮询**、**deadline 未到期时正常服务**、静默对端、空闲等待不被 kill、本段失败以 `ERROR` 回传、两个独立进程的端到端比对与三段链路比对。
 
 ## 已知限制
 

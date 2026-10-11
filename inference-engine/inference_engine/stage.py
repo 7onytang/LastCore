@@ -22,7 +22,7 @@ import numpy as np
 
 from .config import ModelConfig
 from .errors import ShardError
-from .model import embed, run_layers, unembed
+from .model import check_batch, embed, run_layers, unembed
 from .weights import ShardWeights, load_shard, segment_parameter_names
 
 
@@ -101,6 +101,7 @@ class StageRuntime:
             if hidden.ndim != 3 or hidden.shape[-1] != self.config.d_model:
                 raise ShardError(f"hidden state must be [batch, seq, {self.config.d_model}], "
                                  f"got shape {hidden.shape}")
+            check_batch(hidden.shape[0])
             if hidden.shape[1] > self.config.max_seq_len:
                 raise ShardError(f"sequence length {hidden.shape[1]} exceeds max_seq_len")
         hidden = run_layers(hidden, self.weights, self.config, self.layer_start, self.layer_end)
