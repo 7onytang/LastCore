@@ -27,6 +27,8 @@ CTRL_URL="http://127.0.0.1:$CTRL_PORT"
 CTRL_PID=""
 A_PID=""
 B_PID=""
+RUN_SUFFIX=""
+AV=""
 
 cd "$REPO/controller-server"
 export CONTROLLER_ADMIN_TOKEN="e2e-admin-token-0123456789abcdef0123456789abcdef"
@@ -36,6 +38,7 @@ python3 -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port "$CTRL_
 CTRL_PID=$!
 
 start_agents() {  # $1 = log suffix
+  RUN_SUFFIX="$1"
   PYTHONPATH="$REPO/inference-engine:$REPO/communication" NODE_AGENT_REGISTRATION_TOKEN="$CONTROLLER_REGISTRATION_TOKEN" \
     python3 -m lastcore_node_agent --controller-url "$CTRL_URL" \
     --endpoint "http://127.0.0.1:$NODE_A_PORT" --state-dir "$WORK/node-a" \
@@ -82,15 +85,30 @@ BASE="$CTRL_URL"
 cd "$REPO/node-agent"
 
 start_agents run1
+check_agents_alive() {  # fail fast if a started agent process already exited
+  local name pid log
+  for name in a b; do
+    if [ "$name" = a ]; then pid="${A_PID:-}"; else pid="${B_PID:-}"; fi
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null && continue
+    echo "ERROR: node-$name process (pid $pid) exited before becoming available" >&2
+    log="$WORK/node-$name-$RUN_SUFFIX.log"
+    if [ -f "$log" ]; then tail -n 20 "$log" >&2; fi
+    return 1
+  done
+  return 0
+}
 wait_available() {
   for i in $(seq 1 60); do
+    check_agents_alive || return 2
     AV=$(curl -sf "$BASE/v1/nodes" -H "$ADMIN" | python3 -c "import json,sys; ns=json.load(sys.stdin)['nodes']; print(sum(1 for n in ns if n['status']=='available'))" 2>/dev/null || echo 0)
     [ "$AV" = "2" ] && return 0
     sleep 0.5
   done
+  echo "ERROR: expected 2 available nodes, got $AV" >&2
   return 1
 }
-if ! wait_available; then echo "ERROR: expected 2 available nodes, got $AV" >&2; exit 1; fi
+if ! wait_available; then exit 1; fi
 echo "nodes available: $AV (expect 2)"
 
 create_task() { curl -s -X POST "$BASE/v1/tasks" -H "$ADMIN" -H 'Content-Type: application/json' -d "$1" -w '\nHTTP %{http_code}'; }
@@ -117,7 +135,11 @@ echo "task1=$T1"
 if ! wait_serving run1; then echo "ERROR: stages did not report serving" >&2; exit 1; fi
 echo "both stages serving"
 curl -sf "$BASE/v1/tasks/$T1" -H "$ADMIN" | python3 -c "import json,sys; d=json.load(sys.stdin); print('plan:', [(a['node_id'][:8], a['layer_start'], a['layer_end']) for a in d['assignments']])"
-python3 scripts/client_check.py 127.0.0.1 "$NODE_A_PORT" "$WORK/node-a/tiny-model.npz" "$T1" >"$WORK/client1.json" 2>"$WORK/client1.err" || { echo CLIENT-FAILED; cat "$WORK/client1.err"; }
+if ! python3 scripts/client_check.py 127.0.0.1 "$NODE_A_PORT" "$WORK/node-a/tiny-model.npz" "$T1" >"$WORK/client1.json" 2>"$WORK/client1.err"; then
+  echo "ERROR: client_check.py failed for task1=$T1" >&2
+  cat "$WORK/client1.err" >&2
+  exit 1
+fi
 cat "$WORK/client1.json"
 if ! wait_status "$T1" completed 30; then echo "ERROR: task1 status $S (expect completed)" >&2; exit 1; fi
 echo "task1 status: $S (expect completed)"
@@ -128,12 +150,14 @@ BEFORE_A=$(grep -c "serving on" "$WORK/node-a-run1.log" || true)
 BEFORE_B=$(grep -c "serving on" "$WORK/node-b-run1.log" || true)
 RESP=$(create_task '{"model_id":"lastcore/tiny-cpu","num_layers":4,"layer_memory_mb":512,"timeout_seconds":120}')
 T2=$(echo "$RESP" | head -1 | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+FRESH=0
 for i in $(seq 1 30); do
   NOW_A=$(grep -c "serving on" "$WORK/node-a-run1.log" || true)
   NOW_B=$(grep -c "serving on" "$WORK/node-b-run1.log" || true)
-  if [ "$NOW_A" -gt "$BEFORE_A" ] && [ "$NOW_B" -gt "$BEFORE_B" ]; then break; fi
+  if [ "$NOW_A" -gt "$BEFORE_A" ] && [ "$NOW_B" -gt "$BEFORE_B" ]; then FRESH=1; break; fi
   sleep 0.5
 done
+if [ "$FRESH" != 1 ]; then echo "ERROR: task2 stages did not report fresh listeners" >&2; exit 1; fi
 echo "both stages serving (fresh listeners for task2)"
 curl -s -X POST "$BASE/v1/tasks/$T2/cancel" -H "$ADMIN" -o /dev/null -w "cancel: HTTP %{http_code}\n"
 if ! wait_status "$T2" cancelled 30; then echo "ERROR: task2 status $S (expect cancelled)" >&2; exit 1; fi
@@ -144,7 +168,7 @@ grep -c "stopped locally (task-terminal)" "$WORK/node-a-run1.log" "$WORK/node-b-
 echo "=== restart agents with same state dirs ==="
 stop_agents
 start_agents run2
-if ! wait_available; then echo "ERROR: expected 2 available nodes after restart, got $AV" >&2; exit 1; fi
+if ! wait_available; then exit 1; fi
 echo "nodes available after restart: $AV (expect 2, no duplicate registration)"
 
 echo "=== task 3: deadline (10s) with no client request ==="
