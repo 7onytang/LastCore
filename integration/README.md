@@ -54,6 +54,57 @@ python -m integration.run_scenarios \
 | 峰值内存（`peak_rss_kb` / `metrics.peak_rss_mb`） | 每 100ms 轮询 `ps -o rss= -p <pid>` 取最大值 | 单进程 RSS 的**采样峰值**（100ms 间隔轮询的最大值），不等于进程真实峰值；因为每个 Node Agent 是独立进程，只代表该节点进程自身 |
 | 传输字节 | 客户端→首段这一跳由透明 TCP relay 双向计数 | **relay 只覆盖客户端→首段一跳**；**A→B 一跳无法用 relay 计数**：节点的注册 endpoint 按设计就是 `StageServer` 绑定的地址，无法在中间插桩，A→B 字节目前只能按协议帧布局估算，真实计数需要 communication v1 暴露计数器（LC-5 提案，未实现）。relay 自身的监听端口不在报告的 `ports_released` 之列（见 [fault_matrix.md](fault_matrix.md) 的历史证据缺项） |
 
+## 常驻内部演示（start / stop）
+
+`run_scenarios` 是一次性验证：跑完即清理，用户无法手工访问系统。若要让用户自己
+起一套真实 Controller + 两个真实 Node Agent、手工提交任务、用完再回收，
+用 `integration.demo`（同样只启动和观测既有组件，不改产品代码）：
+
+```bash
+# 一次性：建三个隔离 venv（controller / node / integration）
+python3 -m integration.demo setup
+# 启动：真实 Controller + node-a + node-b，detached 常驻，记录 PID/端口/日志
+.venv-integration/bin/python -m integration.demo start
+# 查看记录到的进程是否仍归本演示所有、监听端口
+.venv-integration/bin/python -m integration.demo status
+# 一次真实链路：HTTP 建任务 + PipelineClient 走 TCP，与单机参照对照，写结果 JSON
+.venv-integration/bin/python -m integration.demo request
+# 停止：核对归属后只终止本演示记录到的 PID，并断言端口已释放
+.venv-integration/bin/python -m integration.demo stop
+```
+
+`--workdir DIR`（默认 `integration/demo-run`，已 gitignore）指定状态目录，可从空
+目录使用；`start` 会在其中生成 tiny 权重、日志和 `demo-state.json`。
+`demo-state.json` 保存本次运行的 bearer token，以 0600 写入、不打印、不提交；
+其余命令不带 token 参数，凭据只从该文件读。
+
+子命令一览：
+
+| 子命令 | 作用 | 退出码 |
+| --- | --- | --- |
+| `setup` | 建 `.venv-controller` / `.venv-node` / `.venv-integration` 并装依赖 | 0 成功 |
+| `start` | 起 Controller + 两个 Node Agent（`--executor stage`），等注册后在 `demo-state.json` 记录 pid/pgid/lstart/argv/端口/日志 | 0 成功，1 已存在活动演示 |
+| `status` | 列出记录的进程、归属校验结果、lsof 实际监听端口 | 0 |
+| `request` | 提交一次任务并跑一次管道请求，写 `demo-result.json` | 0 全通过，1 有断言不通过 |
+| `stop` | 归属校验后 SIGTERM 进程组，核对端口释放 | 0 全部回收，1 有残留 |
+
+与 `run_scenarios` 的两点差别：演示进程 detached 常驻（由 `stop` 回收），并且
+`request` 等待 StageServer 就绪时只用 Node Agent 日志与 `lsof`，不发起裸 TCP
+探测——裸探测会被 StageServer 当接入并记成一次失败对端、随后空转 `serve_poll`
+(0.25s)，会把随后真实请求的时延抬高约 0.25s。因此本演示的 `latency_seconds`
+是不含该空转的真实一次前传往返，数值明显小于 `run_scenarios` 的
+`normal_e2e`（后者含该空转，见 [fault_matrix.md](fault_matrix.md)）。
+
+**能做 / 不能做**：能做——真实 Controller 调度、两个独立 Node Agent 进程各自
+StageServer 按注册 endpoint 监听、HTTP 建任务与查终态、客户端 TCP 送 token 取
+logits、与单机参照逐字节一致、PID/端口归属与回收。不能做——它不是两台物理设备
+（同机多进程）、不加载真实/预训练模型（只有自研 tiny，`lastcore/tiny-cpu`，4 层、
+155392B 参数）、无 decode/KV/流式（一次请求=一次 prefill 前传）、HTTP 建任务与
+TCP 数据面仍是两条独立路径（`POST /v1/tasks` 不会触发 TCP 请求）。指标口径与
+`## 测量的指标与口径` 一节相同：`latency_seconds` 是一次 full-forward/prefill
+往返，不是真实 TTFT；`prefill_tokens_per_second` 是 prefill 吞吐而非生成速率；
+RSS 为 `ps` 采样值。
+
 ## 故障注入
 
 `TCPRelay` 支持 `close_after_up_bytes=N`：在客户端→首段方向转发超过 N 字节后同时关闭
