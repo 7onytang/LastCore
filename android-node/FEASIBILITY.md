@@ -86,9 +86,9 @@ AndroidExecutor (实现 node-agent Executor 契约)
 
 **失败关闭（fail-closed）**：默认后端候选只包含真实运行时（当前为 ONNX Runtime Mobile）；模拟后端是测试替身，**不在生产候选里**，只能由测试显式注入或 CLI 显式 `--reference-backend`。没有真实运行时即拒绝接单，而不是返回合成分数。
 
-**准入前置元数据**：模型形状、本分片权重字节、上下文长度必须由真实来源提供（LC-9 manifest + LC-5 契约）；缺失时抛 `MissingModelMetadata` 拒绝接单，不使用 4 层 `d_model=32` 的占位形状。
+**准入前置元数据**：模型形状、本分片权重字节、上下文长度必须由真实来源提供（LC-9 manifest + LC-5 契约）；缺失时抛 `MissingModelMetadata` 拒绝接单，不使用 4 层 `d_model=32` 的占位形状。CLI 同样强制：`--weights-bytes`、`--tokens` 必填且必须为正整数（`1` 是合法上下文长度），缺失 / `0` / 负数 / 非整数一律非零退出且不输出 `accept`，不再用默认占位值。
 
-**释放语义**：`load()` 位于 `try/finally` 内，加载中途抛错也会 `release()`；适配器必须保证 `release()` 幂等且可在加载失败后调用。取消发生在任何 `load` 之前时不获取资源，故无释放动作。
+**释放语义**：`load()` 位于 `try` 内，加载中途抛错也会 `release()`；适配器必须保证 `release()` 幂等且可在加载失败后调用。取消发生在任何 `load` 之前时不获取资源，故无释放动作。清理失败不遮蔽主异常：load/run/取消为主错误时 `release()` 抛错只作为诊断附加（`add_note` / `cleanup_error`），主错误照常传出；**只有清理失败时**才让该 `release()` 异常向上传播，绝不把失败转成成功。
 
 **取消粒度契约（有界承诺，非通用承诺）**：执行器只在两次 adapter 调用之间检查 `context.cancel` / deadline（`load` 前一次、每次 `run` 前后各一次），因此可保证的轮询间隔是 `max(一次 load, step_seconds, 一次 run)`；`step_seconds ≤ poll_seconds` 由构造参数强制校验。真机适配器必须让每次 `load`/`run` 在 `poll_seconds`（1 s）内返回；阻塞整段的调用（含长时间 `load`）无法取消。**已测的 ≤1 s 只覆盖模拟后端与短步长路径，不能推广到真实后端或加载阶段。**
 

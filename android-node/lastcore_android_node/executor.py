@@ -23,6 +23,13 @@ when the model shape, the shard's weight bytes, or the context length is unknown
 instead of falling back to a toy shape — an accepted assignment has to be sized
 against the real shard, and the model metadata source (LC-9 manifest) is not
 wired yet.
+
+Cleanup never hides the real failure: ``release()`` runs in a ``finally`` block,
+and if it raises while the shard already failed (load/run error or cancellation),
+the primary exception stays the one raised and the cleanup error is attached to
+it as a diagnostic (``add_note`` / ``cleanup_error`` attribute).  If cleanup is
+the *only* failure it propagates, so a broken ``release()`` can never turn a
+failed shard into a silent success.
 """
 
 from __future__ import annotations
@@ -181,6 +188,7 @@ class AndroidExecutor(_BaseExecutor):
             raise AndroidNodeError(str(exc)) from exc
 
         self._guard(context)
+        primary: BaseException | None = None
         try:
             # `load` is inside the try: a partially loaded segment must still be
             # released.  Adapters must make `release()` idempotent and safe
@@ -192,8 +200,29 @@ class AndroidExecutor(_BaseExecutor):
                 self._guard(context)
                 if self._step_seconds and step + 1 < self._steps:
                     self._sleeper(self._step_seconds)
+        except BaseException as exc:  # noqa: BLE001 - preserve the primary failure
+            primary = exc
+            raise
         finally:
-            adapter.release()
+            try:
+                adapter.release()
+            except BaseException as cleanup_exc:  # noqa: BLE001 - cleanup diagnostics
+                if primary is None:
+                    # Cleanup was the only failure: surface it instead of
+                    # turning a broken release into a silent success.
+                    raise
+                # A release error must not mask the real load/run/cancel
+                # failure.  Keep the primary exception as the one raised and
+                # attach the cleanup failure as an explicit diagnostic.
+                self._note_cleanup_failure(primary, cleanup_exc)
+
+    @staticmethod
+    def _note_cleanup_failure(primary: BaseException, cleanup_exc: BaseException) -> None:
+        note = f"adapter.release() failed during cleanup: {cleanup_exc!r}"
+        primary.cleanup_error = cleanup_exc  # type: ignore[attr-defined]
+        add_note = getattr(primary, "add_note", None)
+        if callable(add_note):
+            add_note(note)
 
     def _guard(self, context) -> None:
         cancel = getattr(context, "cancel", None)

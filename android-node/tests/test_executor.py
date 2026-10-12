@@ -173,3 +173,82 @@ def test_load_failure_still_releases():
     assert backend.loads == 1
     assert backend.releases == 1, "a failed load must still be released"
     assert not backend.loaded
+
+
+def test_load_failure_not_masked_by_release_failure():
+    """A cleanup error must not replace the primary load failure."""
+
+    class BrokenLoadAndRelease(ReferenceBackend):
+        def load(self, segment):
+            self.loads += 1
+            raise ValueError("load-failure")
+
+        def release(self):
+            self.releases += 1
+            raise RuntimeError("release-failure")
+
+    backend = BrokenLoadAndRelease()
+    with pytest.raises(ValueError) as excinfo:
+        executor(backend).run(FakeContext())
+    assert str(excinfo.value) == "load-failure"
+    assert not isinstance(excinfo.value, RuntimeError)
+    assert backend.loads == 1 and backend.releases == 1
+    # The cleanup failure is still exposed as an explicit diagnostic.
+    assert isinstance(getattr(excinfo.value, "cleanup_error", None), RuntimeError)
+    assert any("release-failure" in note for note in getattr(excinfo.value, "__notes__", []))
+
+
+def test_run_failure_not_masked_by_release_failure():
+    """A run failure is the primary error even when release() also fails."""
+
+    class BrokenRunAndRelease(ReferenceBackend):
+        def run(self, tokens):
+            self.runs += 1
+            raise ValueError("run-failure")
+
+        def release(self):
+            self.releases += 1
+            raise RuntimeError("release-failure")
+
+    backend = BrokenRunAndRelease()
+    with pytest.raises(ValueError) as excinfo:
+        executor(backend).run(FakeContext())
+    assert str(excinfo.value) == "run-failure"
+    assert backend.loads == 1 and backend.runs == 1 and backend.releases == 1
+    assert isinstance(getattr(excinfo.value, "cleanup_error", None), RuntimeError)
+    assert any("release-failure" in note for note in getattr(excinfo.value, "__notes__", []))
+
+
+def test_cancellation_not_masked_by_release_failure():
+    """Cancellation stays the primary failure when cleanup also fails."""
+    cancel = threading.Event()
+
+    class CancelThenBrokenRelease(ReferenceBackend):
+        def run(self, tokens):
+            cancel.set()
+            return super().run(tokens)
+
+        def release(self):
+            self.releases += 1
+            raise RuntimeError("release-failure")
+
+    backend = CancelThenBrokenRelease()
+    with pytest.raises(ExecutionCancelled) as excinfo:
+        executor(backend, steps=3).run(FakeContext(cancel=cancel))
+    assert backend.loads == 1 and backend.runs == 1 and backend.releases == 1
+    assert isinstance(getattr(excinfo.value, "cleanup_error", None), RuntimeError)
+    assert any("release-failure" in note for note in getattr(excinfo.value, "__notes__", []))
+
+
+def test_release_failure_without_primary_failure_is_not_swallowed():
+    """If only cleanup fails, that failure must still surface (never success)."""
+
+    class BrokenRelease(ReferenceBackend):
+        def release(self):
+            self.releases += 1
+            raise RuntimeError("release-failure")
+
+    backend = BrokenRelease()
+    with pytest.raises(RuntimeError, match="release-failure"):
+        executor(backend).run(FakeContext())
+    assert backend.loads == 1 and backend.runs == 1 and backend.releases == 1
