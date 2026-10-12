@@ -63,24 +63,63 @@ class StageServer:
             "assignment_id": self.runtime.assignment_id,
         }
 
-    def _validate_upstream(self, hello) -> None:
-        peer_model = hello.get("model_id")
-        if peer_model and peer_model != self.runtime.config.model_id:
-            raise ShardError(f"upstream runs model {peer_model!r}, local stage runs "
+    def _validate_peer_hello(self, hello, *, expected_layer_start: int | None = None,
+                             expected_layer_end: int | None = None,
+                             peer_name: str) -> None:
+        """Validate a node-to-node HELLO against this stage's contract."""
+        required = ("model_id", "num_layers", "layer_start", "layer_end", "role",
+                    "task_id", "assignment_id")
+        missing = [field for field in required if field not in hello]
+        if missing:
+            raise ShardError(f"{peer_name} HELLO is missing required fields: "
+                             f"{', '.join(missing)}")
+        if hello["model_id"] != self.runtime.config.model_id:
+            raise ShardError(f"{peer_name} runs model {hello['model_id']!r}, local stage runs "
                              f"{self.runtime.config.model_id!r}")
-        if "layer_end" in hello and hello["layer_end"] != self.runtime.layer_start:
-            raise ShardError(f"upstream segment ends at layer {hello['layer_end']}, local segment "
-                             f"starts at {self.runtime.layer_start}")
+        if hello["num_layers"] != self.runtime.config.n_layers:
+            raise ShardError(f"{peer_name} has {hello['num_layers']} layers, local model has "
+                             f"{self.runtime.config.n_layers}")
+        if expected_layer_start is not None and hello["layer_start"] != expected_layer_start:
+            raise ShardError(f"{peer_name} segment starts at layer {hello['layer_start']}, "
+                             f"expected {expected_layer_start}")
+        if expected_layer_end is not None and hello["layer_end"] != expected_layer_end:
+            raise ShardError(f"{peer_name} segment ends at layer {hello['layer_end']}, "
+                             f"expected {expected_layer_end}")
+        if hello["layer_end"] <= hello["layer_start"]:
+            raise ShardError(f"{peer_name} has invalid layer segment "
+                             f"[{hello['layer_start']}, {hello['layer_end']})")
         local_task = self.runtime.task_id
-        if local_task and hello.get("task_id") not in (None, local_task):
-            raise ShardError("upstream task does not match this stage's task")
+        if local_task and hello["task_id"] != local_task:
+            raise ShardError(f"{peer_name} task does not match this stage's task")
+
+    def _validate_upstream(self, hello) -> None:
+        # PipelineClient intentionally has a smaller HELLO surface. Node peers must use
+        # the complete stage contract validated above.
+        if hello.get("role") == "client":
+            if "layer_end" not in hello:
+                raise ShardError("client HELLO is missing required field: layer_end")
+            if hello["layer_end"] != self.runtime.layer_start:
+                raise ShardError(f"upstream segment ends at layer {hello['layer_end']}, local "
+                                 f"segment starts at {self.runtime.layer_start}")
+            peer_model = hello.get("model_id")
+            if peer_model is not None and peer_model != self.runtime.config.model_id:
+                raise ShardError(f"upstream runs model {peer_model!r}, local stage runs "
+                                 f"{self.runtime.config.model_id!r}")
+            local_task = self.runtime.task_id
+            if local_task and hello.get("task_id") not in (None, local_task):
+                raise ShardError("upstream task does not match this stage's task")
+            return
+        self._validate_peer_hello(hello, expected_layer_end=self.runtime.layer_start,
+                                  peer_name="upstream")
 
     def _forward(self, hidden: np.ndarray) -> np.ndarray:
         link = Channel.connect(self.downstream, timeout=self.timeout, deadline=self.deadline,
                                cancel=self.cancel)
         try:
             link.send_hello(**self._hello())
-            link.recv_hello()
+            self._validate_peer_hello(link.recv_hello(),
+                                      expected_layer_start=self.runtime.layer_end,
+                                      peer_name="downstream")
             link.send_tensor("hidden", hidden, task_id=self.runtime.task_id,
                              assignment_id=self.runtime.assignment_id, seq=0)
             result, _ = link.recv_result()
