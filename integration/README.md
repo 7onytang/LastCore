@@ -73,8 +73,26 @@ python3 -m integration.demo setup
 .venv-integration/bin/python -m integration.demo stop
 ```
 
-`--workdir DIR`（默认 `integration/demo-run`，已 gitignore）指定状态目录，可从空
-目录使用；`start` 会在其中生成 tiny 权重、日志和 `demo-state.json`。
+`--workdir` 是顶层参数，必须写在子命令**之前**；写成 `… start --workdir DIR`
+会被 argparse 以退出码 2 拒绝。正确位置示例：
+
+```bash
+.venv-integration/bin/python -m integration.demo --workdir DIR start
+```
+
+上面的命令都在**已获取本仓库固定源码的仓库目录**内执行（`-m integration.demo`
+需要仓库里的 `integration` 模块和已建好的 venv）；`DIR` 指专用演示目录。
+
+`--workdir DIR`（默认 `integration/demo-run`，已 gitignore）指定状态目录，只应
+指向专用空演示目录；`start` 会在其中生成 tiny 权重、日志和 `demo-state.json`。
+该目录本身可以是空的，但命令仍须在已获取本仓库固定源码的仓库目录内运行，不能
+在未取得 `integration` 模块的纯空目录里直接执行。
+
+`start` 每次都会重置目录内的演示系统：清空 `node-a/`、`node-b/`、`logs/` 与
+`controller.sqlite3*` 后重建。它只作用于这四个子路径，目录内其余文件保留，也不
+会删除目录外的文件；但正因如此，`--workdir` 只应指向专用空演示目录，切勿指向
+含用户数据的目录。
+
 `demo-state.json` 保存本次运行的 bearer token，以 0600 写入、不打印、不提交；
 其余命令不带 token 参数，凭据只从该文件读。
 
