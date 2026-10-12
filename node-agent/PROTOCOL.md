@@ -45,16 +45,17 @@ class Executor:
 - StageServer **绑定本节点注册的 endpoint 地址**（`parse_endpoint(config.endpoint)`），注册地址即监听地址；下游地址取 assignment 的 `next_node.endpoint`。
 - 完成语义：`--complete-after N`（默认 1）——本段服务完 N 个请求后正常返回并上报 completed；`0` 表示持续服务直到取消/超时/退出。
 - 容错：单个请求失败不终止服务（重试进入下一轮）；连续 3 次失败才上报 failed。
+- 期限：assignment 的 `deadline`（epoch 秒，与 `ExecutionContext.deadline` 同基准）经 `load_assigned_stage` 解析为 `plan.deadline` 后直接传给 `StageServer`，不做时钟换算。引擎层到期后 `serve_forever` 抛 `ChannelTimeout` 并停止服务，适配器将其归一为 `ExecutionCancelled("deadline")`；node-agent 的统一监视（§1.2 第 4 条）保留，作为第二层保障。
 - 权重：默认用 inference-engine 的 `tiny_config()` + 确定性种子生成 checkpoint 存到状态目录；`--model-config` / `--weights` 可替换。
 - 依赖：`inference-engine/` 与 `communication/` 目录需在 PYTHONPATH，且需要 numpy（见 node-agent README）。
 
 ## 3. 与 B 的接口差异记录（待 LC-5 契约评审确认）
 
 1. **Controller endpoint 带尾部斜杠**：PR #1 用 pydantic `HttpUrl`，序列化结果是 `http://host:port/`（带 `/`），而 `inference_engine.assignment.parse_endpoint` 只接受裸 `host:port`（`9102/` 判非数字直接 ShardError）。适配器已在本地下游副本上 rstrip(`/`) 兼容；建议 B 在 parse_endpoint 里容忍 HttpUrl 形式（联调实测发现，PR #2 的示例用法不会触发）。
-2. **deadline 单位不一致**：`StageServer.deadline` 语义是 `time.monotonic()`（见 `communication/channel.py` 的 deadline 运算），而 Controller assignment 的 `deadline` 是 epoch 秒。适配器目前**不向 StageServer 传 deadline**（传 `None`），deadline 由 node-agent 统一监视并触发 cancel。建议 B 侧明确换算或改收 epoch。
-2. **serve_forever 的单请求异常会终止服务循环**：`pipeline.serve_forever` 中 `_serve` 抛出的异常直接向上传播。适配器在外层重试（连续 3 次失败才失败），建议 B 把 serve_forever 改为单请求容错（记录并继续服务）。
-3. **完成语义**：B 的接口只有"服务直到停止"；node-agent 以 `complete_after` 个已服务请求数定义"片段完成"，用于 Controller 的 completed 上报。
-4. **PipelineClient 的 deadline 参数**同样是 monotonic 语义，调用方（demo 脚本/未来 frontend）需注意。
+2. **deadline 单位**（已按 v1 实现口径修正，早前记录的 monotonic 说法作废）：`StageServer` / `PipelineClient` 的 `deadline` 语义是 **epoch 秒**（`time.time()` 基准）——`communication/channel.py` 以 `deadline - time.time()` 计算剩余时间，`communication/PROTOCOL.md` 与 `inference-engine/PROTOCOL.md` 均写明与 Controller 的 `assignment.deadline`、node-agent 的 `context.deadline` 同基准，调用方无需换算。适配器已把 `plan.deadline` 直接传给 `StageServer`（见 §2）；引擎层到期抛 `ChannelTimeout`，适配器归一为 `ExecutionCancelled("deadline")`，node-agent 统一监视仍保留。
+3. **serve_forever 的单请求异常会终止服务循环**：`pipeline.serve_forever` 中 `_serve` 抛出的异常直接向上传播。适配器在外层重试（连续 3 次失败才失败），建议 B 把 serve_forever 改为单请求容错（记录并继续服务）。
+4. **完成语义**：B 的接口只有"服务直到停止"；node-agent 以 `complete_after` 个已服务请求数定义"片段完成"，用于 Controller 的 completed 上报。
+5. **PipelineClient 的 deadline 参数**同样是 epoch 秒（与 `StageServer` 一致，见第 2 条），调用方（demo 脚本/未来 frontend）直接传 Controller 的 epoch 值即可，无需换算。
 
 ## 4. 历史提案说明
 

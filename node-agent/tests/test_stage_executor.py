@@ -27,7 +27,7 @@ def free_port() -> int:
     return port
 
 
-def make_context(port, layers=(0, 4), raw_layers=(0, 4), deadline=None):
+def make_context(port, layers=(0, 4), raw_layers=(0, 4), deadline=None, raw_deadline=None):
     return ExecutionContext(
         task_id="task-1", assignment_id="asg-1", model_id=MODEL_ID, position=0,
         layer_start=layers[0], layer_end=layers[1], previous_node=None,
@@ -37,7 +37,7 @@ def make_context(port, layers=(0, 4), raw_layers=(0, 4), deadline=None):
             "layer_start": raw_layers[0], "layer_end": raw_layers[1],
             "previous_node": None, "next_node": None, "status": "pending", "error": None,
             "request": {"model_id": MODEL_ID, "num_layers": 4, "layer_memory_mb": 512},
-            "deadline": time.time() + 60,
+            "deadline": raw_deadline if raw_deadline is not None else time.time() + 60,
         })
 
 
@@ -93,6 +93,24 @@ def test_stage_executor_cancel_stops_and_releases_port(checkpoint):
     assert wait_until(lambda: not thread.is_alive(), timeout=10)
     assert isinstance(captured.get("error"), ExecutionCancelled)
     assert captured["error"].reason == "task-terminal"
+    time.sleep(0.2)
+    assert not _port_accepts(port)
+
+
+def test_stage_executor_engine_deadline_stops_serving(checkpoint):
+    """An expired assignment deadline must stop the stage through the engine-level
+    deadline itself (epoch seconds handed to StageServer), not only through the
+    agent's polling monitor: nothing sets the cancel event in this test."""
+    config, weights = checkpoint
+    port = free_port()
+    executor = StageExecutor(model_config=config, weights_path=weights,
+                             endpoint=f"http://127.0.0.1:{port}", complete_after=None)
+    expired = time.time() - 1
+    context = make_context(port, deadline=expired, raw_deadline=expired)
+    thread, captured = run_executor(executor, context)
+    assert wait_until(lambda: not thread.is_alive(), timeout=10)
+    assert isinstance(captured.get("error"), ExecutionCancelled)
+    assert captured["error"].reason == "deadline"
     time.sleep(0.2)
     assert not _port_accepts(port)
 

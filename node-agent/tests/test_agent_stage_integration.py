@@ -1,4 +1,5 @@
 import socket
+import time
 
 import numpy as np
 import pytest
@@ -32,7 +33,11 @@ def test_agent_completes_real_inference_through_stage_executor(fake, client, clo
     agent = make_agent(fake, client, config, clock, build_stage_executor(config))
     thread, captured = run_in_thread(agent)
     assert wait_until(lambda: fake.register_calls == 1)
-    task_id, assignment_id = fake.add_task("node-1", layers=(0, 4), model_id=MODEL_ID)
+    # The stage executor now hands the assignment deadline to the engine, which
+    # enforces it on the real epoch clock (same base as the Controller), so the
+    # fixture deadline must be a real epoch value, not the fake agent clock's frame.
+    task_id, assignment_id = fake.add_task("node-1", layers=(0, 4), model_id=MODEL_ID,
+                                           deadline=time.time() + 60)
     assert wait_until(lambda: agent.stats.started == [assignment_id], timeout=15)
     tokens = np.asarray([[1, 2, 3, 4]], dtype=np.int64)
     logits = PipelineClient(("127.0.0.1", port), model_id=MODEL_ID,

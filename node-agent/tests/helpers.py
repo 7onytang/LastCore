@@ -26,7 +26,8 @@ class FakeController:
         self.assignments_error = None
         self.register_error = None
 
-    def add_task(self, node_id, layers=(0, 4), model_id="m", deadline_offset=60.0, status="queued"):
+    def add_task(self, node_id, layers=(0, 4), model_id="m", deadline_offset=60.0, status="queued",
+                 deadline=None):
         self.created_counter += 1
         task_id = f"task-{self.created_counter}"
         assignment_id = f"asg-{self.created_counter}"
@@ -34,7 +35,7 @@ class FakeController:
             "id": task_id,
             "created": self.created_counter,
             "status": status,
-            "deadline": self.clock[0] + deadline_offset,
+            "deadline": deadline if deadline is not None else self.clock[0] + deadline_offset,
             "request": {"model_id": model_id, "num_layers": layers[1], "layer_memory_mb": 512},
             "assignments": {assignment_id: {
                 "id": assignment_id, "task_id": task_id, "node_id": node_id, "position": 0,
