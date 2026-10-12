@@ -21,3 +21,6 @@ data/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Integration scenario run artifacts (logs, checkpoints, report.json)
+integration/runs/
