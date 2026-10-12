@@ -58,6 +58,16 @@ def test_unusable_endpoints_are_rejected(endpoint):
         parse_endpoint(endpoint)
 
 
+def test_controller_normalised_endpoint_url_is_accepted():
+    # A real Controller stores the registered endpoint as an ``HttpUrl``, so the
+    # assignment carries ``http://host:port/`` with a trailing slash.
+    plan = assignment_plan(assignment(
+        next_node={"node_id": "node-2", "endpoint": "http://127.0.0.1:54894/", "id": "assignment-2"}))
+    assert plan.next_endpoint == ("127.0.0.1", 54894)
+    assert parse_endpoint("http://127.0.0.1:54894/") == ("127.0.0.1", 54894)
+    assert parse_endpoint("  http://127.0.0.1:54894/  ") == ("127.0.0.1", 54894)
+
+
 def test_segment_longer_than_the_task_is_rejected():
     with pytest.raises(ShardError, match="layers"):
         assignment_plan(assignment(layer_end=6))

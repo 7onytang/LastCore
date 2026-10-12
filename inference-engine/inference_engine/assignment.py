@@ -50,6 +50,10 @@ class AssignmentPlan:
 def parse_endpoint(value: str) -> tuple[str, int]:
     if not value:
         raise ShardError("assignment endpoint is empty")
+    # The Controller stores the registered endpoint as an ``HttpUrl``, so its
+    # ``str()`` form carries a trailing slash (``http://host:port/``). Accept
+    # both that and the bare ``host:port`` / ``scheme://host:port`` spellings.
+    value = value.strip().rstrip("/")
     host, separator, port = value.rpartition(":")
     if not separator or not port.isdigit():
         raise ShardError(f"assignment endpoint {value!r} is not a host:port URL")
