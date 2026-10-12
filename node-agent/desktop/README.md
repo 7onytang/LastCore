@@ -59,6 +59,24 @@
 
 - 阶段一（本轮交付）：源码 + venv + 本目录启动配置/脚本，无新增依赖，安装步骤完全可脚本化。
 - 阶段二（打包）：PyInstaller 6.22.3（2026-09-12 发布，活跃维护；GPLv2-or-later + 特殊例外，允许用其产物以任意许可分发；支持 Windows x86-32/64/ARM64 与 macOS 10.15+ universal2；不支持交叉编译，需在目标平台分别构建）。打包为单目录 console 可执行后，仍用上述 launchd / Task Scheduler 托管。选型待实施前再次确认版本。
+  - macOS 已实施（LC-12 阶段二，见下节「macOS 打包产物」）；实施前版本复核通过：PyPI 当前最新即 6.22.3，METADATA 记录 `License: GPLv2-or-later with a special exception...`、`Requires-Python: <3.16,>=3.8`。
+  - Windows 打包未实施、未验证：PyInstaller 不支持交叉编译，必须在真实 Windows 主机上用 `lastcore-node-agent.spec` 重新构建（spec 平台无关，但构建流程 `build_bundle.sh` 目前仅允许 Darwin 主机，其余主机明确退出码 3 拒绝，避免把未验证构建当作通过）。
+
+### macOS 打包产物（阶段二，已实施）
+
+构建（可复现，全部在本机前台完成，不 sudo、不改系统设置、不做开发者身份签名/公证）：
+
+```bash
+cd node-agent
+./desktop/build_bundle.sh          # 产物：dist/lastcore-node-agent/{lastcore-node-agent,lastcore-preflight}
+```
+
+- `build_bundle.sh` 建立独立 venv（默认 `node-agent/.venv`，可用 `BUNDLE_VENV`/`BUNDLE_PYTHON` 覆盖），安装 `requirements.txt`（httpx==0.28.1）与 `pyinstaller==6.22.3` 后执行 `desktop/lastcore-node-agent.spec`（`--clean --noconfirm`），结束时打印产物大小与两个可执行文件的 sha256。
+- 若 pip 报 `SSL: UNEXPECTED_EOF_WHILE_READING` 且本机直连正常（macOS 系统代理损坏的典型表现），脚本会经 `desktop/pip_no_sysconf_proxy.py` 在进程级忽略系统代理重试，不修改任何系统配置。
+- 产物为单目录 bundle：两个 console 可执行共享 `_internal` 依赖目录。`lastcore-node-agent` 入口仍是 `desktop/run_agent.py`（`--env-file` 流程与源码运行完全一致，配置仍外部载入，token 不进二进制/命令行/日志）；`lastcore-preflight` 入口是 `desktop/preflight.py`。
+- launchd 托管：使用 `com.lastcore.node-agent.bundle.plist` 模板（占位符 `BUNDLE_AGENT_PLACEHOLDER` → bundle 内 `lastcore-node-agent` 绝对路径、`ENV_FILE_PLACEHOLDER`/`STDOUT_PATH_PLACEHOLDER`/`STDERR_PATH_PLACEHOLDER` 同阶段一语义）。本仓库只提供模板，不代装、不注册开机项。
+- 已知边界：冻结包内 `NODE_AGENT_EXECUTOR` 仅支持内置 `demo`（`module:attr` 自定义 executor 需把对应模块加入 spec 才可用）；产物按构建主机原生架构（Apple Silicon 为 arm64）生成，无 universal2；Apple Silicon 链接器强制 ad-hoc 签名，非开发者身份签名。
+- 产物验证：`python desktop/smoke_bundle.py [--keep]` 以本机 127.0.0.1 受控 mock Controller fixture（非真实 controller-server 部署）实跑：两产物 `--help`、含空格路径的 env/state 下 preflight 通过、注册→心跳→轮询→demo 任务 completed 上报、运行中状态锁被占、SIGINT 优雅退出 rc 0、退出后锁可重新获取、凭据 0600/状态目录 0700、token 不出现在任何捕获输出。
 - 文件锁备选：portalocker 4.4.0（BSD-3-Clause，活跃维护，Python >=3.10）。当前标准库 `fcntl`/`msvcrt` 方案零依赖已满足需求，portalocker 仅在出现 NFS/网络盘锁需求时再引入。
 
 ## 三、可执行检查 preflight.py
@@ -85,5 +103,8 @@ python desktop/preflight.py --env-file <私有配置文件> [--min-memory-mb 204
 | preflight 实跑（macOS 本机） | 通过 | 见 LC-12 交付评论附件 |
 | 真实流程：Controller + 双节点 + 任务执行/取消/停止/重启恢复（macOS） | 通过 | 见 LC-12 交付评论 |
 | Controller 断连→恢复（macOS） | 通过 | 见 LC-12 交付评论 |
+| 阶段二 macOS 打包构建（PyInstaller 6.22.3） | 通过 | 见 LC-68 交付评论（构建 rc/日志/产物 hash） |
+| 阶段二 macOS 打包产物 smoke（--help/preflight/生命周期/SIGINT/锁/token 检查，本地 mock fixture） | 通过 | 见 LC-68 交付评论 |
+| 阶段二 Windows 打包 | **未验证** | PyInstaller 不支持交叉编译，需真实 Windows 主机 |
 | 真实整机休眠唤醒恢复 | **未验证** | 无权让共享设备休眠；语义经源码核对，待真机 |
 | Windows 全部路径（安装/入网/任务/停止/重启） | **未验证** | 无 Windows 真机；锁分支有单测与源码核对 |
