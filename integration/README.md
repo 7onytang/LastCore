@@ -48,11 +48,11 @@ python -m integration.run_scenarios \
 
 | 指标 | 来源 | 口径与限制 |
 | --- | --- | --- |
-| 端到端时延 / TTFT | 观测进程内 `PipelineClient.run` 前后 `time.monotonic()` | 当前一次请求就是一次完整 prefill 前向，没有流式返回，因此**端到端时延即 TTFT**；真实 decode 阶段的 TTFT 需要流式/逐 token 回传，属后续（LC-8/LC-10 未开始） |
-| tokens/s | prompt token 数 ÷ 端到端秒数 | 这是 **prefill** 吞吐（tiny 模型、无 KV cache、无 batching），不代表生成吞吐 |
+| 端到端时延（`latency_seconds`） | 观测进程内 `PipelineClient.run` 前后 `time.monotonic()` | 这是一次 full-forward / prefill 往返的墙钟时间：当前协议一次请求=一次完整 prefill 前向，无流式返回，客户端要等整段前向结束后才拿到结果。它**不是**首 token 实测时延；本仓库既不把它称作真实 TTFT，也不把它声明为经证实的上界。真实 decode 阶段的 TTFT 需要流式/逐 token 回传，属后续（LC-8/LC-10 未开始）。报告 JSON 中的 `ttft_seconds` 是与 `latency_seconds` 同值的历史兼容字段，为兼容旧字段保留，同样不是首 token 实测 |
+| tokens/s（`prefill_tokens_per_second`） | prompt token 数 ÷ 端到端秒数 | 这是 **prefill** 吞吐（tiny 模型、无 KV cache、无 batching），**不是生成 / decode 速率**，不代表生成吞吐 |
 | 每段计算耗时 | Node Agent 日志 `stage served request: {...}`（`local_seconds`、`output_shape`、`parameter_bytes`） | 只统计本段前向；含转发等待的端到端时间另见时延 |
-| 峰值内存 | 每 100ms 轮询 `ps -o rss= -p <pid>` 取最大值 | 单进程 RSS；因为每个 Node Agent 是独立进程，等价于该节点进程峰值 |
-| 传输字节 | 客户端→首段这一跳由透明 TCP relay 双向计数 | **A→B 一跳无法用 relay 计数**：节点的注册 endpoint 按设计就是 `StageServer` 绑定的地址，无法在中间插桩；A→B 字节目前只能按协议帧布局估算，真实计数需要 communication v1 暴露计数器（LC-5 提案，未实现） |
+| 峰值内存（`peak_rss_kb` / `metrics.peak_rss_mb`） | 每 100ms 轮询 `ps -o rss= -p <pid>` 取最大值 | 单进程 RSS 的**采样峰值**（100ms 间隔轮询的最大值），不等于进程真实峰值；因为每个 Node Agent 是独立进程，只代表该节点进程自身 |
+| 传输字节 | 客户端→首段这一跳由透明 TCP relay 双向计数 | **relay 只覆盖客户端→首段一跳**；**A→B 一跳无法用 relay 计数**：节点的注册 endpoint 按设计就是 `StageServer` 绑定的地址，无法在中间插桩，A→B 字节目前只能按协议帧布局估算，真实计数需要 communication v1 暴露计数器（LC-5 提案，未实现）。relay 自身的监听端口不在报告的 `ports_released` 之列（见 [fault_matrix.md](fault_matrix.md) 的历史证据缺项） |
 
 ## 故障注入
 

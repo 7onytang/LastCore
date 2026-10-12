@@ -29,12 +29,14 @@ python -m integration.run_scenarios \
 | 6 | Controller 重启 | SIGTERM 重启 uvicorn（同一 SQLite 文件） | 节点凭据复用、身份不变；重启后新任务照常完成 | `nodes_before == nodes_after`（同一对 node id）；重启后新任务 completed 且逐字节一致 | 通过 |
 | 7 | 鉴权失败 | 错误 admin / registration / node token | 全部 401 | `bad_admin_create_task=401`，`bad_registration_token=401`，`bad_node_token_heartbeat=401` | 通过 |
 | 8 | 模型不符 | 客户端按 `wrong/model` 连接首段 | 首段拒绝，客户端报错 | `PeerError: upstream runs model 'wrong/model', local stage runs 'lastcore/tiny-cpu'` | 通过 |
-| 9 | 坏 tensor | 篡改 payload 尾字节 / 截断 payload / 伪造 shape | 解码前拒绝 | 三种畸形帧均为 `ProtocolError: tensor checksum mismatch` / `declared N bytes but received M` / `shape ... does not match` | 通过 |
+| 9 | 坏 tensor（**进程内解码检查**） | 观测进程内直接调用 `communication` 的 `decode_tensor` 构造畸形帧（篡改 payload 尾字节 / 截断 payload / 伪造 shape），不经真实 Controller/Agent 链路 | 解码前拒绝 | 三种畸形帧均为 `ProtocolError: tensor checksum mismatch` / `declared N bytes but received M` / `shape ... does not match` | 通过 |
 | 10 | 资源回收 | 每个场景结束 | 进程退出、监听端口释放 | 7/7 场景 `ports_released=true`；峰值 RSS 见下 | 通过 |
 
-资源占用（各场景进程峰值 RSS，轮询 `ps` 取最大）：Controller ≈ 52–53 MB，
-每个 Node Agent ≈ 42–43 MB。传输字节（客户端→首段一跳，双向）：
+资源占用（各场景进程 RSS **采样峰值**：100ms 轮询 `ps` 取最大，非真实峰值）：Controller ≈ 52–53 MB，
+每个 Node Agent ≈ 42–43 MB。传输字节（**仅客户端→首段一跳**，双向）：
 首请求 457B↑/1546B↓，后续请求 423–439B↑/1289–1802B↓。
+
+> 指标口径：本文件的“端到端时延”指一次 full-forward / prefill 往返的墙钟时间（`latency_seconds`；历史兼容字段 `ttft_seconds` 与之同值，两者都不是首 token 实测）；“tokens/s”为 prefill 吞吐，非生成速率；“峰值 RSS”为采样峰值。完整口径见 [README.md](README.md) 的指标表。
 
 ## 二、被测组件已覆盖、本矩阵未重复的场景
 
@@ -42,7 +44,7 @@ python -m integration.run_scenarios \
 | --- | --- | --- |
 | 重复/迟到消息（assignment 去重、重复终态上报幂等） | `node-agent/tests`（37 项，含 `test_agent.py` 去重与 journal）、`controller-server/tests`（16 项，含回报幂等与并发预留） | 单进程/进程内已验证；跨进程重复轮询的端到端注入本轮未单独做 |
 | 坏 tensor 的更多边界（版本号、dtype、超大 header、分片读） | `communication/tests`（38 项） | 本矩阵第 9 项只覆盖校验和/长度/shape 三类 |
-| 链路取消帧传播、静默对端、读超时 | `inference-engine/tests`（84 项） | 协议级证据，不属本矩阵系统级场景 |
+| 链路取消帧传播、静默对端、读超时 | `inference-engine/tests`（85 项） | 协议级证据，不属本矩阵系统级场景 |
 | 双进程/三进程逐字节一致 | `inference-engine/examples/two_node_local.py`（本轮实测两段与三段均 `bit-identical: True`） | 不经过 Controller 的数据面基线 |
 
 ## 三、明确未验证
@@ -86,8 +88,20 @@ ShardError: assignment endpoint 'http://127.0.0.1:54894/' is not a host:port URL
 | --- | --- |
 | `communication`: `pytest -q` | 38 passed |
 | `controller-server`: `pytest -q` | 16 passed |
-| `inference-engine`: `pytest -q` | 84 passed |
+| `inference-engine`: `pytest -q` | 85 passed |
 | `node-agent`: `PYTHONPATH=../inference-engine:../communication pytest -q` | 37 passed |
 | `python examples/two_node_local.py` | 两段 `bit-identical: True` |
 | `python examples/two_node_local.py --layers 0:1,1:3,3:4 --prompt "5 6 7"` | 三段 `bit-identical: True` |
 | `python -m integration.run_scenarios ...` | 7/7 场景通过（`report.json` 随交付附件） |
+
+## 六、历史证据缺项（本轮未回填、未重跑）
+
+限定独立审核指出的以下证据完备性缺项，均属**历史证据采集口径**问题。本轮只做文档标注：不重跑历史场景、不补造 PID/日志，也不改动脚本或报告字段。
+
+| 缺项 | 说明 |
+| --- | --- |
+| `cleanup.processes` 缺 `pid` / `argv` | 报告里的进程记录只含 `name` / `log` / `peak_rss_kb` / `returncode` / `stopped`，没有 `pid` 与 `argv`；Controller 侧仅 uvicorn 日志可见 `Started server process [PID]`，node-agent 日志不带 PID。清理动作本身按 `Popen.pid` 对进程组 `killpg`（全库无名称 kill），属证据字段缺失，不是清理机制缺陷 |
+| `ports_released` 未覆盖 relay 端口 | `ports_released` 只列 `node-a` / `node-b` / `controller`，不含 relay 自身监听端口；relay 的停用记录（`relays`）也不含端口号 |
+| `bad_tensor` 为进程内检查 | 见矩阵第 9 项：该场景直接调用 `communication.decode_tensor`，不经过真实 Controller/Agent 链路 |
+
+上述字段的补证需另起独立任务在隔离环境重跑并补齐，不能在本文档中回填为历史结果。
