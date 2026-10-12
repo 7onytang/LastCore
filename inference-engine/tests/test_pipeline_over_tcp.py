@@ -147,6 +147,37 @@ def test_stage_rejects_a_mismatched_downstream_hello(checkpoint):
         downstream.close()
 
 
+def test_stage_rejects_a_downstream_hello_outside_model_range(checkpoint):
+    config, _, path = checkpoint
+    downstream = ChannelListener()
+    server = StageServer(load_stage(config, path, 0, 2, task_id="t-1", assignment_id="a-0"),
+                         downstream=downstream.address)
+
+    def fake_downstream():
+        conn = downstream.accept(timeout=5)
+        try:
+            conn.recv_hello()
+            conn.send_hello(model_id=config.model_id, num_layers=config.n_layers,
+                            layer_start=2, layer_end=5, role="last", task_id="t-1",
+                            assignment_id="a-2")
+        finally:
+            conn.close()
+
+    downstream_thread = threading.Thread(target=fake_downstream)
+    server_thread = threading.Thread(target=serve_quietly, args=(server,))
+    downstream_thread.start()
+    server_thread.start()
+    try:
+        with pytest.raises(PeerError, match="invalid layer segment"):
+            PipelineClient(server.address, model_id=config.model_id, task_id="t-1").run(
+                np.array([[1, 2]], dtype=np.int64))
+    finally:
+        server_thread.join(timeout=20)
+        downstream_thread.join(timeout=20)
+        server.close()
+        downstream.close()
+
+
 def test_client_rejects_a_model_mismatch(checkpoint):
     config, _, path = checkpoint
     server = StageServer(load_stage(config, path, 0, config.n_layers))

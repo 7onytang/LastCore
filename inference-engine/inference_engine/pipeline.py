@@ -85,7 +85,8 @@ class StageServer:
         if expected_layer_end is not None and hello["layer_end"] != expected_layer_end:
             raise ShardError(f"{peer_name} segment ends at layer {hello['layer_end']}, "
                              f"expected {expected_layer_end}")
-        if hello["layer_end"] <= hello["layer_start"]:
+        if (hello["layer_start"] < 0 or hello["layer_end"] <= hello["layer_start"] or
+                hello["layer_end"] > hello["num_layers"]):
             raise ShardError(f"{peer_name} has invalid layer segment "
                              f"[{hello['layer_start']}, {hello['layer_end']})")
         local_task = self.runtime.task_id
