@@ -1,0 +1,79 @@
+name: Integration demo
+on:
+  push:
+    paths:
+      - "integration/**"
+      - "inference-engine/**"
+      - "communication/**"
+      - "controller-server/**"
+      - "node-agent/**"
+      - ".github/workflows/integration-demo.yml"
+  pull_request:
+    paths:
+      - "integration/**"
+      - "inference-engine/**"
+      - "communication/**"
+      - "controller-server/**"
+      - "node-agent/**"
+      - ".github/workflows/integration-demo.yml"
+permissions:
+  contents: read
+env:
+  DEMO_WORKDIR: integration/demo-run
+  DEMO_ARTIFACTS: integration/demo-run/artifacts
+jobs:
+  demo-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Create the per-module virtualenvs
+        timeout-minutes: 10
+        run: python -m integration.demo setup
+      - name: "Real chain - start Controller + two Node Agents, run one pipeline request"
+        timeout-minutes: 6
+        run: |
+          mkdir -p "$DEMO_ARTIFACTS"
+          set +e
+          .venv-integration/bin/python -m integration.demo --workdir "$DEMO_WORKDIR" start >"$DEMO_ARTIFACTS/start.log" 2>&1
+          start_rc=$?
+          request_rc=125
+          json_rc=125
+          if [ "$start_rc" -eq 0 ]; then
+            .venv-integration/bin/python -m integration.demo --workdir "$DEMO_WORKDIR" request >"$DEMO_ARTIFACTS/request.log" 2>&1
+            request_rc=$?
+            cat "$DEMO_ARTIFACTS/request.log"
+            if [ "$request_rc" -eq 0 ]; then
+              .venv-integration/bin/python -c "import json,sys; d=json.load(open('$DEMO_WORKDIR/demo-result.json')); ok=d['pass'] is True and d['bit_identical'] is True and d['task_terminal_status']=='completed'; print('json_contract_ok='+str(ok)); sys.exit(0 if ok else 1)"
+              json_rc=$?
+            fi
+          fi
+          echo "start_rc=$start_rc request_rc=$request_rc json_rc=$json_rc" | tee "$DEMO_ARTIFACTS/rc.txt"
+          if [ "$start_rc" -ne 0 ] || [ "$request_rc" -ne 0 ] || [ "$json_rc" -ne 0 ]; then exit 1; fi
+      - name: Stop the demo and reclaim the recorded PIDs and ports
+        if: always()
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$DEMO_ARTIFACTS"
+          if [ ! -f "$DEMO_WORKDIR/demo-state.json" ]; then
+            echo "no demo state in $DEMO_WORKDIR; nothing to reclaim"
+            exit 0
+          fi
+          set +e
+          .venv-integration/bin/python -m integration.demo --workdir "$DEMO_WORKDIR" stop >"$DEMO_ARTIFACTS/stop.log" 2>&1
+          stop_rc=$?
+          cat "$DEMO_ARTIFACTS/stop.log"
+          exit $stop_rc
+      - name: Upload token-free demo logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-demo-logs
+          path: |
+            integration/demo-run/artifacts/
+            integration/demo-run/logs/
+          if-no-files-found: warn
+          retention-days: 7
