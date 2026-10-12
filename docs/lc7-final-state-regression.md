@@ -23,10 +23,11 @@
 
 **现象**：节点 210 个任务的历史中，第 101 新之前的未观察终态（如任务 101 的 cancelled）永远不出现在 `GET /v1/nodes/{id}/assignments`；节点 journal 永远不会记录它。
 
-**精确定位**：
-1. `controller-server/app/repository.py` — `task_ids_for_node(db, node_id, limit=100)`：`SELECT DISTINCT t.id ... ORDER BY t.created_at DESC LIMIT ?`，窗口外任务直接不可达；`limit` 参数存在但调用方（`store.assignments` → `TaskService.assignments`）从未传非默认值。
-2. `controller-server/app/tasks.py` — `TaskService.assignments`：单次窗口查询，无"未观察终态"的补偿通道；响应行数 = 窗口行数（回归第一项已刻画：恰好 100 行）。
-3. `node-agent` 侧 `agent.py` 的 settled journal 只能去重"已见过的" assignment；窗口外的 assignment id 从未进入轮询结果，journal 无从记录——即"节点无从观察"而非"节点丢弃"。
+**精确定位（回归基线 672b4f7 的实际代码）**：
+1. `controller-server/app/store.py:169-174` — `def assignments(self, node_id, token)`：`SELECT DISTINCT t.id FROM tasks t JOIN assignments a ON a.task_id=t.id WHERE a.node_id=? ORDER BY t.created_at DESC LIMIT 100`；单次窗口查询，无"未观察终态"的补偿通道；响应行数 = 窗口行数（回归第一项已刻画：恰好 100 行）。`store.py:167` 的 `tasks()` 同样按 `LIMIT 100` 截断。
+2. `node-agent` 侧 `agent.py` 的 settled journal 只能去重"已见过的" assignment；窗口外的 assignment id 从未进入轮询结果，journal 无从记录——即"节点无从观察"而非"节点丢弃"。
+
+**出处勘误（谱系说明）**：本文初版把上述位置写作 `Repository.task_ids_for_node` / `TaskService.assignments`——这两个名字属于 **LC-6 拆分谱系**（分支 `agent/engineer-a-a/lc6-controller-split`，head `b5bb0244385d4cf756ff7bef3c676e0a68333367`，谱系 ee57405→4ad1467→…，**不在 672b4f7 祖先内**；对应 `repository.py:132` 与 `tasks.py:14/49`）。本回归基线 672b4f7 属 fd6a9cf 谱系，controller-server 仍为单体 `store.py`，无这两个文件。两个版本的窗口查询与 `LIMIT 100` 语义完全一致，仅文件位置不同；缺陷结论不变。原文全文与 hash 见任务导出附件（EXPORT-NOTES.md 与 provenance/ 三份源码）。
 
 **为什么停在这里**：修复方向是"可靠终态投递/终态确认"，需改变 assignments 投递语义（如未观察终态补偿通道或游标），属 LC-7 目标中"按获批契约"的跨模块状态模型变更；LC-5 契约（D1–D6）尚未获人类批准。按本任务边界，不实现、不发明 lease/epoch/鉴权字段。
 
