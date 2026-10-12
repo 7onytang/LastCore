@@ -69,11 +69,14 @@ def test_happy_path_registers_persists_and_completes(fake, client, clock, tmp_pa
     thread, captured = run_in_thread(agent)
     assert wait_until(lambda: fake.register_calls == 1)
     task_id, assignment_id = fake.add_task("node-1", layers=(0, 4))
-    assert wait_until(lambda: fake.tasks[task_id]["status"] == "completed")
-    reports = [r for r in fake.reports if r[0] == assignment_id]
-    assert [r[1] for r in reports] == ["running", "completed"]
-    assert load_settled(config.state_dir).get(assignment_id) == "completed"
-    assert agent.stats.completed == [assignment_id]
+    # The controller ACK lands before the agent's post-ACK bookkeeping (pending
+    # clear + stats append) finishes; wait for the terminal state instead of
+    # reading inside that window (CI run 38286083766 raced exactly here).
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
+        == ["running", "completed"]
+        and load_settled(config.state_dir).get(assignment_id) == "completed"
+        and agent.stats.completed == [assignment_id])
     assert load_credentials(config.state_dir) is not None
     agent.stop_event.set()
     stop_agent(thread, captured)
