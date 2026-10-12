@@ -54,6 +54,27 @@ expect_plan() {
   echo "ok: decision=$actual rc=$rc  ($* )"
 }
 
+# expect_plan_reject [args...] : metadata must be explicit; the command has to
+# fail (non-zero) and must NOT report an accept decision.
+expect_plan_reject() {
+  local output rc
+  set +e
+  output="$("$PYTHON" -m lastcore_android_node plan --json "$@" 2>&1)"
+  rc=$?
+  set -e
+  if [ "$rc" = "0" ]; then
+    echo "FAIL: missing/invalid metadata was accepted (rc=0)  ($* )" >&2
+    echo "$output" >&2
+    return 1
+  fi
+  if printf '%s' "$output" | grep -q '"decision": *"accept"'; then
+    echo "FAIL: rejected command still reported accept  ($* )" >&2
+    echo "$output" >&2
+    return 1
+  fi
+  echo "ok: rejected rc=$rc  ($* )"
+}
+
 export LASTCORE_ANDROID_MACHINE=arm64 LASTCORE_ANDROID_PLATFORM=Android
 export LASTCORE_ANDROID_IS_ANDROID=true LASTCORE_ANDROID_THERMAL=nominal
 export LASTCORE_ANDROID_TOTAL_MEMORY_MB=6144 LASTCORE_ANDROID_AVAILABLE_MEMORY_MB=2560
@@ -81,6 +102,26 @@ LASTCORE_ANDROID_THERMAL=nominal LASTCORE_ANDROID_BATTERY_PERCENT=10 \
 LASTCORE_ANDROID_BATTERY_PERCENT=10 LASTCORE_ANDROID_CHARGING=true expect_plan accept 0 \
   --layers 0:12 --layers-total 24 --d-model 896 --heads 14 --vocab 151936 \
   --weights-bytes 616000000 --tokens 2048
+
+echo "== 3b) metadata is mandatory: no placeholder accept =="
+# LC-61 rework: --weights-bytes/--tokens must be explicit real values. The exact
+# reproduction command must be non-zero and must not report accept.
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --tokens 2048
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --weights-bytes 4096
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --weights-bytes 0 --tokens 2048
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --weights-bytes 4096 --tokens 0
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --weights-bytes -1 --tokens 2048
+expect_plan_reject --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --weights-bytes 4096 --tokens -5
+# an explicit positive 1 is a real context length and must still be admitted
+expect_plan accept 0 --layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64 \
+  --weights-bytes 4096 --tokens 1
 
 echo "== 4) memory ceiling (1 GiB) =="
 scripts/check_memory_ceiling.sh suite

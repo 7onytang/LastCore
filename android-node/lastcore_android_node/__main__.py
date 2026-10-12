@@ -6,6 +6,13 @@
 
 Runs with no device, no model file and no third-party dependency, so the
 admission policy can be inspected on any dev machine or CI.
+
+``--weights-bytes`` and ``--tokens`` are **required**: the planner must size the
+real shard against the real context length, so a missing flag, ``0`` or a
+negative value is rejected at the CLI (non-zero exit, no ``accept``).  A
+positive ``1`` is a legitimate context length.  ``plan`` is a resource-admission
+report only; a reported ``accept`` says nothing about a production backend being
+available (that stays ``unavailable`` until one is wired).
 """
 
 from __future__ import annotations
@@ -30,6 +37,23 @@ def _parse_layers(value: str) -> tuple[int, int]:
     return start_i, end_i
 
 
+def _positive_int(value: str) -> int:
+    """Require an explicitly supplied positive integer (1 is a real value).
+
+    Admission needs the *actual* shard weight bytes and context length; a
+    missing flag, ``0`` or a negative number is not metadata, so it is rejected
+    here instead of being silently replaced by a placeholder.  A positive ``1``
+    is a legitimate context length and stays valid.
+    """
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(f"expected an integer, got {value!r}")
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value!r}")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lastcore_android_node", description=__doc__)
     parser.add_argument("command", nargs="?", choices=["plan"], default="plan",
@@ -39,8 +63,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--d-model", type=int, required=True)
     parser.add_argument("--heads", type=int, required=True)
     parser.add_argument("--vocab", type=int, required=True)
-    parser.add_argument("--weights-bytes", type=int, default=0, help="bytes of this shard's weights")
-    parser.add_argument("--tokens", type=int, default=1)
+    parser.add_argument(
+        "--weights-bytes",
+        type=_positive_int,
+        required=True,
+        help="bytes of this shard's real weights (required; must be a positive integer)",
+    )
+    parser.add_argument(
+        "--tokens",
+        type=_positive_int,
+        required=True,
+        help="real context length in tokens (required; may be as small as 1)",
+    )
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--dtype", choices=sorted(DEFAULT_DTYPE_BYTES), default="float16")
     parser.add_argument("--runtime-overhead-mb", type=int, default=128)

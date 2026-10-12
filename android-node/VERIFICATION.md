@@ -13,9 +13,10 @@
 | 审核发现 | 修正 | 覆盖验证 |
 | --- | --- | --- |
 | 1 默认路径会返回模拟推理结果（`backend.py` 默认候选含 `ReferenceBackend`） | `default_adapters(include_reference=False)` 不再含模拟后端；模拟后端仅测试注入或 CLI `--reference-backend` 显式开启；无真实运行时即抛 `BackendUnavailable` | `test_default_adapters_exclude_the_simulated_double`、`test_production_default_fails_closed_without_a_real_runtime`、`test_no_default_adapter_is_used_when_none_is_configured` |
-| 2 默认准入预算不代表真实分片（玩具形状/0 字节/tokens=1） | 移除 `DEFAULT_SHAPE`；形状、分片权重字节、上下文长度必填，缺失抛 `MissingModelMetadata` 拒绝 | `test_missing_metadata_refuses_admission` |
+| 2 默认准入预算不代表真实分片（玩具形状/0 字节/tokens=1） | 移除 `DEFAULT_SHAPE`；形状、分片权重字节、上下文长度必填，缺失抛 `MissingModelMetadata` 拒绝；CLI `--weights-bytes`/`--tokens` 改必填正整数（`1` 合法），缺失/`0`/负数/非整数非零退出且不 accept | `test_missing_metadata_refuses_admission`、`tests/test_cli.py`（真实子进程负例） |
 | 3 sysfs `Not charging` 被当作充电，低电量误放行 | `_CHARGING_STATES` 仅 `charging`/`full`；`Not charging`/`Discharging`/未知不享受豁免 | `test_sysfs_charging_mapping`（5 种状态）、`test_unknown_charging_state_does_not_grant_the_exemption`、CLI 断言用例 |
-| 4 `load()` 在 `try/finally` 之外，加载异常不释放 | `load()` 移入 `try/finally`，加载抛错也 `release()`；取消发生在 load 前则不获取资源 | `test_load_failure_still_releases` |
+| 4 `load()` 在 `try/finally` 之外，加载异常不释放 | `load()` 移入 `try`，加载抛错也 `release()`；取消发生在 load 前则不获取资源 | `test_load_failure_still_releases` |
+| 4b 清理失败遮蔽主要 load/run/取消异常（LC-61） | `release()` 失败不再替换主错误：主错误（load/run/取消）照常抛出，清理错误作为 `add_note`/`cleanup_error` 诊断附加；**仅**无主错误的 release 失败才向上传播 | `test_load_failure_not_masked_by_release_failure`、`test_run_failure_not_masked_by_release_failure`、`test_cancellation_not_masked_by_release_failure`、`test_release_failure_without_primary_failure_is_not_swallowed` |
 | 5 ≤1 秒取消承诺超出约束（`step_seconds` 无上限、`load` 无边界） | 强制 `step_seconds ≤ poll_seconds`；load 前/后与每次 run 前后都有 guard；文档与测试范围限定为「模拟后端 + 短步长」 | `test_step_seconds_cannot_exceed_the_poll_interval`、`test_cancelled_before_start_raises_without_loading`、契约测试的取消/期限用例 |
 | 6 验证脚本 `|| true` 吞掉 CLI 失败 | `verify_offdevice.sh` 改为解析结构化 `decision` 并同时断言退出码，不符即 FAIL；无 `|| true` | 脚本本身（本轮 6 个准入用例全部断言通过：3×accept、3×reject_*，见 A3） |
 
@@ -31,7 +32,7 @@ python3 -m venv .venv && ./.venv/bin/pip install -q -r requirements-dev.txt
 ./.venv/bin/python -m pytest -q
 ```
 
-实测结果（2026-10-12）：`42 passed, 8 skipped`（8 个 skip 是需 node-agent 检出的契约测试）。
+实测结果（2026-10-12，LC-62 返工后）：`55 passed, 8 skipped`（8 个 skip 是需 node-agent 检出的契约测试；本轮新增 `tests/test_cli.py` 9 个真实子进程负例与 `test_executor.py` 4 个清理异常用例）。
 
 ### A2. 与 node-agent 真实 Executor 契约的联调（跨组件，仍无需设备）
 
@@ -42,7 +43,7 @@ python3 -m venv .venv && ./.venv/bin/pip install -q -r requirements-dev.txt
 LASTCORE_NODE_AGENT_PATH=/path/to/node-agent ./.venv/bin/python -m pytest -q
 ```
 
-实测结果：`50 passed`。这一条**证明的是真实接口而非模拟**：
+实测结果：`63 passed`。这一条**证明的是真实接口而非模拟**：
 
 - `AndroidExecutor` 是 `lastcore_node_agent.executor.Executor` 的真子类（node-agent 的 `isinstance` 门禁会接受它）；
 - `load_executor("lastcore_android_node.executor:executor_factory")` 能返回可用实例（与 `node-agent --executor` 参数一致）；
@@ -83,7 +84,7 @@ LASTCORE_ANDROID_THERMAL=nominal \
 LASTCORE_NODE_AGENT_PATH=/path/to/node-agent scripts/verify_offdevice.sh
 ```
 
-脚本对准入命令**同时断言结构化 `decision` 与退出码**（`accept`→0、`reject_*`→1），不再用 `|| true` 吞错误；本轮六个用例（含 `Not charging` 低电量必须 `reject_battery`、充电中同电量 `accept`）全部通过。
+脚本对准入命令**同时断言结构化 `decision` 与退出码**（`accept`→0、`reject_*`→1），不再用 `|| true` 吞错误；上一轮六个用例（含 `Not charging` 低电量必须 `reject_battery`、充电中同电量 `accept`）全部通过。本轮新增 **3b 元数据必填负例**：缺权重、缺 tokens、两者皆缺、显式 `0`、负数共 7 条断言「非零退出且不输出 accept」（`rc=2`，argparse 拒绝），并断言显式正整数 `--tokens 1` 作为真实上下文长度仍 `accept rc=0`。LC-61 复现命令 `--layers 0:1 --layers-total 4 --d-model 32 --heads 4 --vocab 64` 现为 `rc=2` 且无 `accept`。
 
 ### A4. 1 GiB 内存上限检查
 
