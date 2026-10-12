@@ -33,6 +33,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -172,9 +173,29 @@ def read_state(workdir: Path) -> dict:
 
 
 def write_state(workdir: Path, state: dict) -> Path:
+    """Write the private state through a 0600 sibling and atomically replace it.
+
+    The demo assumes its work directory is locally controlled. ``os.replace``
+    replaces a leaf symlink itself rather than following it; it does not defend
+    against an attacker who can modify the parent directory concurrently.
+    Failures before replacement leave any previous state file intact.
+    """
     path = workdir / STATE_NAME
-    path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.chmod(path, 0o600)
+    payload = json.dumps(state, indent=2, ensure_ascii=False) + "\n"
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temp_path = Path(temp_name)
+    try:
+        handle = os.fdopen(fd, "w", encoding="utf-8")
+        fd = -1  # ownership moved to the file object
+        with handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if fd != -1:
+            os.close(fd)
+        temp_path.unlink(missing_ok=True)
     return path
 
 
