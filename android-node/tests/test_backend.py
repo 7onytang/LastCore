@@ -80,9 +80,19 @@ def test_select_backend_rejects_empty_registry():
         select_backend(profile(), [])
 
 
-def test_default_adapters_always_include_reference():
-    names = [adapter.capabilities.name for adapter in default_adapters()]
-    assert "reference-simulated" in names
+def test_default_adapters_exclude_the_simulated_double():
+    """Fail closed: the production candidate list must not contain a test double."""
+    assert "reference-simulated" not in [a.capabilities.name for a in default_adapters()]
+    assert "reference-simulated" in [
+        a.capabilities.name for a in default_adapters(include_reference=True)
+    ]
+
+
+def test_production_default_fails_closed_without_a_real_runtime():
+    if backend_available():
+        pytest.skip("onnxruntime is installed in this environment")
+    with pytest.raises(BackendUnavailable):
+        select_backend(profile(), default_adapters(), dtype="float16")
 
 
 def test_onnx_backend_reports_unavailable_without_runtime():

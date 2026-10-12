@@ -4,12 +4,20 @@ import threading
 
 import pytest
 
+from lastcore_android_node.backend import BackendUnavailable
 from lastcore_android_node.backends.reference import ReferenceBackend
 from lastcore_android_node.budget import Decision, ModelShape
 from lastcore_android_node.device import DeviceProfile, ThermalState
-from lastcore_android_node.executor import AndroidExecutor, AndroidNodeError, ExecutionCancelled, SizeRejected
+from lastcore_android_node.executor import (
+    AndroidExecutor,
+    AndroidNodeError,
+    ExecutionCancelled,
+    MissingModelMetadata,
+    SizeRejected,
+)
 
 SHAPE = ModelShape(num_layers=4, d_model=32, num_heads=4, vocab=64)
+SHARD_WEIGHT_BYTES = 4 * 1024 * 1024
 
 
 class FakeContext:
@@ -41,6 +49,8 @@ def profile(**overrides) -> DeviceProfile:
 def executor(backend: ReferenceBackend, **kwargs) -> AndroidExecutor:
     kwargs.setdefault("profile", profile())
     kwargs.setdefault("shape", SHAPE)
+    kwargs.setdefault("shard_weight_bytes", SHARD_WEIGHT_BYTES)
+    kwargs.setdefault("tokens", 128)
     kwargs.setdefault("adapters", [backend])
     return AndroidExecutor(**kwargs)
 
@@ -58,7 +68,7 @@ def test_executor_name_matches_node_agent_contract():
     assert executor(ReferenceBackend()).name == "android-node"
 
 
-def test_cancelled_before_start_raises_and_releases():
+def test_cancelled_before_start_raises_without_loading():
     backend = ReferenceBackend()
     cancel = threading.Event()
     cancel.set()
@@ -67,8 +77,9 @@ def test_cancelled_before_start_raises_and_releases():
     with pytest.raises(ExecutionCancelled) as excinfo:
         executor(backend).run(context)
     assert excinfo.value.reason == "task-terminal"
-    assert backend.loads == 1 and backend.runs == 0
-    assert backend.releases == 1
+    # Nothing was acquired, so nothing needs releasing: the pre-load guard runs
+    # before any adapter call.
+    assert backend.loads == 0 and backend.runs == 0 and backend.releases == 0
 
 
 def test_cancellation_checked_between_steps():
@@ -95,10 +106,10 @@ def test_deadline_expiry_raises():
     backend = ReferenceBackend()
     context = FakeContext(deadline=10.0)
     with pytest.raises(ExecutionCancelled) as excinfo:
-        AndroidExecutor(profile=profile(), shape=SHAPE, adapters=[backend],
-                        clock=lambda: 11.0).run(context)
+        executor(backend, clock=lambda: 11.0).run(context)
     assert excinfo.value.reason == "deadline"
-    assert backend.releases == 1
+    # The pre-load guard fires first, so nothing is released and nothing leaked.
+    assert backend.releases == 0
 
 
 def test_resource_rejection_is_reported_as_size_rejected():
@@ -119,3 +130,46 @@ def test_poll_interval_must_satisfy_one_second_contract():
         executor(ReferenceBackend(), poll_seconds=1.5)
     with pytest.raises(ValueError):
         executor(ReferenceBackend(), poll_seconds=0)
+
+
+def test_step_seconds_cannot_exceed_the_poll_interval():
+    """A non-interruptible sleep larger than poll_seconds would break the contract."""
+    with pytest.raises(ValueError):
+        executor(ReferenceBackend(), poll_seconds=0.5, step_seconds=2.0)
+    executor(ReferenceBackend(), poll_seconds=0.5, step_seconds=0.25)
+
+
+def test_missing_metadata_refuses_admission():
+    backend = ReferenceBackend()
+    context = FakeContext()
+    for missing in ({"shape": None}, {"shard_weight_bytes": None},
+                    {"shard_weight_bytes": 0}, {"tokens": None}, {"tokens": 0}):
+        kwargs = dict(profile=profile(), shape=SHAPE, shard_weight_bytes=SHARD_WEIGHT_BYTES,
+                      tokens=128, adapters=[backend])
+        kwargs.update(missing)
+        with pytest.raises(MissingModelMetadata):
+            AndroidExecutor(**kwargs).run(context)
+    assert backend.loads == 0 and backend.releases == 0
+
+
+def test_no_default_adapter_is_used_when_none_is_configured(monkeypatch):
+    """Production path must fail closed: no simulated backend by default."""
+    import lastcore_android_node.executor as executor_module
+
+    monkeypatch.setattr(executor_module, "default_adapters", lambda **_: [])
+    with pytest.raises(AndroidNodeError):
+        executor(ReferenceBackend(), adapters=None).run(FakeContext())
+
+
+def test_load_failure_still_releases():
+    class BrokenLoad(ReferenceBackend):
+        def load(self, segment):
+            self.loads += 1
+            raise BackendUnavailable("half-loaded then failed")
+
+    backend = BrokenLoad()
+    with pytest.raises(BackendUnavailable):
+        executor(backend).run(FakeContext())
+    assert backend.loads == 1
+    assert backend.releases == 1, "a failed load must still be released"
+    assert not backend.loaded

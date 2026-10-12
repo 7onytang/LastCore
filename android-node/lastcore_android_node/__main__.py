@@ -46,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-overhead-mb", type=int, default=128)
     parser.add_argument("--battery", type=int, default=None)
     parser.add_argument("--thermal", choices=[state.value for state in ThermalState], default=None)
+    parser.add_argument(
+        "--reference-backend",
+        action="store_true",
+        help="opt in to the simulated test double (reports a backend, computes nothing)",
+    )
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     return parser
 
@@ -76,9 +81,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     decision, reason = evaluate(profile, budget)
     try:
-        backend = select_backend(profile, default_adapters(), dtype=args.dtype)
+        adapters = default_adapters(include_reference=args.reference_backend)
+        backend = select_backend(profile, adapters, dtype=args.dtype)
         backend_name = backend.capabilities.name
     except BackendUnavailable as exc:
+        # Fail closed: no real backend runtime on this machine is the honest
+        # answer, not a simulated one.
         backend_name = f"unavailable: {exc}"
 
     report = {

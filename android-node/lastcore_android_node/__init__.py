@@ -15,7 +15,13 @@ from .backend import (
 )
 from .budget import Decision, MemoryBudget, ModelShape, build_budget, evaluate
 from .device import DeviceProfile, ThermalState, detect
-from .executor import AndroidExecutor, AndroidNodeError, SizeRejected, executor_factory
+from .executor import (
+    AndroidExecutor,
+    AndroidNodeError,
+    MissingModelMetadata,
+    SizeRejected,
+    executor_factory,
+)
 
 __all__ = [
     "AndroidExecutor",
@@ -26,6 +32,7 @@ __all__ = [
     "Decision",
     "DeviceProfile",
     "MemoryBudget",
+    "MissingModelMetadata",
     "ModelShape",
     "SegmentSpec",
     "SizeRejected",

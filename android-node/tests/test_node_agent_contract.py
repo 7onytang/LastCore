@@ -1,9 +1,11 @@
 """Cross-component check against Engineer-A's real node-agent Executor contract.
 
 Opt-in: set ``LASTCORE_NODE_AGENT_PATH`` to a checkout of the ``node-agent/``
-package (its parent directory).  Without it the module is skipped, so the
-Android component still tests cleanly on a machine that has no node-agent
-checkout.
+package (its parent directory).  Use the pinned baseline
+``agent/engineer-a-a/b33d0fac979a`` (``ba52895ae829dcf0c8c605de46103e3b25fad650``,
+the node-agent revision LC-52/LC-54 pinned); a different revision may change the
+contract.  Without the variable the module is skipped, so the Android component
+still tests cleanly on a machine that has no node-agent checkout.
 
 What this proves (off-device, no Android hardware):
   * ``AndroidExecutor`` is a real ``lastcore_node_agent.executor.Executor``
@@ -33,10 +35,12 @@ NODE_AGENT_PATH = os.environ.get("LASTCORE_NODE_AGENT_PATH")
 
 pytestmark = pytest.mark.skipif(
     not NODE_AGENT_PATH,
-    reason="set LASTCORE_NODE_AGENT_PATH to a node-agent checkout to run the contract check",
+    reason="set LASTCORE_NODE_AGENT_PATH to a node-agent checkout "
+    "(pinned baseline agent/engineer-a-a/b33d0fac979a = ba52895) to run the contract check",
 )
 
 SHAPE = ModelShape(num_layers=4, d_model=32, num_heads=4, vocab=64)
+SHARD_WEIGHT_BYTES = 4 * 1024 * 1024
 
 
 @pytest.fixture(scope="module")
@@ -68,7 +72,10 @@ def _profile() -> DeviceProfile:
 def _executor(backend: ReferenceBackend):
     from lastcore_android_node.executor import AndroidExecutor
 
-    return AndroidExecutor(profile=_profile(), shape=SHAPE, adapters=[backend])
+    return AndroidExecutor(
+        profile=_profile(), shape=SHAPE, shard_weight_bytes=SHARD_WEIGHT_BYTES,
+        tokens=128, adapters=[backend],
+    )
 
 
 def test_executor_is_a_node_agent_executor(node_agent):
@@ -99,7 +106,7 @@ def test_real_execution_context_runs_and_releases(node_agent):
     assert not backend.loaded
 
 
-def test_cancel_raises_ExecutionCancelled_and_releases(node_agent):
+def test_cancel_before_start_stops_without_loading(node_agent):
     backend = ReferenceBackend()
     context = node_agent.ExecutionContext(
         task_id="t1", assignment_id="a1", model_id="tiny", position=0,
@@ -109,10 +116,12 @@ def test_cancel_raises_ExecutionCancelled_and_releases(node_agent):
     context.request_cancel("task-terminal")
     with pytest.raises(node_agent.ExecutionCancelled):
         _executor(backend).run(context)
-    assert backend.releases == 1 and not backend.loaded
+    # Cancelled before any adapter call: nothing acquired, nothing to leak.
+    assert (backend.loads, backend.runs, backend.releases) == (0, 0, 0)
+    assert not backend.loaded
 
 
-def test_deadline_raises_ExecutionCancelled_and_releases(node_agent):
+def test_deadline_before_start_stops_without_loading(node_agent):
     backend = ReferenceBackend()
     context = node_agent.ExecutionContext(
         task_id="t1", assignment_id="a1", model_id="tiny", position=0,
@@ -121,7 +130,8 @@ def test_deadline_raises_ExecutionCancelled_and_releases(node_agent):
     )
     with pytest.raises(node_agent.ExecutionCancelled):
         _executor(backend).run(context)
-    assert backend.releases == 1 and not backend.loaded
+    assert (backend.loads, backend.runs, backend.releases) == (0, 0, 0)
+    assert not backend.loaded
 
 
 def test_second_context_is_isolated(node_agent):
@@ -153,7 +163,8 @@ def test_threaded_cancel_is_observed_while_running(node_agent):
     from lastcore_android_node.executor import AndroidExecutor
 
     executor = AndroidExecutor(
-        profile=_profile(), shape=SHAPE, adapters=[backend], steps=1000,
+        profile=_profile(), shape=SHAPE, shard_weight_bytes=SHARD_WEIGHT_BYTES,
+        tokens=128, adapters=[backend], steps=1000,
         step_seconds=0.01, poll_seconds=0.05,
     )
     timer = threading.Timer(0.1, lambda: context.request_cancel("shutdown"))

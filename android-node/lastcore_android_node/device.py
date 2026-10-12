@@ -139,7 +139,10 @@ def _sysconf_memory_mb() -> int | None:
 # Anything unreadable degrades to None / UNKNOWN: never invent a battery level.
 
 _DEFAULT_THERMAL_THRESHOLDS = (45.0, 50.0, 60.0)
-_CHARGING_STATES = frozenset({"charging", "full", "not charging"})
+# Only these two states mean "power is going in".  "Not charging" / "Discharging"
+# / "Unknown" must NOT grant the battery-threshold exemption: an unreadable or
+# explicitly-not-charging device is not confirmed to be charging.
+_CHARGING_STATES = frozenset({"charging", "full"})
 
 
 def _sysfs_root() -> str:

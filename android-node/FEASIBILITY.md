@@ -12,6 +12,7 @@
 - **arm64**：目标 ABI 仅 `arm64-v8a`（NEON + fp16）；不打包 32 位。
 - **工具链**：NDK **r28b 或更高**（r28 起默认 16 KB 页对齐）；若将来要上 Google Play，Android 15+ 目标必须支持 64 位 16 KB 页。
 - **内存准入**：以「可用内存 × 0.6 × (1 − headroom)」为上限，权重 + 激活 + KV + 运行时开销一并计入；低电量/发热降级拒绝接单。
+- **失败关闭**：无真实后端运行时即拒绝接单（模拟后端不进生产候选）；缺真实模型形状/分片字节/上下文长度即拒绝准入，不用占位值。
 - **阻塞**：本环境无 Android 真机/SDK/NDK（`adb`/`sdkmanager`/`gradle`/`cmake`/`java` 均不可用，见 §7 证据）；LC-5 契约未冻结；LC-12 桌面节点固定成果未交付；引擎缺 ONNX/ExecuTorch 导出路径；`communication/` 依赖 numpy + 原始 socket，移动端需专门移植决策。
 
 ## 1. 候选后端矩阵（已核实公开事实）
@@ -73,16 +74,23 @@ KV         = 2 × shard_layers × batch × tokens × d_model × dtype_bytes
 ```
 AndroidExecutor (实现 node-agent Executor 契约)
    │  per-assignment 新实例，run() 阻塞至片段完成
+   ├─ _required_metadata() → 缺形状/分片字节/上下文长度即 MissingModelMetadata 拒绝
    ├─ detect() → DeviceProfile
    ├─ build_budget() + evaluate() → ACCEPT / REJECT_*
-   ├─ select_backend(profile, adapters) → BackendAdapter
+   ├─ select_backend(profile, adapters) → BackendAdapter（默认候选不含模拟后端）
    │        load(segment, weights) → run(tokens) → release()
-   └─ 每步之间检查 context.cancel / deadline，异常路径 release()
+   └─ load 前 / 每次 run 前后检查 context.cancel / deadline，异常路径均 release()
 ```
 
 `BackendAdapter` 只做三件事（`load` / `run` / `release`），把「加载哪一段、跑什么」交给上层，保证与引擎/桌面后端解耦，也不复制 `inference-engine`。
 
-**取消粒度契约（真机适配器必须遵守）**：执行器只在两次 `BackendAdapter.run` 之间检查 `context.cancel` / deadline，因此可保证的轮询间隔是 `max(单次 run 耗时, step_seconds)`。真机适配器必须把一次 `run` 切成 ≤1 s 返回的分块，否则一段长时间阻塞的 `session.run()` 无法被取消，会违反 node-agent「至少每秒检查一次取消」的契约。当前参考后端是即时返回的模拟实现，不构成真机证据。
+**失败关闭（fail-closed）**：默认后端候选只包含真实运行时（当前为 ONNX Runtime Mobile）；模拟后端是测试替身，**不在生产候选里**，只能由测试显式注入或 CLI 显式 `--reference-backend`。没有真实运行时即拒绝接单，而不是返回合成分数。
+
+**准入前置元数据**：模型形状、本分片权重字节、上下文长度必须由真实来源提供（LC-9 manifest + LC-5 契约）；缺失时抛 `MissingModelMetadata` 拒绝接单，不使用 4 层 `d_model=32` 的占位形状。
+
+**释放语义**：`load()` 位于 `try/finally` 内，加载中途抛错也会 `release()`；适配器必须保证 `release()` 幂等且可在加载失败后调用。取消发生在任何 `load` 之前时不获取资源，故无释放动作。
+
+**取消粒度契约（有界承诺，非通用承诺）**：执行器只在两次 adapter 调用之间检查 `context.cancel` / deadline（`load` 前一次、每次 `run` 前后各一次），因此可保证的轮询间隔是 `max(一次 load, step_seconds, 一次 run)`；`step_seconds ≤ poll_seconds` 由构造参数强制校验。真机适配器必须让每次 `load`/`run` 在 `poll_seconds`（1 s）内返回；阻塞整段的调用（含长时间 `load`）无法取消。**已测的 ≤1 s 只覆盖模拟后端与短步长路径，不能推广到真实后端或加载阶段。**
 
 ## 6. 具体阻塞（需 Lead / 负责人决策或提供）
 
@@ -118,4 +126,5 @@ BLOCKED: adb is not installed; no real Android device can be probed.   (exit 2)
 - Android 真机/模拟器上的加载、执行、取消、网络切换、退出清理 —— **未验证**。
 - ONNX/ExecuTorch 导出与量化误差 —— **未验证**（工具缺失）。
 - 真机热/电量曲线、KV 实测内存、`runtime_overhead` 常量 —— **未验证**。
+- 1 GiB 内存上限：本机（Darwin）**无法硬限** `RLIMIT_AS`（`ulimit -v` → EINVAL），只能测峰值 RSS（见 `VERIFICATION.md` A4）；硬限路径仅在有 `RLIMIT_AS` 的内核上成立。
 - Windows/macOS 桌面节点 —— 归 LC-12（Engineer-A），本目录不涉及。

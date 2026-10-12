@@ -4,6 +4,21 @@
 
 分三部分：**A 无设备即可执行（已在本机跑过，附真实输出）**、**B 需要真机/SDK（列出前置与命令，本环境缺设备未执行）**、**C 证据表与判定标准**。
 
+本轮（返工后）对应审核六项的实现与验证见 **A0**。
+
+---
+
+## A0. 返工对应（LC-44 审核六项）
+
+| 审核发现 | 修正 | 覆盖验证 |
+| --- | --- | --- |
+| 1 默认路径会返回模拟推理结果（`backend.py` 默认候选含 `ReferenceBackend`） | `default_adapters(include_reference=False)` 不再含模拟后端；模拟后端仅测试注入或 CLI `--reference-backend` 显式开启；无真实运行时即抛 `BackendUnavailable` | `test_default_adapters_exclude_the_simulated_double`、`test_production_default_fails_closed_without_a_real_runtime`、`test_no_default_adapter_is_used_when_none_is_configured` |
+| 2 默认准入预算不代表真实分片（玩具形状/0 字节/tokens=1） | 移除 `DEFAULT_SHAPE`；形状、分片权重字节、上下文长度必填，缺失抛 `MissingModelMetadata` 拒绝 | `test_missing_metadata_refuses_admission` |
+| 3 sysfs `Not charging` 被当作充电，低电量误放行 | `_CHARGING_STATES` 仅 `charging`/`full`；`Not charging`/`Discharging`/未知不享受豁免 | `test_sysfs_charging_mapping`（5 种状态）、`test_unknown_charging_state_does_not_grant_the_exemption`、CLI 断言用例 |
+| 4 `load()` 在 `try/finally` 之外，加载异常不释放 | `load()` 移入 `try/finally`，加载抛错也 `release()`；取消发生在 load 前则不获取资源 | `test_load_failure_still_releases` |
+| 5 ≤1 秒取消承诺超出约束（`step_seconds` 无上限、`load` 无边界） | 强制 `step_seconds ≤ poll_seconds`；load 前/后与每次 run 前后都有 guard；文档与测试范围限定为「模拟后端 + 短步长」 | `test_step_seconds_cannot_exceed_the_poll_interval`、`test_cancelled_before_start_raises_without_loading`、契约测试的取消/期限用例 |
+| 6 验证脚本 `|| true` 吞掉 CLI 失败 | `verify_offdevice.sh` 改为解析结构化 `decision` 并同时断言退出码，不符即 FAIL；无 `|| true` | 脚本本身（本轮 6 个准入用例全部断言通过：3×accept、3×reject_*，见 A3） |
+
 ---
 
 ## A. 无设备即可执行的部分（本轮已执行）
@@ -16,22 +31,26 @@ python3 -m venv .venv && ./.venv/bin/pip install -q -r requirements-dev.txt
 ./.venv/bin/python -m pytest -q
 ```
 
-实测结果（2026-10-11）：`31 passed, 8 skipped`（8 个 skip 是需 node-agent 检出的契约测试）。
+实测结果（2026-10-12）：`42 passed, 8 skipped`（8 个 skip 是需 node-agent 检出的契约测试）。
 
 ### A2. 与 node-agent 真实 Executor 契约的联调（跨组件，仍无需设备）
 
-把 Engineer-A 的 `node-agent/` 检出目录作为 `LASTCORE_NODE_AGENT_PATH`：
+把 Engineer-A 的 `node-agent/` 检出目录作为 `LASTCORE_NODE_AGENT_PATH`；基线固定为
+`agent/engineer-a-a/b33d0fac979a`（`ba52895ae829dcf0c8c605de46103e3b25fad650`，即 LC-52/LC-54 固定的 node-agent 版本）：
 
 ```bash
 LASTCORE_NODE_AGENT_PATH=/path/to/node-agent ./.venv/bin/python -m pytest -q
 ```
 
-实测结果：`39 passed`。这一条**证明的是真实接口而非模拟**：
+实测结果：`50 passed`。这一条**证明的是真实接口而非模拟**：
 
 - `AndroidExecutor` 是 `lastcore_node_agent.executor.Executor` 的真子类（node-agent 的 `isinstance` 门禁会接受它）；
 - `load_executor("lastcore_android_node.executor:executor_factory")` 能返回可用实例（与 `node-agent --executor` 参数一致）；
-- 用**真实的** `ExecutionContext` 驱动 run / cancel / deadline，异常路径都释放后端（无泄漏）；
-- 取消在 1 s 契约内被观察到；
+- 用**真实的** `ExecutionContext` 驱动 run / cancel / deadline：
+  - 正常路径 `load=1, run=1, release=1`，段被释放；
+  - 取消/期限发生在启动前 → `load=0`（未获取资源，无需释放）；
+  - 运行中取消（独立线程）→ 在 1 s 契约内抛出并 `release=1`；
+  - 两个 assignment 各自新实例，状态不串；
 - 边界检查：`android-node/` 不 import `inference_engine` / `communication` / node-agent 编排模块（不复制引擎）。
 
 > 注意顺序约束：`lastcore_android_node.executor` 在**导入时**绑定 `Executor` / `ExecutionCancelled` 基类，因此必须先让 `node-agent` 可导入。真实 node-agent 宿主进程天然满足（它先导入自己的包，再 `--executor` 加载本模块）；测试用 `conftest.py` 复现该顺序。
@@ -55,13 +74,36 @@ LASTCORE_ANDROID_THERMAL=nominal \
 | 同机器，段 `[12,24)` 328MB fp16 | — | `accept` | peak 544MB ≤ 1536MB 上限 |
 | 仅 700MB 可用 | 同上段 | `reject_memory` | 含 headroom 需 924MB > 上限 420MB |
 | 温度 `serious` | `LASTCORE_ANDROID_THERMAL=serious` | `reject_thermal` | 前台满载继续执行只会拖垮任务 |
-| 电量 10% 且未充电 | `LASTCORE_ANDROID_*_BATTERY_PERCENT=10 CHARGING=false` | `reject_battery` | 低于 20% 阈值 |
+| 电量 10% 且未充电 | `LASTCORE_ANDROID_BATTERY_PERCENT=10 CHARGING=false` | `reject_battery` | 未确认正在充电，不满足充电豁免 |
+| 电量 10% 且充电中 | `... BATTERY_PERCENT=10 CHARGING=true` | `accept` | 充电中不拦；对照上一行证明确实是「充电状态」在起作用 |
 
-一键跑齐（含上面所有步骤）：
+一键跑齐（含上面所有步骤 + 1 GiB 检查）：
 
 ```bash
 LASTCORE_NODE_AGENT_PATH=/path/to/node-agent scripts/verify_offdevice.sh
 ```
+
+脚本对准入命令**同时断言结构化 `decision` 与退出码**（`accept`→0、`reject_*`→1），不再用 `|| true` 吞错误；本轮六个用例（含 `Not charging` 低电量必须 `reject_battery`、充电中同电量 `accept`）全部通过。
+
+### A4. 1 GiB 内存上限检查
+
+```bash
+scripts/check_memory_ceiling.sh suite
+```
+
+实测（2026-10-12，Darwin）：
+
+```
+-- memory guarantee: MEASURED only. Darwin rejects lowering RLIMIT_AS
+   (ulimit -v -> EINVAL / 'cannot modify limit: Invalid argument'), so this run is NOT hard-capped
+-- command exit code: 0
+-- peak RSS: 38256640 bytes (36 MiB), ceiling 1024 MiB
+-- OK: peak RSS under the 1 GiB ceiling
+```
+
+即：本机**不能**施加 1 GiB 硬限（与 LC-44 审核复现的 EINVAL 一致），脚本因此退化为
+**测峰值 RSS 并断言 < 1 GiB**，并在输出里明示「非硬限」。内核支持 `RLIMIT_AS` 时（Linux）
+脚本会自动走硬限路径。二者结论不得互相替代。
 
 ---
 

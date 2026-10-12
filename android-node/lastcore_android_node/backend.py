@@ -97,17 +97,23 @@ def select_backend(
     raise BackendUnavailable("no backend fits this device: " + "; ".join(reasons))
 
 
-def default_adapters() -> list[BackendAdapter]:
-    """Preferred backends in priority order, best-effort constructed.
+def default_adapters(*, include_reference: bool = False) -> list[BackendAdapter]:
+    """Production backends in priority order; **fail-closed by default**.
 
-    Backends whose runtime is absent are skipped here; the reference adapter is
-    always present so the executor lifecycle stays exercisable off-device.
+    ``ReferenceBackend`` returns synthetic scores and is a *test double*.  It is
+    therefore never part of the production candidate list: with the option left
+    at ``False`` and no real runtime installed, this returns an empty list and
+    :func:`select_backend` raises :class:`BackendUnavailable` — the node refuses
+    the assignment instead of returning fabricated inference results.  Only a
+    caller that explicitly opts in (tests, prompts) gets the simulated backend.
     """
     from .backends.onnxruntime_mobile import OnnxRuntimeMobileBackend, backend_available
-    from .backends.reference import ReferenceBackend
 
     adapters: list[BackendAdapter] = []
     if backend_available():
         adapters.append(OnnxRuntimeMobileBackend())
-    adapters.append(ReferenceBackend())
+    if include_reference:
+        from .backends.reference import ReferenceBackend
+
+        adapters.append(ReferenceBackend())
     return adapters

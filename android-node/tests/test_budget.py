@@ -80,3 +80,11 @@ def test_thermal_and_battery_gates():
     assert evaluate(profile(battery_percent=5, charging=False), budget)[0] is Decision.REJECT_BATTERY
     assert evaluate(profile(battery_percent=5, charging=True), budget)[0] is Decision.ACCEPT
     assert evaluate(profile(foreground_only=False), budget)[0] is Decision.REJECT_BACKGROUND
+
+
+def test_unknown_charging_state_does_not_grant_the_exemption():
+    """Only a confirmed 'charging' reading may skip the low-battery gate."""
+    budget = build_budget(1, 0, SHAPE)
+    decision, reason = evaluate(profile(battery_percent=5, charging=None), budget)
+    assert decision is Decision.REJECT_BATTERY
+    assert "not charging" in reason

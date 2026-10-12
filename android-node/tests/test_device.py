@@ -87,6 +87,22 @@ def test_sysfs_thermal_serious_threshold(monkeypatch, tmp_path):
     assert detect().thermal is ThermalState.SERIOUS
 
 
+@pytest.mark.parametrize(
+    "status,expected",
+    [("Charging", True), ("Full", True), ("Not charging", False),
+     ("Discharging", False), ("Unknown", False)],
+)
+def test_sysfs_charging_mapping(monkeypatch, tmp_path, status, expected):
+    """`Not charging` / `Discharging` / `Unknown` must not mean 'charging'."""
+    _fake_sysfs(tmp_path, capacity="10", status=status)
+    monkeypatch.setenv("LASTCORE_ANDROID_PLATFORM", "Linux")
+    monkeypatch.setenv("LASTCORE_ANDROID_MACHINE", "aarch64")
+    monkeypatch.setenv("LASTCORE_ANDROID_IS_ANDROID", "true")
+    monkeypatch.setenv("LASTCORE_ANDROID_SYSFS_ROOT", str(tmp_path))
+
+    assert detect().charging is expected
+
+
 def test_sysfs_thermal_thresholds_are_configurable(monkeypatch, tmp_path):
     _fake_sysfs(tmp_path, temps=("51200",))
     monkeypatch.setenv("LASTCORE_ANDROID_PLATFORM", "Linux")
