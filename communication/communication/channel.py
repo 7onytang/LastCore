@@ -1,14 +1,15 @@
 """Blocking, single-task-per-connection tensor channel over TCP.
 
 The channel owns framing only: it never interprets model semantics. Timeouts are
-enforced twice -- a per-read socket timeout and an absolute task deadline -- and a
+enforced twice -- a per-operation socket timeout and an absolute task deadline -- and a
 caller-supplied cancel event is polled while waiting so that an operator cancel or
 a controller-side termination stops the transfer instead of blocking on a peer.
 
 ``deadline`` is an absolute **epoch-seconds** instant (``time.time()`` base), the same
 base the Controller uses for ``assignment["deadline"]`` and node-agent uses for
 ``ExecutionContext.deadline``. Both the cancel event and the deadline are re-checked
-on every receive iteration, so a peer that keeps streaming bytes cannot postpone them.
+on every send and receive iteration (writes are sliced rather than one blocking
+``sendall``), so a peer that keeps streaming or stops reading cannot postpone them.
 """
 
 from __future__ import annotations
@@ -72,6 +73,44 @@ def _recv_exactly(sock: socket.socket, size: int, deadline: float | None, cancel
     return b"".join(chunks)
 
 
+def _send_exactly(sock: socket.socket, data: bytes, deadline: float | None, cancel,
+                  budget: float | None = None) -> None:
+    """Write ``data`` fully, honouring the cancel event, the task deadline and a write budget.
+
+    The payload is written in bounded slices instead of one blocking ``sendall``, and cancel and
+    deadline are re-checked on every iteration, so a peer that stops reading cannot postpone a
+    cancel or overrun the deadline. ``budget`` is the per-operation seconds allowance
+    (``Channel.timeout``); ``None`` waits as long as progress is made.
+    """
+    view = memoryview(data)
+    sent = 0
+    started = time.monotonic()
+    while sent < len(view):
+        if cancel is not None and cancel.is_set():
+            raise TaskCancelled("cancelled while sending")
+        left = _remaining(deadline)
+        if left is not None and left <= 0:
+            raise ChannelTimeout("task deadline exceeded while sending")
+        elapsed = time.monotonic() - started
+        if budget is not None and elapsed >= budget:
+            raise ChannelTimeout("timed out while sending")
+        limit = CANCEL_POLL_SECONDS
+        if budget is not None:
+            limit = min(limit, max(budget - elapsed, 0.0))
+        if left is not None:
+            limit = min(limit, left)
+        sock.settimeout(max(limit, 0.001))
+        try:
+            count = sock.send(view[sent:])
+        except socket.timeout:
+            continue
+        except OSError as exc:
+            raise ChannelClosed(f"socket closed while sending: {exc}") from exc
+        if not count:
+            raise ChannelClosed("peer closed the connection while sending")
+        sent += count
+
+
 class Channel:
     """A framed request/response link to one peer stage."""
 
@@ -102,18 +141,7 @@ class Channel:
     def send_frame(self, kind: FrameType, header: Mapping[str, Any], payload: bytes = b"") -> None:
         self._check_cancel()
         raw = encode_frame(Frame(kind, header, payload))
-        left = _remaining(self.deadline)
-        if left is not None and left <= 0:
-            raise ChannelTimeout("task deadline exceeded while sending")
-        limits = [value for value in (self.timeout, left) if value is not None]
-        if limits:
-            self._sock.settimeout(max(min(limits), 0.001))
-        try:
-            self._sock.sendall(raw)
-        except socket.timeout as exc:
-            raise ChannelTimeout("timed out while sending") from exc
-        except OSError as exc:
-            raise ChannelClosed(f"socket closed while sending: {exc}") from exc
+        _send_exactly(self._sock, raw, self.deadline, self.cancel, self.timeout)
 
     def recv_frame(self) -> Frame:
         prefix = _recv_exactly(self._sock, PREFIX_SIZE, self.deadline, self.cancel, self.timeout)

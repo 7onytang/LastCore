@@ -123,6 +123,9 @@ def encode_tensor(name: str, array, dtype: str | None = None) -> tuple[dict[str,
 def decode_tensor(header: Mapping[str, Any], payload: bytes) -> np.ndarray:
     if header.get("kind") != "tensor":
         raise ProtocolError(f"expected a tensor header, got {header.get('kind')!r}")
+    name = header.get("name")
+    if not isinstance(name, str) or not name:
+        raise ProtocolError(f"tensor header is missing the required 'name': {name!r}")
     name = header.get("dtype")
     dtype = TENSOR_DTYPES.get(name)
     if dtype is None:
@@ -133,7 +136,9 @@ def decode_tensor(header: Mapping[str, Any], payload: bytes) -> np.ndarray:
     if header.get("bytes") != len(payload):
         raise ProtocolError(f"declared {header.get('bytes')} bytes but received {len(payload)}")
     expected = header.get("sha256")
-    if expected and expected != hashlib.sha256(payload).hexdigest():
+    if not isinstance(expected, str) or not expected:
+        raise ProtocolError(f"tensor header is missing the required 'sha256' checksum: {expected!r}")
+    if expected != hashlib.sha256(payload).hexdigest():
         raise ProtocolError("tensor checksum mismatch")
     itemsize = dtype.itemsize
     expected_items = 1

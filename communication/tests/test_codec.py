@@ -44,6 +44,26 @@ def test_corrupted_payload_is_rejected():
         decode_tensor(header, bytes(corrupted))
 
 
+def test_missing_required_name_is_rejected():
+    header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
+    header = {key: value for key, value in header.items() if key != "name"}
+    with pytest.raises(ProtocolError, match="name"):
+        decode_tensor(header, payload)
+
+
+def test_empty_required_name_is_rejected():
+    header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
+    with pytest.raises(ProtocolError, match="name"):
+        decode_tensor({**header, "name": ""}, payload)
+
+
+def test_missing_required_sha256_is_rejected():
+    header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
+    header = {key: value for key, value in header.items() if key != "sha256"}
+    with pytest.raises(ProtocolError, match="sha256"):
+        decode_tensor(header, payload)
+
+
 def test_shape_and_payload_length_must_agree():
     header, payload = encode_tensor("hidden", np.zeros((4, 4), dtype=np.float32))
     header = {**header, "shape": [2, 2]}

@@ -63,9 +63,9 @@
 | `cancel`（`threading.Event`） | 操作者在本地调用 `runtime.cancel()` | `TaskCancelled`，连接关闭 |
 | 上游 `CANCEL` 帧 / 上游断开 | 对端取消或崩溃 | `TaskCancelled` / `ChannelClosed` |
 
-cancel 事件与 deadline 在**每次接收迭代**都会重新检查，而不是只在读阻塞超时时检查：对端持续发包（哪怕是恶意或异常的超长帧）也无法推迟取消、无法越过 deadline。`timeout` 是单次读写的预算，`timeout=None` 表示只要还在推进就一直等，取消与 deadline 仍然按 0.25 s 粒度生效。
+cancel 事件与 deadline 在**每次收/发迭代**都会重新检查（发送按 0.25 s 分片写出，而不是一次阻塞式 `sendall`），而不是只在阻塞读写超时时检查：对端持续发包（哪怕是恶意或异常的超长帧）或停止读取都无法推迟取消、无法越过 deadline。`timeout` 是单次读写操作的预算，`timeout=None` 表示只要还在推进就一直等，取消与 deadline 仍然按 0.25 s 粒度生效。
 
-等待时每 0.25 s 轮询一次 cancel 事件，所以在阻塞读中也能在亚秒级响应取消，不会出现“取消后仍占着连接和缓存”的情况。`Channel` 只按连接持有缓冲，关闭即释放；`StageServer` 一次只处理一个任务，符合 Controller 文档中“节点本地禁止并行执行两个任务”的要求。
+等待时每 0.25 s 轮询一次 cancel 事件，所以在阻塞读/写中也能在亚秒级响应取消，不会出现“取消后仍占着连接和缓存”的情况。`Channel` 只按连接持有缓冲，关闭即释放；`StageServer` 一次只处理一个任务，符合 Controller 文档中“节点本地禁止并行执行两个任务”的要求。
 
 ## 对外接口
 
@@ -105,7 +105,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-40 项测试覆盖：编解码往返（全部 dtype）、非连续数组、截断/篡改/形状不符、magic/版本/未知帧类型、超大 header、非 JSON header、握手往返、`ERROR`→`PeerError`、`CANCEL`→`TaskCancelled`、对端关闭、读超时、绝对 deadline、阻塞读中的 cancel 事件、**持续收包中的 cancel 与 deadline（对端一直发包也不得推迟）**、监听端口与端口占用后的连接拒绝。
+45 项测试覆盖：编解码往返（全部 dtype）、非连续数组、截断/篡改/形状不符、必填 `name`/`sha256` 缺失、magic/版本/未知帧类型、超大 header、非 JSON header、握手往返、`ERROR`→`PeerError`、`CANCEL`→`TaskCancelled`、对端关闭、读超时、绝对 deadline、阻塞读中的 cancel 事件、阻塞写中的 cancel 与 deadline（对端停止读取也不得推迟）、**持续收包中的 cancel 与 deadline（对端一直发包也不得推迟）**、监听端口与端口占用后的连接拒绝。
 
 ## 已知限制
 

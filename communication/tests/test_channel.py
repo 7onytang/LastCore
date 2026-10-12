@@ -105,6 +105,41 @@ def test_cancel_event_interrupts_a_blocked_read(pair):
     assert time.monotonic() - started < 5
 
 
+def _blocked_send_channel(timeout=None, deadline=None):
+    """A channel whose peer never reads, so a large frame cannot drain."""
+    socket_a, socket_b = socket.socketpair()
+    socket_a.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8192)
+    channel = Channel(socket_a, timeout=timeout, deadline=deadline)
+    return channel, socket_a, socket_b
+
+
+def test_cancel_event_interrupts_a_blocked_send():
+    channel, socket_a, socket_b = _blocked_send_channel(timeout=5.0)
+    cancel = threading.Event()
+    channel.cancel = cancel
+    threading.Timer(0.2, cancel.set).start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(TaskCancelled):
+            channel.send_frame(FrameType.TENSOR, {"kind": "tensor"}, b"\x00" * (8 * 1024 * 1024))
+        assert time.monotonic() - started < 2.0
+    finally:
+        socket_a.close()
+        socket_b.close()
+
+
+def test_absolute_deadline_interrupts_a_blocked_send():
+    channel, socket_a, socket_b = _blocked_send_channel(deadline=time.time() + 0.3)
+    started = time.monotonic()
+    try:
+        with pytest.raises(ChannelTimeout, match="deadline"):
+            channel.send_frame(FrameType.TENSOR, {"kind": "tensor"}, b"\x00" * (8 * 1024 * 1024))
+        assert time.monotonic() - started < 2.0
+    finally:
+        socket_a.close()
+        socket_b.close()
+
+
 def _stream_unfinished_frame(sock, *, declared_payload=64 * 1024 * 1024, streamed=4 * 1024 * 1024,
                              chunk=16 * 1024, interval=0.004, budget=2.0):
     """Announce a large payload, then keep sending bytes that never complete it."""
