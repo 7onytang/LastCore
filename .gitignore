@@ -24,3 +24,9 @@ data/
 
 # Integration scenario run artifacts (logs, checkpoints, report.json)
 integration/runs/
+# Persistent internal demo state (contains per-run bearer tokens, mode 0600)
+integration/demo-run/
+# Per-module virtualenvs created by `python -m integration.demo setup`
+.venv-controller/
+.venv-node/
+.venv-integration/
