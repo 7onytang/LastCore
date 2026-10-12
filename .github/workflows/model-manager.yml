@@ -3,10 +3,14 @@ on:
   push:
     paths:
       - "model-manager/**"
+      - "inference-engine/**"
+      - "communication/**"
       - ".github/workflows/model-manager.yml"
   pull_request:
     paths:
       - "model-manager/**"
+      - "inference-engine/**"
+      - "communication/**"
       - ".github/workflows/model-manager.yml"
 permissions:
   contents: read
