@@ -22,7 +22,9 @@ Documented semantics preserved by this spec:
   (METADATA + license files) of every distribution the app ships is copied
   via PyInstaller's ``copy_metadata()`` hook utility, and the generated
   ``third-party-notices.md`` (see ``desktop/collect_licenses.py``) lands in
-  ``_internal/licenses/``.
+  ``_internal/licenses/`` together with the build interpreter's full CPython
+  license text (PSF License Version 2 plus predecessor terms) collected by
+  the same script, so the embedded libpython ships its complete license text.
 """
 import json
 import os
@@ -44,7 +46,8 @@ license_datas = []
 for _entry in licenses_manifest["runtime_distributions"]:
     license_datas += copy_metadata(_entry["name"])
 license_datas += copy_metadata(licenses_manifest["build_tool"]["name"])
-# generated third-party notices document
+# generated third-party notices document + full CPython license text
+# (both written by collect_licenses.py into build/licenses)
 license_datas.append(
     (os.path.join(node_agent_root, "build", "licenses"), "licenses"))
 

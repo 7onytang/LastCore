@@ -20,9 +20,12 @@
 #      frozen runtime dependency closure from the build venv, writes the
 #      third-party notices into build/licenses/ (the spec transports each
 #      distribution's dist-info via PyInstaller copy_metadata and the notices
-#      into _internal/licenses/), and after the build cross-checks the
-#      distributions actually frozen (Analysis TOC) and the license files
-#      inside the bundle against that manifest.
+#      into _internal/licenses/), copies the build interpreter's own full
+#      CPython license text (PSF License Version 2 plus predecessor terms)
+#      into the same directory for the embedded libpython, and after the
+#      build cross-checks the distributions actually frozen (Analysis TOC)
+#      and the license files - CPython text included - inside the bundle
+#      against that manifest.
 #   5. pip runs through pip_no_sysconf_proxy.py (skips only the macOS
 #      SystemConfiguration proxy fallback; standard HTTP_PROXY/HTTPS_PROXY/
 #      ALL_PROXY/NO_PROXY environment behavior is preserved; no system

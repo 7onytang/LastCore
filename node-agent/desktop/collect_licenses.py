@@ -11,14 +11,21 @@ Two modes:
   ``build/licenses/third-party-notices.md``. The spec then transports each
   distribution's dist-info (METADATA + license texts) into the bundle via
   PyInstaller's ``copy_metadata()`` hook utility and adds the notices
-  document under ``_internal/licenses/``.
+  document under ``_internal/licenses/``. It also copies the build
+  interpreter's own full CPython license text (PSF License Version 2 plus
+  the BeOpen/CNRI/CWI predecessor terms and the 0-Clause BSD documentation
+  license) verbatim into the same directory, so the embedded libpython
+  travels with its complete license text, not just a URL.
 
 - ``verify`` (run by build_bundle.sh AFTER PyInstaller): reads the PyInstaller
   Analysis TOC files to enumerate the distributions actually frozen into the
   bundle, cross-checks them against the manifest (any missing or extra frozen
-  third-party distribution fails the build), and checks that every license
+  third-party distribution fails the build), checks that every license
   file recorded in the manifest plus the generated notices document really
-  exist inside the bundle directory.
+  exist inside the bundle directory, and checks the bundled CPython license
+  text exists, is non-empty, carries the PSF-2.0 heading, hashes to the
+  value recorded at collect time, and is named for the embedded Python
+  version; the notices document must point at that file.
 
 certifi is MPL-2.0; the generated notices include the MPL-2.0 section 3.2
 source-availability statement pointing at the exact upstream source project.
@@ -30,14 +37,43 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import importlib.metadata as importlib_metadata
 import json
 import platform
 import re
+import shutil
 import sys
 from pathlib import Path, PurePosixPath
 
 LICENSE_STEMS = {"LICENSE", "LICENCE", "COPYING", "NOTICE"}
+PSF_LICENSE_HEADING = b"PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2"
+
+
+def locate_cpython_license() -> Path:
+    """Full CPython license text shipped inside the build interpreter's install.
+
+    The build interpreter itself is the authoritative source: its install tree
+    carries the complete composite CPython license that covers the libpython
+    PyInstaller embeds into the bundle (PSF License Version 2 plus the
+    BeOpen/CNRI/CWI predecessor terms and the 0-Clause BSD documentation
+    license). A URL is NOT a substitute - the caller fails the build if this
+    file cannot be found.
+    """
+    minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+    candidates = [
+        Path(sys.base_prefix) / "lib" / f"python{minor}" / "LICENSE.txt",
+        Path(sys.base_prefix) / "LICENSE.txt",
+        Path(sys.prefix) / "lib" / f"python{minor}" / "LICENSE.txt",
+        Path(sys.prefix) / "LICENSE.txt",
+    ]
+    for path in candidates:
+        if path.is_file() and path.stat().st_size > 0:
+            return path.resolve()
+    raise FileNotFoundError(
+        "no CPython license text found in the build interpreter install tree "
+        f"(looked at: {', '.join(str(p) for p in candidates)}); refusing to "
+        "publish a bundle whose embedded libpython ships only a license URL")
 
 
 def canonical(name: str) -> str:
@@ -207,6 +243,23 @@ def cmd_collect(args) -> int:
                                        "programs; its bootloader is embedded in both "
                                        "bundled executables.")
 
+    try:
+        cpython_license_src = locate_cpython_license()
+    except FileNotFoundError as exc:
+        print(f"collect_licenses: {exc}", file=sys.stderr)
+        return 3
+    cpython_version = platform.python_version()
+    cpython_rel = f"licenses/CPython-{cpython_version}-LICENSE.txt"
+    cpython_dest = output_dir / f"CPython-{cpython_version}-LICENSE.txt"
+    shutil.copyfile(cpython_license_src, cpython_dest)
+    cpython_bytes = cpython_dest.read_bytes()
+    cpython_sha256 = hashlib.sha256(cpython_bytes).hexdigest()
+    if PSF_LICENSE_HEADING not in cpython_bytes:
+        print("collect_licenses: interpreter license text does not contain the "
+              "PSF License Version 2 heading; refusing to ship it as the "
+              "embedded CPython's license material", file=sys.stderr)
+        return 1
+
     manifest = {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "python_version": platform.python_version(),
@@ -216,10 +269,19 @@ def cmd_collect(args) -> int:
         "runtime_distributions": runtime_entries,
         "build_tool": build_entry,
         "python_runtime": {
-            "version": platform.python_version(),
-            "license": "PSF-2.0",
+            "version": cpython_version,
+            "license": "PSF-2.0 (composite CPython license: PSF-2.0 plus the "
+                       "BeOpen, CNRI and CWI predecessor terms and the "
+                       "0-Clause BSD license for documentation code)",
             "url": "https://www.python.org/psf/license/",
-            "note": "libpython is embedded in the bundle by PyInstaller.",
+            "license_file": cpython_rel,
+            "source_path": str(cpython_license_src),
+            "source_sha256": cpython_sha256,
+            "size_bytes": len(cpython_bytes),
+            "interpreter_prefix": sys.base_prefix,
+            "note": "libpython is embedded in the bundle by PyInstaller; the "
+                    "full CPython license text is copied verbatim from this "
+                    "build interpreter's install tree into _internal/.",
         },
     }
     manifest_path = output_dir / "manifest.json"
@@ -263,8 +325,14 @@ def cmd_collect(args) -> int:
         "",
         "## Python runtime",
         "",
-        f"- CPython {manifest['python_runtime']['version']} (libpython embedded): "
-        f"Python Software Foundation License Version 2 — {manifest['python_runtime']['url']}",
+        f"- CPython {manifest['python_runtime']['version']} (libpython embedded in "
+        "both executables by PyInstaller).",
+        f"- Full license text bundled at: `_internal/{cpython_rel}` "
+        f"({len(cpython_bytes)} bytes, sha256 `{cpython_sha256}`), copied verbatim "
+        f"from the build interpreter's install tree at {cpython_license_src} "
+        f"(interpreter prefix {sys.base_prefix}).",
+        f"- License: {manifest['python_runtime']['license']} "
+        f"(reference: {manifest['python_runtime']['url']}).",
         "",
     ]
     notices_path = output_dir / "third-party-notices.md"
@@ -272,6 +340,8 @@ def cmd_collect(args) -> int:
 
     print(f"collect_licenses: runtime closure: "
           + ", ".join(f"{e['name']}=={e['version']}" for e in runtime_entries))
+    print(f"collect_licenses: CPython {cpython_version} license text: "
+          f"{cpython_rel} (sha256 {cpython_sha256})")
     print(f"collect_licenses: wrote {manifest_path}")
     print(f"collect_licenses: wrote {notices_path}")
     return 0
@@ -349,14 +419,45 @@ def cmd_verify(args) -> int:
             if not target.is_file():
                 problems.append(f"{name}: license file missing in bundle: {target}")
 
+    py = manifest.get("python_runtime") or {}
+    py_rel = py.get("license_file")
+    py_info = None
+    if not py_rel:
+        problems.append("manifest python_runtime records no bundled CPython license file")
+    else:
+        target = internal / py_rel
+        if not target.is_file() or target.stat().st_size == 0:
+            problems.append(f"CPython license file missing or empty in bundle: {target}")
+        else:
+            data = target.read_bytes()
+            if PSF_LICENSE_HEADING not in data:
+                problems.append("bundled CPython license text lacks the "
+                                "PSF License Version 2 heading")
+            expected_sha = py.get("source_sha256")
+            actual_sha = hashlib.sha256(data).hexdigest()
+            if expected_sha and actual_sha != expected_sha:
+                problems.append(f"bundled CPython license text sha256 mismatch: "
+                                f"manifest {expected_sha} != bundle {actual_sha}")
+            version = str(py.get("version") or "")
+            if version and version not in Path(py_rel).name:
+                problems.append(f"bundled CPython license file name does not record "
+                                f"the embedded Python version {version}: {py_rel}")
+            py_info = {"file": str(target), "sha256": actual_sha,
+                       "size_bytes": len(data),
+                       "version": version or py.get("version")}
+
     notices = internal / "licenses" / "third-party-notices.md"
     if not notices.is_file():
         problems.append(f"notices document missing in bundle: {notices}")
+    elif py_rel and py_rel not in notices.read_text(encoding="utf-8"):
+        problems.append("notices document does not point at the bundled CPython "
+                        f"license file {py_rel}")
 
     result = {
         "bundle_dir": str(bundle),
         "frozen_third_party": sorted(frozen),
         "manifest_runtime": sorted(expected),
+        "python_license": py_info,
         "license_checks_failed": problems,
         "passed": not problems,
     }
