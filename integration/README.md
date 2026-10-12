@@ -123,6 +123,45 @@ TCP 数据面仍是两条独立路径（`POST /v1/tasks` 不会触发 TCP 请求
 往返，不是真实 TTFT；`prefill_tokens_per_second` 是 prefill 吞吐而非生成速率；
 RSS 为 `ps` 采样值。
 
+## CI：内部演示真实链路 smoke
+
+`.github/workflows/integration-demo.yml`（新增，与既有三个模块 workflow 并存）在
+push / pull_request 命中 `integration/**`、`inference-engine/**`、
+`communication/**`、`controller-server/**`、`node-agent/**` 或该 workflow 自身时，
+在 `ubuntu-latest` 上用 Python 3.12 跑一次**真实正常链**，不是模块 pytest、也不是
+`--help` 之类的静态检查：
+
+1. `python -m integration.demo setup`（建三个模块各自的 venv 并装依赖）
+2. `.venv-integration/bin/python -m integration.demo --workdir integration/demo-run start`
+3. 同上 `request`（HTTP 建任务 + PipelineClient 走 TCP，与单机参照对照）
+4. 即使前面失败也执行 `stop`，按归属校验回收记录的 PID/进程组并核对端口释放
+
+`start` / `request` / `stop` 必须用 `.venv-integration/bin/python`（普通解释器没有
+numpy 与 harness 模块，会在 `main()` 里以退出码 2 拒绝），只有 `setup` 用系统 `python`。
+
+判定以**退出码**为准：`start`、`request`、`stop` 的 rc 记进 `rc.txt`，任一步非 0 即
+job 失败；`request` 为 0 后还会再读 `demo-result.json`，要求 `pass`、`bit_identical`
+为 true 且 `task_terminal_status` 为 `completed`。
+
+`permissions: contents: read`，不新建 token/secret、不提高权限、不付费 runner。
+`timeout-minutes`：job 20，`setup` 10，`start`+`request` 6，`stop` 3；因此 `stop`
+总有时间执行。失败时上传 token-free 日志（`integration/demo-run/artifacts/` 与
+`integration/demo-run/logs/`，含 `start`/`request`/`stop` 的 stdout、`rc.txt` 与三个
+真实进程日志），保留 7 天。`demo-state.json`（0600，含 bearer token）**不在**上传
+路径内；实测三个日志文件中不含任何 token。
+
+本地等价复现（Python 3.12；本仓库在 3.12.14 上实测）：
+
+```bash
+python3.12 -m integration.demo setup
+.venv-integration/bin/python -m integration.demo --workdir integration/demo-run start
+.venv-integration/bin/python -m integration.demo --workdir integration/demo-run request
+.venv-integration/bin/python -m integration.demo --workdir integration/demo-run stop
+```
+
+`integration/demo-run/` 已 gitignore，CI 产物不落进提交。本 workflow 只做上述 demo
+smoke，不重复既有模块单测、不部署、不取权重。
+
 ## 故障注入
 
 `TCPRelay` 支持 `close_after_up_bytes=N`：在客户端→首段方向转发超过 N 字节后同时关闭
