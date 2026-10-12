@@ -98,6 +98,17 @@ class Executor:
 
 节点间 tensor 传输协议见 `PROTOCOL.md`（提案，由 `communication/` 实现）。
 
+## 桌面部署（macOS / Windows，LC-12）
+
+macOS 与 Windows 的常驻启动、安装打包方案、跨平台差异核对与入网前环境检查见 `desktop/README.md`：
+
+- `desktop/run_agent.py`：安全读取私有 `NODE_AGENT_*` 配置文件后启动节点；不执行 shell 配置、不把 token 放入进程参数。
+- `desktop/preflight.py`：入网前可执行检查（Python/httpx/状态目录/锁/凭据/端口/Controller/资源），任何 FAIL 退出码 1，支持 `--json`。POSIX 新建状态目录使用 0700；已有目录若对 group/other 可访问则失败，需由用户手动收紧权限。配置 `--min-memory-mb` 后若可用内存探测未知或低于门槛也会失败。
+- `desktop/com.lastcore.node-agent.plist`：macOS LaunchAgent 模板（登录自启、崩溃自动拉起）。
+- `desktop/windows/`：Windows Task Scheduler 安装/卸载与包装脚本（登录自启、失败自动重启）。
+- `desktop/env.example`：环境变量模板（注册 token 仅首次入网前使用，注册成功后删除）。
+- 状态锁已支持 Windows（`msvcrt`），退出码语义不变。
+
 ## 验证
 
 ```bash
