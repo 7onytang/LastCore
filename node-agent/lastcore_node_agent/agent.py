@@ -212,7 +212,7 @@ class NodeAgent:
     def _select_assignment(self, rows: list) -> dict | None:
         for row in reversed(rows):
             assignment_id = row.get("id")
-            if not assignment_id or assignment_id in self._settled:
+            if not assignment_id or assignment_id in self._settled or assignment_id in self._pending:
                 continue
             if row.get("task_status") not in ("queued", "running"):
                 continue
@@ -240,9 +240,10 @@ class NodeAgent:
             executor = self.executor_factory()
         except Exception as exc:
             LOG.exception("executor unavailable for %s", assignment_id)
-            self._settle(assignment_id, "failed")
-            self._report_terminal(assignment_id, "failed",
-                                  f"executor unavailable: {type(exc).__name__}: {exc}")
+            error = f"executor unavailable: {type(exc).__name__}: {exc}"
+            if self._record_pending(assignment_id, "failed", error):
+                self._settle(assignment_id, "failed")
+            self._attempt_terminal_report(assignment_id, "failed", error)
             self.stats.failed.append(assignment_id)
             return
         context = ExecutionContext(
@@ -298,8 +299,9 @@ class NodeAgent:
             self.stats.stopped.append(run.assignment_id)
             LOG.info("assignment %s stopped locally (%s)", run.assignment_id, error)
             return
-        self._settle(run.assignment_id, status)
-        self._report_terminal(run.assignment_id, status, error)
+        if self._record_pending(run.assignment_id, status, error):
+            self._settle(run.assignment_id, status)
+        self._attempt_terminal_report(run.assignment_id, status, error)
         if status == "completed":
             self.stats.completed.append(run.assignment_id)
             LOG.info("assignment %s completed", run.assignment_id)
@@ -316,13 +318,20 @@ class NodeAgent:
 
     def _flush_pending_reports(self) -> None:
         for assignment_id, (status, error) in sorted(self._pending.items()):
-            self._report_terminal(assignment_id, status, error)
+            self._attempt_terminal_report(assignment_id, status, error)
 
-    def _persist_pending(self, assignment_id: str, status: str, error: str | None) -> None:
+    def _record_pending(self, assignment_id: str, status: str, error: str | None) -> bool:
+        # Durable pending handoff must precede the settle journal: a crash between
+        # the two writes must leave the terminal report replayable, never lost.
+        self._pending[assignment_id] = (status, error)
         try:
             record_pending_report(self.config.state_dir, assignment_id, status, error)
         except (OSError, StateError) as exc:
-            LOG.error("could not persist pending terminal report for %s: %s", assignment_id, exc)
+            LOG.error("could not persist pending terminal report for %s; "
+                      "settle deferred so the assignment stays re-executable: %s",
+                      assignment_id, exc)
+            return False
+        return True
 
     def _clear_pending(self, assignment_id: str) -> None:
         self._pending.pop(assignment_id, None)
@@ -331,10 +340,8 @@ class NodeAgent:
         except (OSError, StateError) as exc:
             LOG.error("could not clear pending terminal report for %s: %s", assignment_id, exc)
 
-    def _report_terminal(self, assignment_id: str, status: str, error: str | None) -> None:
+    def _attempt_terminal_report(self, assignment_id: str, status: str, error: str | None) -> None:
         assert self.credentials is not None
-        self._pending[assignment_id] = (status, error)
-        self._persist_pending(assignment_id, status, error)
         for _ in range(max(1, self.config.report_retries)):
             try:
                 self._guarded(self.client.report)(
