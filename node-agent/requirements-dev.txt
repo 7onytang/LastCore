@@ -1,2 +1,4 @@
 -r requirements.txt
+fastapi==0.135.2
 pytest==9.0.2
+numpy==2.5.4
