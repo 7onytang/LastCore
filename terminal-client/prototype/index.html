@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LastCore 节点终端 - 交互原型</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>LastCore 节点终端</h1>
+      <p class="subtitle">三平台终端操作界面 - 交互原型（LC-14 首批产物，未接真实后端）</p>
+    </div>
+    <div id="conn-pill" class="pill pill-disconnected">未连接</div>
+  </header>
+
+  <div id="error-banner" class="banner banner-hidden" role="alert">
+    <div class="banner-main">
+      <strong id="error-code"></strong>
+      <span id="error-message"></span>
+    </div>
+    <button id="error-dismiss" type="button">关闭</button>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="connect">连接入网</button>
+    <button class="tab" data-tab="resources">资源设置</button>
+    <button class="tab" data-tab="status">节点状态</button>
+    <button class="tab" data-tab="results">任务与结果</button>
+    <button class="tab" data-tab="stop">停止执行</button>
+  </nav>
+
+  <main>
+    <section id="panel-connect" class="panel active">
+      <h2>连接入网</h2>
+      <p class="hint">注册 token 仅在本页内存中使用一次，提交给本地 adapter 后即从界面清除；不写入 localStorage、不显示回显、不进入日志。</p>
+      <form id="connect-form">
+        <label>Controller 地址
+          <input id="f-controller-url" type="text" value="http://127.0.0.1:8000" autocomplete="off">
+        </label>
+        <label>本机通信地址 endpoint
+          <input id="f-endpoint" type="text" placeholder="http://192.168.1.20:9000" autocomplete="off">
+        </label>
+        <label>节点名称
+          <input id="f-node-name" type="text" placeholder="留空自动取主机名" autocomplete="off">
+        </label>
+        <label>平台标识
+          <input id="f-platform" type="text" placeholder="留空自动识别" autocomplete="off">
+        </label>
+        <label>可用内存（MB）
+          <input id="f-memory" type="number" min="1" value="8192">
+        </label>
+        <label>算力权重
+          <input id="f-weight" type="number" min="0.1" step="0.1" value="1">
+        </label>
+        <label>注册 token（必填，一次性）
+          <input id="f-reg-token" type="password" autocomplete="new-password">
+        </label>
+        <div class="form-error" id="connect-form-error"></div>
+        <button type="submit" id="btn-connect" class="primary">入网</button>
+      </form>
+      <div id="connect-result" class="result"></div>
+    </section>
+
+    <section id="panel-resources" class="panel">
+      <h2>资源设置</h2>
+      <p class="hint">保存后展示 adapter 回读的实际生效值（而非表单输入值）。「暂停接单」= 排空模式（accepting_tasks=false），当前任务继续运行。</p>
+      <form id="resources-form">
+        <label>可用内存（MB）
+          <input id="r-memory" type="number" min="1">
+        </label>
+        <label>算力权重
+          <input id="r-weight" type="number" min="0.1" step="0.1">
+        </label>
+        <label class="checkbox">
+          <input id="r-accepting" type="checkbox" checked>
+          接受新任务分配
+        </label>
+        <button type="submit" id="btn-resources" class="primary">保存并回读</button>
+      </form>
+      <div id="resources-result" class="result"></div>
+    </section>
+
+    <section id="panel-status" class="panel">
+      <h2>节点状态</h2>
+      <div id="status-cards" class="cards"></div>
+    </section>
+
+    <section id="panel-results" class="panel">
+      <h2>任务与结果</h2>
+      <div class="banner banner-note">
+        当前 Controller /v1 仅提供任务与分配状态；模型输出内容的闭环由 LC-8 负责，闭环前本界面只显示状态，不展示、不伪造任何推理结果。
+      </div>
+      <table id="assignments-table">
+        <thead>
+          <tr><th>分配 ID</th><th>任务 ID</th><th>模型</th><th>层区间</th><th>状态</th><th>开始</th><th>结束</th><th>错误</th></tr>
+        </thead>
+        <tbody id="assignments-body"></tbody>
+      </table>
+      <h3>错误日志</h3>
+      <ul id="error-log" class="error-log"></ul>
+    </section>
+
+    <section id="panel-stop" class="panel">
+      <h2>停止执行</h2>
+      <div id="stop-state" class="cards"></div>
+      <button id="btn-stop" class="danger" disabled>停止本地执行</button>
+      <p class="hint" id="stop-reason">停止按钮是否可用由 adapter 上报的执行状态决定，不只是一个按钮开关。</p>
+    </section>
+  </main>
+
+  <dialog id="stop-dialog">
+    <h3>确认停止本地执行？</h3>
+    <p class="hint">以下信息取自当前执行状态：</p>
+    <div id="stop-dialog-details"></div>
+    <p class="hint">确认后进入 stopping 宽限期（默认 10s），以 adapter 回报的 stopped 状态为准；本操作只停止本地执行，任务在 Controller 侧的终态由控制平面决定。</p>
+    <div class="dialog-actions">
+      <button id="btn-stop-cancel" type="button">取消</button>
+      <button id="btn-stop-confirm" type="button" class="danger">确认停止</button>
+    </div>
+  </dialog>
+
+  <section class="proto-controls">
+    <h3>原型控制（仅评审用，正式界面不含）</h3>
+    <div class="proto-row">
+      <label>适配器
+        <select id="p-adapter">
+          <option value="mock" selected>Mock（脚本场景）</option>
+          <option value="local-http">LocalHttp（实验桩，需 node-agent 本地 API，待批准）</option>
+        </select>
+      </label>
+      <label id="p-local-url-wrap" class="hidden">本地 API 地址
+        <input id="p-local-url" type="text" value="http://127.0.0.1:9090">
+      </label>
+      <label>故障场景
+        <select id="p-scenario">
+          <option value="normal" selected>正常</option>
+          <option value="controller_down">Controller 不可达</option>
+          <option value="auth_rejected">凭据被拒（401）</option>
+          <option value="model_unsupported">模型不支持</option>
+        </select>
+      </label>
+    </div>
+    <div class="proto-row">
+      <button id="p-start-assignment" type="button">模拟：收到任务分配</button>
+      <button id="p-complete-assignment" type="button">模拟：任务完成</button>
+      <button id="p-heartbeat-down" type="button">模拟：心跳断链</button>
+      <button id="p-heartbeat-up" type="button">模拟：心跳恢复</button>
+    </div>
+  </section>
+
+  <footer>
+    <p>LC-14 交互原型 · 基线 main@8c665cf · Mock adapter 场景可注入全部错误路径 · 本地 API 方案未批准，仅以桩呈现</p>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
