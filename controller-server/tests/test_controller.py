@@ -19,6 +19,11 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def assert_bearer_challenge(response):
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
 @pytest.fixture
 def setup(tmp_path):
     now = [1000.0]
@@ -82,11 +87,18 @@ def test_two_node_plan_and_completion(setup):
 def test_credentials_and_ownership(setup):
     client, _, _ = setup
     a, b = register(client), register(client)
-    assert client.get("/v1/nodes").status_code == 401
-    assert client.get("/v1/tasks", headers=auth(REGISTRATION)).status_code == 401
-    assert client.get("/v1/nodes", headers=auth(a["node_token"])).status_code == 401
-    assert client.post(f"/v1/nodes/{a['node_id']}/heartbeat", headers=auth(b["node_token"]),
-                       json={"available_memory_mb": 100}).status_code == 401
+    assert_bearer_challenge(client.get("/v1/nodes"))
+    assert_bearer_challenge(client.get("/v1/nodes", headers={"Authorization": "Basic dXNlcjpwYXNz"}))
+    assert_bearer_challenge(client.get("/v1/tasks", headers=auth(REGISTRATION)))
+    assert_bearer_challenge(client.post("/v1/nodes/register", headers=auth(ADMIN), json={
+        "name": "invalid-registration-credential", "platform": "linux",
+        "endpoint": "http://node.local:9000", "available_memory_mb": 2048,
+    }))
+    assert_bearer_challenge(client.get("/v1/nodes", headers=auth(a["node_token"])))
+    assert_bearer_challenge(client.post(f"/v1/nodes/{a['node_id']}/heartbeat", headers=auth("invalid-node-token"),
+                                        json={"available_memory_mb": 100}))
+    assert_bearer_challenge(client.post(f"/v1/nodes/{a['node_id']}/heartbeat", headers=auth(b["node_token"]),
+                                        json={"available_memory_mb": 100}))
     view = client.get("/v1/nodes", headers=auth(ADMIN)).json()
     assert "token_hash" not in str(view) and a["node_token"] not in str(view)
     assignments = task(client).json()["assignments"]

@@ -44,11 +44,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
 
     def require_admin(token: Annotated[str, Depends(credential)]):
         if not secrets.compare_digest(token.encode(), settings.admin_token.encode()):
-            raise HTTPException(401, "invalid admin credential")
+            raise HTTPException(401, "invalid admin credential", headers={"WWW-Authenticate": "Bearer"})
 
     def require_registration(token: Annotated[str, Depends(credential)]):
         if not secrets.compare_digest(token.encode(), settings.registration_token.encode()):
-            raise HTTPException(401, "invalid registration credential")
+            raise HTTPException(401, "invalid registration credential", headers={"WWW-Authenticate": "Bearer"})
 
     @app.get("/healthz")
     def health():

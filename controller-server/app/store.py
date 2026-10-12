@@ -87,7 +87,7 @@ class Store:
     def _node_auth(self, db, node_id, token):
         node = db.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()
         if node is None or not hmac.compare_digest(node["token_hash"], self._hash(token)):
-            raise HTTPException(401, "invalid node credential")
+            raise HTTPException(401, "invalid node credential", headers={"WWW-Authenticate": "Bearer"})
         return node
 
     def _node_view(self, db, node):
