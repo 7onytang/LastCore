@@ -1,0 +1,394 @@
+#!/usr/bin/env python3
+"""Third-party license material collector for the node-agent desktop bundle.
+
+Two modes:
+
+- ``collect`` (run by build_bundle.sh BEFORE PyInstaller): derives the frozen
+  runtime third-party dependency closure of ``node-agent/requirements.txt``
+  from the BUILD venv's installed distribution metadata (importlib.metadata +
+  packaging markers), verifies every distribution ships license files inside
+  its ``.dist-info``, and writes ``build/licenses/manifest.json`` plus
+  ``build/licenses/third-party-notices.md``. The spec then transports each
+  distribution's dist-info (METADATA + license texts) into the bundle via
+  PyInstaller's ``copy_metadata()`` hook utility and adds the notices
+  document under ``_internal/licenses/``.
+
+- ``verify`` (run by build_bundle.sh AFTER PyInstaller): reads the PyInstaller
+  Analysis TOC files to enumerate the distributions actually frozen into the
+  bundle, cross-checks them against the manifest (any missing or extra frozen
+  third-party distribution fails the build), and checks that every license
+  file recorded in the manifest plus the generated notices document really
+  exist inside the bundle directory.
+
+certifi is MPL-2.0; the generated notices include the MPL-2.0 section 3.2
+source-availability statement pointing at the exact upstream source project.
+
+Exit codes: 0 ok; 1 license material missing; 2 frozen-content mismatch;
+3 bad usage/environment (missing manifest, unparseable TOC, ...).
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import importlib.metadata as importlib_metadata
+import json
+import platform
+import re
+import sys
+from pathlib import Path, PurePosixPath
+
+LICENSE_STEMS = {"LICENSE", "LICENCE", "COPYING", "NOTICE"}
+
+
+def canonical(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def find_dist(name: str):
+    try:
+        return importlib_metadata.distribution(name)
+    except importlib_metadata.PackageNotFoundError:
+        return None
+
+
+def license_label(meta) -> str:
+    expr = meta.get("License-Expression") or meta.get("License") or ""
+    if expr.strip():
+        return expr.strip()
+    classifiers = [
+        c.split("::")[-1].strip()
+        for c in (meta.get_all("Classifier") or [])
+        if c.startswith("License ::")
+    ]
+    return " / ".join(classifiers) if classifiers else "UNKNOWN"
+
+
+def project_url(meta) -> str:
+    entries = []
+    for raw in meta.get_all("Project-URL") or []:
+        label, _, url = str(raw).partition(",")
+        entries.append((label.strip().lower(), url.strip()))
+    for label, url in entries:
+        if label in {"source", "repository", "homepage", "home"}:
+            return url
+    for _label, url in entries:
+        return url
+    return (meta.get("Home-page") or "").strip()
+
+
+def license_files(dist) -> list[str]:
+    """Relative paths of license files inside the distribution's dist-info."""
+    found = []
+    for entry in dist.files or []:
+        parts = PurePosixPath(str(entry)).parts
+        if not parts or not parts[0].endswith(".dist-info"):
+            continue
+        stem = parts[-1].split(".")[0].upper()
+        if stem in LICENSE_STEMS:
+            found.append(str(entry))
+    return sorted(found)
+
+
+def runtime_closure(roots: list[str]) -> dict:
+    """{canonical_name: dist} for the runtime closure of requirements.txt."""
+    from packaging.markers import default_environment
+    from packaging.requirements import Requirement
+
+    env = default_environment()
+    env["extra"] = ""
+    closure: dict = {}
+    stack = list(roots)
+    while stack:
+        name = stack.pop()
+        if name in closure:
+            continue
+        dist = find_dist(name)
+        if dist is None:
+            print(f"collect_licenses: distribution {name!r} not installed in build venv",
+                  file=sys.stderr)
+            raise SystemExit(1)
+        closure[name] = dist
+        for req_string in dist.requires or []:
+            req = Requirement(req_string)
+            if req.marker and not req.marker.evaluate(env):
+                continue
+            if req.extras:
+                continue
+            stack.append(canonical(req.name))
+    return closure
+
+
+def root_requirements(requirements_path: Path) -> list[str]:
+    roots = []
+    for line in requirements_path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        req = line.split(";")[0].strip()
+        name = re.split(r"[=<>!~\[ ]", req, maxsplit=1)[0]
+        if name:
+            roots.append(canonical(name))
+    return roots
+
+
+def lock_names(lock_path: Path) -> set[str]:
+    names = set()
+    for line in lock_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        names.add(canonical(line.split("==")[0]))
+    return names
+
+
+def collect_distribution(dist, source_note: str | None) -> dict:
+    files = license_files(dist)
+    entry = {
+        "name": canonical(dist.metadata["Name"]),
+        "display_name": dist.metadata["Name"],
+        "version": dist.version,
+        "license": license_label(dist.metadata),
+        "license_files": files,
+        "project_url": project_url(dist.metadata),
+        "dist_info": f"{dist.metadata['Name'].replace('-', '_')}-{dist.version}.dist-info",
+        "source_availability": source_note,
+    }
+    return entry
+
+
+def cmd_collect(args) -> int:
+    requirements_path = Path(args.requirements).resolve()
+    lock_path = Path(args.lock).resolve()
+    output_dir = Path(args.output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    roots = root_requirements(requirements_path)
+    if not roots:
+        print("collect_licenses: no root requirements found", file=sys.stderr)
+        return 3
+    closure = runtime_closure(roots)
+
+    locked = lock_names(lock_path)
+    not_locked = sorted(set(closure) - locked)
+    if not_locked:
+        print("collect_licenses: runtime distributions missing from build lock: "
+              + ", ".join(not_locked), file=sys.stderr)
+        return 2
+
+    runtime_entries = []
+    for name in sorted(closure):
+        dist = closure[name]
+        files = license_files(dist)
+        if not files:
+            print(f"collect_licenses: {name} {dist.version} ships no license file "
+                  "in its dist-info; refusing to bundle without license material",
+                  file=sys.stderr)
+            return 1
+        note = None
+        if "MPL" in license_label(dist.metadata).upper():
+            url = project_url(dist.metadata) or "https://pypi.org/project/" + name
+            note = (
+                f"MPL-2.0 section 3.2 source availability: the Source Code Form of "
+                f"{dist.metadata['Name']} {dist.version} is available upstream at "
+                f"{url} (source repository; the tagged release corresponding to this "
+                f"version provides the exact source). The full MPL-2.0 license text "
+                f"ships inside this bundle at _internal/{files[0]}."
+            )
+        runtime_entries.append(collect_distribution(dist, note))
+
+    build_tool = find_dist("pyinstaller")
+    if build_tool is None:
+        print("collect_licenses: pyinstaller not installed in build venv", file=sys.stderr)
+        return 3
+    build_entry = collect_distribution(build_tool,
+                                       "The PyInstaller license is GPL-2.0-or-later "
+                                       "with a special exception that allows using "
+                                       "PyInstaller to build and distribute non-free "
+                                       "programs; its bootloader is embedded in both "
+                                       "bundled executables.")
+
+    manifest = {
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "python_version": platform.python_version(),
+        "platform": f"{platform.system()} {platform.mac_ver()[0]} {platform.machine()}",
+        "requirements_root": str(requirements_path),
+        "lock_file": str(lock_path),
+        "runtime_distributions": runtime_entries,
+        "build_tool": build_entry,
+        "python_runtime": {
+            "version": platform.python_version(),
+            "license": "PSF-2.0",
+            "url": "https://www.python.org/psf/license/",
+            "note": "libpython is embedded in the bundle by PyInstaller.",
+        },
+    }
+    manifest_path = output_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    lines = [
+        "# Third-party notices for the LastCore node-agent desktop bundle",
+        "",
+        f"Generated {manifest['generated_at']} by node-agent/desktop/collect_licenses.py",
+        f"in the build venv (Python {manifest['python_version']}, {manifest['platform']}).",
+        "Distribution versions match node-agent/desktop/requirements-build-lock.txt;",
+        "each distribution's full dist-info (METADATA + license files) is bundled under",
+        "`_internal/` by the spec via PyInstaller's copy_metadata().",
+        "",
+        "## Runtime dependencies (frozen into the bundle)",
+        "",
+    ]
+    for entry in runtime_entries:
+        lines.append(f"### {entry['display_name']} {entry['version']} — {entry['license']}")
+        lines.append("")
+        if entry["project_url"]:
+            lines.append(f"- Project / source: {entry['project_url']}")
+        for rel in entry["license_files"]:
+            lines.append(f"- License text in bundle: `_internal/{rel}`")
+        if entry["source_availability"]:
+            lines.append(f"- {entry['source_availability']}")
+        lines.append("")
+
+    lines += [
+        "## Build tooling embedded in the executables",
+        "",
+        f"### PyInstaller {build_entry['version']} — {build_entry['license']}",
+        "",
+        "- The PyInstaller bootloader is embedded in both bundled executables; the",
+        "  special exception in its license allows distributing non-free programs",
+        "  built with PyInstaller.",
+    ]
+    for rel in build_entry["license_files"]:
+        lines.append(f"- License text in bundle: `_internal/{rel}`")
+    lines += [
+        "",
+        "## Python runtime",
+        "",
+        f"- CPython {manifest['python_runtime']['version']} (libpython embedded): "
+        f"Python Software Foundation License Version 2 — {manifest['python_runtime']['url']}",
+        "",
+    ]
+    notices_path = output_dir / "third-party-notices.md"
+    notices_path.write_text("\n".join(lines), encoding="utf-8")
+
+    print(f"collect_licenses: runtime closure: "
+          + ", ".join(f"{e['name']}=={e['version']}" for e in runtime_entries))
+    print(f"collect_licenses: wrote {manifest_path}")
+    print(f"collect_licenses: wrote {notices_path}")
+    return 0
+
+
+MODULE_KINDS = {"PYMODULE", "PYSOURCE", "EXTENSION"}
+
+
+def _iter_module_names(obj):
+    """Yield module names from (name, path, kind) entries nested in a TOC."""
+    if (isinstance(obj, tuple) and len(obj) == 3
+            and all(isinstance(x, str) for x in obj) and obj[2] in MODULE_KINDS):
+        yield obj[0]
+        return
+    if isinstance(obj, (list, tuple)):
+        for item in obj:
+            yield from _iter_module_names(item)
+
+
+def frozen_distributions(workpath: Path) -> set[str]:
+    """Third-party distributions actually frozen, from the Analysis TOC files.
+
+    PyInstaller stores Analysis-*.toc as Python literal text; the format's
+    nesting has changed between versions, so walk it defensively instead of
+    relying on a fixed layout.
+    """
+    toc_paths = sorted(workpath.glob("*/Analysis-*.toc"))
+    if not toc_paths:
+        raise FileNotFoundError(f"no Analysis-*.toc under {workpath}")
+    import ast
+
+    top_modules: set[str] = set()
+    for toc in toc_paths:
+        data = ast.literal_eval(toc.read_text(encoding="utf-8", errors="strict"))
+        top_modules.update(_iter_module_names(data))
+    mapping = importlib_metadata.packages_distributions()
+    dists: set[str] = set()
+    for top in top_modules:
+        for dist_name in mapping.get(top, []):
+            dists.add(canonical(dist_name))
+    return dists
+
+
+def cmd_verify(args) -> int:
+    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    bundle = Path(args.bundle_dir).resolve()
+    internal = bundle / "_internal"
+    problems: list[str] = []
+    rc = 0
+
+    try:
+        frozen = frozen_distributions(Path(args.workpath).resolve())
+    except FileNotFoundError as exc:
+        print(f"collect_licenses verify: {exc}", file=sys.stderr)
+        return 3
+
+    expected = {e["name"] for e in manifest["runtime_distributions"]}
+    extra = sorted(frozen - expected)
+    missing = sorted(expected - frozen)
+    if extra:
+        problems.append(f"frozen but not in manifest: {', '.join(extra)}")
+    if missing:
+        problems.append(f"in manifest but not frozen: {', '.join(missing)}")
+
+    checks = []
+    for entry in manifest["runtime_distributions"]:
+        checks.append((entry["name"], entry["license_files"]))
+    checks.append(("pyinstaller", manifest["build_tool"]["license_files"]))
+    for name, rel_files in checks:
+        if not rel_files:
+            problems.append(f"{name}: manifest records no license files")
+            continue
+        for rel in rel_files:
+            target = internal / rel
+            if not target.is_file():
+                problems.append(f"{name}: license file missing in bundle: {target}")
+
+    notices = internal / "licenses" / "third-party-notices.md"
+    if not notices.is_file():
+        problems.append(f"notices document missing in bundle: {notices}")
+
+    result = {
+        "bundle_dir": str(bundle),
+        "frozen_third_party": sorted(frozen),
+        "manifest_runtime": sorted(expected),
+        "license_checks_failed": problems,
+        "passed": not problems,
+    }
+    print(json.dumps(result, indent=2))
+    if problems:
+        rc = 2 if (extra or missing) else 1
+    return rc
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="mode", required=True)
+
+    p_collect = sub.add_parser("collect", help="write manifest + notices (pre-build)")
+    p_collect.add_argument("--requirements", required=True,
+                           help="node-agent/requirements.txt")
+    p_collect.add_argument("--lock", required=True,
+                           help="desktop/requirements-build-lock.txt")
+    p_collect.add_argument("--output-dir", required=True,
+                           help="output directory (build/licenses)")
+    p_collect.set_defaults(func=cmd_collect)
+
+    p_verify = sub.add_parser("verify", help="verify frozen bundle (post-build)")
+    p_verify.add_argument("--manifest", required=True)
+    p_verify.add_argument("--bundle-dir", required=True)
+    p_verify.add_argument("--workpath", required=True,
+                          help="PyInstaller workpath (contains Analysis-*.toc)")
+    p_verify.set_defaults(func=cmd_verify)
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

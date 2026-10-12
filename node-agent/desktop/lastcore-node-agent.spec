@@ -17,12 +17,36 @@ Documented semantics preserved by this spec:
   signature is the linker's mandatory ad-hoc signature on Apple Silicon;
 - ``target_arch=None`` builds for the build host's native CPU (macOS CPU
   build); PyInstaller cannot cross-compile, so Windows bundling requires a
-  real Windows host and remains explicitly unverified.
+  real Windows host and remains explicitly unverified;
+- third-party license material travels with the bundle: the ``.dist-info``
+  (METADATA + license files) of every distribution the app ships is copied
+  via PyInstaller's ``copy_metadata()`` hook utility, and the generated
+  ``third-party-notices.md`` (see ``desktop/collect_licenses.py``) lands in
+  ``_internal/licenses/``.
 """
+import json
 import os
+
+from PyInstaller.utils.hooks import copy_metadata
 
 spec_dir = SPECPATH
 node_agent_root = os.path.abspath(os.path.join(spec_dir, os.pardir))
+
+# collect_licenses.py (run by build_bundle.sh before this spec) derives the
+# frozen runtime dependency closure from the build venv and records it here.
+licenses_manifest_path = os.path.join(node_agent_root, "build", "licenses",
+                                      "manifest.json")
+with open(licenses_manifest_path, encoding="utf-8") as _fh:
+    licenses_manifest = json.load(_fh)
+
+# dist-info directories of every shipped distribution (license transport).
+license_datas = []
+for _entry in licenses_manifest["runtime_distributions"]:
+    license_datas += copy_metadata(_entry["name"])
+license_datas += copy_metadata(licenses_manifest["build_tool"]["name"])
+# generated third-party notices document
+license_datas.append(
+    (os.path.join(node_agent_root, "build", "licenses"), "licenses"))
 
 # run_agent.py loads the package dynamically via runpy.run_module(), which
 # static analysis cannot see; every submodule must be listed here.
@@ -40,7 +64,7 @@ agent_analysis = Analysis(
     [os.path.join(spec_dir, "run_agent.py")],
     pathex=[node_agent_root, spec_dir],
     binaries=[],
-    datas=[],
+    datas=license_datas,
     hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},
