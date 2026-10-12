@@ -10,7 +10,17 @@ import httpx
 
 from .config import AgentConfig
 from .controller import ControllerClient, ControllerError
-from .credentials import NodeCredentials, load_credentials, load_settled, save_credentials, settle_journal
+from .credentials import (
+    NodeCredentials,
+    StateError,
+    clear_pending_report,
+    load_credentials,
+    load_pending_reports,
+    load_settled,
+    record_pending_report,
+    save_credentials,
+    settle_journal,
+)
 from .executor import ExecutionContext, ExecutionCancelled, Executor, load_executor
 
 LOG = logging.getLogger("lastcore.node_agent")
@@ -55,6 +65,7 @@ class NodeAgent:
         self._active: _ActiveRun | None = None
         self._active_lock = threading.Lock()
         self._settled: dict[str, str] = {}
+        self._pending: dict[str, tuple[str, str | None]] = {}
         self._heartbeat_lock = threading.Lock()
         self._last_heartbeat_ok = 0.0
         self._credential_error: str | None = None
@@ -78,11 +89,15 @@ class NodeAgent:
     def run_forever(self) -> None:
         joined = self._join_controller()
         self._settled = load_settled(self.config.state_dir)
+        self._pending = load_pending_reports(self.config.state_dir)
         heartbeat_thread = None
         if joined:
             heartbeat_thread = threading.Thread(target=self._heartbeat_loop,
                                                 name="lastcore-heartbeat", daemon=True)
             heartbeat_thread.start()
+            watchdog_thread = threading.Thread(target=self._watchdog_loop,
+                                               name="lastcore-watchdog", daemon=True)
+            watchdog_thread.start()
         try:
             while joined and not self.stop_event.is_set() and self._credential_error is None:
                 try:
@@ -96,6 +111,8 @@ class NodeAgent:
                 raise CredentialRejected(self._credential_error)
         finally:
             self.stop_event.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join(1.0)
             self._shutdown_execution()
 
     def shutdown(self) -> None:
@@ -134,6 +151,18 @@ class NodeAgent:
                 self.stats.heartbeats_failed += 1
                 LOG.warning("heartbeat failed: %s", exc)
 
+    def _watchdog_loop(self) -> None:
+        # Runs independently of assignments polling, so local deadline/heartbeat-TTL
+        # cancellation still fires while GET is blocked or failing (total outage).
+        while not self.stop_event.wait(self.config.watchdog_interval):
+            run = self._current_run()
+            if run is None:
+                continue
+            if self.clock() >= run.context.deadline:
+                run.context.request_cancel("deadline")
+            elif self._heartbeat_stalled():
+                run.context.request_cancel("heartbeat-stall")
+
     def _send_heartbeat(self) -> None:
         assert self.credentials is not None
         self._guarded(self.client.heartbeat)(
@@ -152,6 +181,7 @@ class NodeAgent:
         if run is not None:
             self._watch_active(rows, run)
         self._reap_finished()
+        self._flush_pending_reports()
         if self._current_run() is None:
             candidate = self._select_assignment(rows)
             if candidate is not None:
@@ -284,23 +314,45 @@ class NodeAgent:
         except OSError as exc:
             LOG.error("could not persist settle journal: %s", exc)
 
+    def _flush_pending_reports(self) -> None:
+        for assignment_id, (status, error) in sorted(self._pending.items()):
+            self._report_terminal(assignment_id, status, error)
+
+    def _persist_pending(self, assignment_id: str, status: str, error: str | None) -> None:
+        try:
+            record_pending_report(self.config.state_dir, assignment_id, status, error)
+        except (OSError, StateError) as exc:
+            LOG.error("could not persist pending terminal report for %s: %s", assignment_id, exc)
+
+    def _clear_pending(self, assignment_id: str) -> None:
+        self._pending.pop(assignment_id, None)
+        try:
+            clear_pending_report(self.config.state_dir, assignment_id)
+        except (OSError, StateError) as exc:
+            LOG.error("could not clear pending terminal report for %s: %s", assignment_id, exc)
+
     def _report_terminal(self, assignment_id: str, status: str, error: str | None) -> None:
         assert self.credentials is not None
+        self._pending[assignment_id] = (status, error)
+        self._persist_pending(assignment_id, status, error)
         for _ in range(max(1, self.config.report_retries)):
             try:
                 self._guarded(self.client.report)(
                     self.credentials.node_id, self.credentials.node_token,
                     assignment_id, status, error)
-                return
             except ControllerError as exc:
                 if exc.status_code in (404, 409):
                     LOG.info("terminal report for %s not accepted: %s", assignment_id, exc)
+                    self._clear_pending(assignment_id)
                     return
                 LOG.warning("terminal report for %s rejected: %s", assignment_id, exc)
             except httpx.HTTPError as exc:
                 LOG.warning("terminal report for %s unreachable: %s", assignment_id, exc)
+            else:
+                self._clear_pending(assignment_id)
+                return
             self.stop_event.wait(self.config.retry_backoff)
-        LOG.error("gave up reporting %s=%s after %s attempts",
+        LOG.error("gave up reporting %s=%s after %s attempts; kept pending for replay",
                   assignment_id, status, self.config.report_retries)
 
     def _shutdown_execution(self) -> None:
