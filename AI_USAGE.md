@@ -34,6 +34,10 @@ SmolLM2 权重保留 Apache-2.0 条款，llama.cpp 保留 MIT 条款；固定版
 
 CI 通过、源码一致、HTTP 200、人工 GUI 确认和真实模型执行分别证明不同事项。Android 主机 JNI 不替代真机，移动网页截图不替代 Android App 截图，历史回放不替代当前推理。Android 真机仍延期，其他边缘适配按实际源码/CI/设备证据标注。用户要求停止新增真实运行后，材料维护者只继续文档和静态一致性整理，不重派任务或新增模型/设备测试。
 
+## Windows/Linux 预览构建补充
+
+AI 辅助 Windows/Linux 有界线性客户端、恢复处理、目标平台构建与来源/许可整理；原生 build-only 来源为 `85a1e23295dd64380a81f263a58da2593f7e94d5`，见[构建运行 38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563)及[预览来源与下载](edge-client/README.md)。恢复修正经独立源码复核和 13 项纯 Mock 检查，Mock 不替代实际设备或任务结果；这不是材料维护者新运行的验收。预览包的固定源码、PE/ELF、文件摘要及完整许可证经过独立静态复核，Windows/Linux GUI、联网、用户设备和 relay 仍未验，未新增模型执行。完整源码补充包按当前最终 main 单独绑定来源，核心标签 `bf5b82e`、原生预览构建源 `85a1e232`、旧 r2 材料源 `ac5d630` 分别保留，不补造新的对话或完整历史。
+
 ## 对话记录与截图
 
 - `ai-logs/2026-10-13-submission.md`：材料聊天相关原文节选。
