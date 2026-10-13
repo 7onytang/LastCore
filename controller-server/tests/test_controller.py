@@ -230,3 +230,75 @@ def test_scheduler_randomized_coverage():
             assert count * size <= node_map[shard["node_id"]]["available_memory_mb"]
             cursor = shard["layer_end"]
         assert cursor == layers
+
+
+def reference_greedy_allocate(nodes, num_layers, layer_memory_mb, max_nodes):
+    """Pre-optimization O(num_layers * max_nodes) scan, kept as the oracle."""
+    candidates = sorted(
+        [n for n in nodes if n["available_memory_mb"] >= layer_memory_mb],
+        key=lambda n: (-n["compute_weight"], -n["available_memory_mb"], n["id"]),
+    )
+    selected = candidates[:max_nodes]
+    capacity = lambda n: n["available_memory_mb"] // layer_memory_mb
+    if sum(map(capacity, selected)) < num_layers:
+        selected = sorted(candidates, key=lambda n: (-capacity(n), -n["compute_weight"], n["id"]))[:max_nodes]
+    if sum(map(capacity, selected)) < num_layers:
+        raise ValueError("insufficient available node memory within max_nodes")
+    counts = [0] * len(selected)
+    for _ in range(num_layers):
+        index = min(
+            (i for i, n in enumerate(selected) if counts[i] < capacity(n)),
+            key=lambda i: ((counts[i] + 1) / selected[i]["compute_weight"], i),
+        )
+        counts[index] += 1
+    start = 0
+    result = []
+    for node, count in zip(selected, counts):
+        if count:
+            result.append({"node_id": node["id"], "endpoint": node["endpoint"],
+                           "layer_start": start, "layer_end": start + count})
+            start += count
+    return result
+
+
+def test_scheduler_heap_matches_reference_greedy():
+    rng = random.Random(1337)
+    checked = 0
+    for _ in range(300):
+        nodes = [{"id": f"n{i}-{rng.random():.6f}", "endpoint": f"http://n{i}",
+                  "available_memory_mb": rng.randint(1, 4096),
+                  "compute_weight": rng.choice([rng.uniform(0.01, 1000), float(rng.randint(1, 8)),
+                                                1 / rng.randint(1, 8)])}
+                 for i in range(rng.randint(1, 16))]
+        max_nodes = rng.randint(1, len(nodes))
+        size = rng.randint(1, 512)
+        capacity = sum(sorted([n["available_memory_mb"] // size for n in nodes], reverse=True)[:max_nodes])
+        layers = rng.randint(1, capacity) if capacity else 1
+        reference = reference_greedy_allocate(nodes, layers, size, max_nodes) \
+            if capacity else None
+        if capacity:
+            assert allocate(nodes, layers, size, max_nodes) == reference
+            checked += 1
+        else:
+            with pytest.raises(ValueError):
+                allocate(nodes, layers, size, max_nodes)
+    assert checked > 200
+
+
+def test_scheduler_extreme_input_100k_layers_x_128mb():
+    import time
+
+    nodes = [{"id": f"node-{i:03d}", "endpoint": f"http://node-{i:03d}:9000",
+              "available_memory_mb": 10_000_000, "compute_weight": 1.0 + (i % 7) * 0.5}
+             for i in range(128)]
+    started = time.perf_counter()
+    plan = allocate(nodes, 100_000, 128, 128)
+    elapsed = time.perf_counter() - started
+    assert len(plan) == 128
+    cursor = 0
+    for shard in plan:
+        assert shard["layer_start"] == cursor
+        assert 0 < shard["layer_end"] - shard["layer_start"] <= 10_000_000 // 128
+        cursor = shard["layer_end"]
+    assert cursor == 100_000
+    assert elapsed < 1.0, f"100k x 128 allocation took {elapsed:.3f}s (budget 1.0s)"
