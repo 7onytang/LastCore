@@ -1,0 +1,3 @@
+-r requirements-runtime.txt
+# Optional local resource sampler; BSD-3-Clause. UI reports Unavailable if absent.
+psutil==7.2.2

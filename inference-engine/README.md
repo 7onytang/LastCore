@@ -89,12 +89,12 @@ server.serve_forever(should_stop=lambda: stopping)
 
 ```bash
 cd inference-engine
-pytest -q            # 87 项，含两个独立进程的端到端联调
+pytest -q            # 包含真实 TCP 与两个独立进程的端到端联调
 cd ../communication
-pytest -q            # 40 项协议与通道测试
+pytest -q            # 协议与通道测试
 ```
 
-inference-engine 侧覆盖：配置校验、参数集按段划分且互不重叠、只加载本段权重、单机前向确定性、attention 因果性、1/2/3/4 段切分的链路结果与单机逐字节一致、多层链路的 role 与参数字节核算、assignment 解析（endpoint/区间/deadline/model 不符拒绝）、**assignment 的 epoch deadline 传到 StageServer 并真实生效**、TCP 上的 2/3/4 段链路、非末段缺下游拒绝、区间不接续拒绝、模型不符拒绝、cancel 事件与 CANCEL 帧传播、读超时、deadline、**deadline 到期后不再空转轮询**、**deadline 未到期时正常服务**、静默对端、空闲等待不被 kill、本段失败以 `ERROR` 回传、两个独立进程的端到端比对与三段链路比对。
+inference-engine 侧覆盖：配置校验、参数集按段划分且互不重叠、只加载本段权重、单机前向确定性、attention 因果性、1/2/3/4 段切分的链路结果与单机逐字节一致、多层链路的 role 与参数字节核算、assignment 解析（endpoint/区间/deadline/model 不符拒绝）、**assignment 的 epoch deadline 传到 StageServer 并真实生效**、TCP 上的 2/3/4 段链路、非末段缺下游拒绝、区间不接续拒绝、模型不符拒绝、**token 与 hidden 的 batch 上界（超界在输入类型转换及模型中间张量分配前拒绝、等于上界可正常推理）**、cancel 事件与 CANCEL 帧传播、读超时、deadline、**deadline 到期后不再空转轮询**、**deadline 未到期时正常服务**、静默对端、空闲等待不被 kill、本段失败以 `ERROR` 回传、两个独立进程的端到端比对与三段链路比对。
 
 ## 已知限制
 
@@ -103,3 +103,7 @@ inference-engine 侧覆盖：配置校验、参数集按段划分且互不重叠
 - 无重试、无迁移：任务失败即上抛，由 Controller 决定后续，与 PR #1 当前语义一致。
 - 不加密、不鉴权（见 `communication/PROTOCOL.md`）；云端部署仍需反向代理/TLS 与 node-agent 的凭据体系。
 - 未做 activation 量化与压缩（仅支持 float32/float16），带宽是后续优化项。
+
+## Batch admission bound
+
+`MAX_BATCH_SIZE=64` bounds both token and hidden-stage inputs, as well as the single-machine reference. Stage admission checks the existing ndarray shape before dtype conversion or model computation; exactly64 remains valid and preserves reference equality. This does not replace the communication layer's independent512MiB frame cap: the receive/decode buffer already exists before stage admission, so this is not a claim of zero allocation before network rejection. The guard is extracted from PR2 commit `0ff4de6d1dd4182f5e301eb8341fd0694ced6d23`; old handshake/open-question docs and other branches are not imported. No server schema, Swift client, deployed source or stable archive changes.
