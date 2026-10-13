@@ -17,6 +17,7 @@ def main(argv: list[str] | None = None) -> int:
                         version="LastCore desktop 0.1.0 (tiny CPU stage; explicit demo mode)")
     parser.add_argument("--env-file", required=True,
                         help="private KEY=VALUE configuration file; values are never shell-evaluated")
+    parser.add_argument("--ui-status-file",help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
         values = read_env_file(args.env_file)
@@ -36,7 +37,12 @@ def main(argv: list[str] | None = None) -> int:
         sys.path.insert(0, node_agent_dir)
     print("LastCore desktop: tiny CPU stage inference" if mode == "stage" else
           "LastCore desktop: demo simulation (no inference)", file=sys.stderr)
+    # Source UI supports stage only with the sibling modules and NumPy installed.
+    for sibling in ("inference-engine", "communication"):
+        sibling_path = Path(__file__).resolve().parents[2] / sibling
+        if sibling_path.is_dir(): sys.path.insert(0,str(sibling_path))
     sys.argv = ["lastcore-node-agent"]
+    if args.ui_status_file: sys.argv.extend(["--ui-status-file",args.ui_status_file])
     try:
         runpy.run_module("lastcore_node_agent", run_name="__main__")
     except ValueError:

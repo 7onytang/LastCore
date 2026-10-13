@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN" data-surface="desktop"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>LastCore · 本机节点</title><link rel="stylesheet" href="/ui/styles.css"><script src="/ui/console.js" defer></script></head>
+<body class="edge-body"><main class="edge-main">
+<header class="topbar"><a class="brand" href="#overview"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 23V9l7-4v14l-7 4Zm10 5V8l7-4v20l-7 4Zm10-5V9l6-3v14l-6 3Z" fill="currentColor"/></svg><span>LastCore</span></a><span id="connection" class="badge">本机节点</span></header>
+<section id="overview" class="workspace-heading"><h1>我的计算节点</h1><p class="muted">当前任务与设备状态。只操作这台设备。</p></section>
+<div class="edge-grid">
+<section id="desktop-panel" class="card"><div class="section-head"><h2>当前任务</h2><span id="task-status" class="badge">尚未获取</span></div>
+<dl class="edge-details"><div><dt>任务</dt><dd id="own-task-id">—</dd></div><div><dt>类型</dt><dd id="own-task-type">—</dd></div><div><dt>本机分片</dt><dd id="own-task-stage">—</dd></div><div><dt>最近结果</dt><dd id="own-task-result">尚未执行任务</dd></div></dl>
+<p id="own-task-report" class="muted edge-note">任务数据只来自本机执行进程。</p>
+</section>
+<section class="card"><div class="section-head"><h2>设备状态</h2><span id="process-status" class="badge">未启动</span></div>
+<dl class="edge-details"><div><dt>本机节点 ID</dt><dd id="own-node-id">—</dd></div><div><dt>Controller 连接</dt><dd id="own-connection">未启动</dd></div><div><dt>最近心跳 · 北京</dt><dd id="own-heartbeat">—</dd></div><div><dt>CPU 使用率</dt><dd id="own-cpu">Unavailable</dd></div><div><dt>可用内存 / 总内存</dt><dd id="own-memory">Unavailable</dd></div><div><dt>加速器信息</dt><dd id="own-accelerator">Unavailable · 未采集 GPU/NPU</dd></div></dl>
+<small id="own-sampled" class="muted">资源指标尚未采样</small>
+<div class="actions edge-actions"><button id="start-agent" class="primary" disabled>连接并启动</button><button id="stop-agent" class="secondary" hidden disabled>停止本机执行</button><button id="refresh-local" class="secondary" hidden>重试状态查询</button></div>
+<p id="desktop-result" role="status" class="muted">等待启动。运行模式由私有配置明确指定。</p>
+</section></div>
+<footer><span>仅本机状态</span><small>Asia/Shanghai · 预发布</small></footer>
+</main></body></html>
