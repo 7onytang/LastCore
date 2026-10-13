@@ -1,5 +1,8 @@
 # LastCore
 
+Windows/Linux local linear client work and its unverified platform/release
+boundaries are tracked in [edge-client/README.md](edge-client/README.md).
+
 Native Mac `LastCoreClient` targeted linear tasks, numeric result display,
 build/verification and the arm64 DMG are documented in
 [macos-client/README.md](macos-client/README.md). This is a small deterministic
