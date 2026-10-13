@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f6f7f2"><meta name="description" content="LastCore 最小核心预发布：云端 Controller，连接 macOS 与 Android 本地推理。查看真实 GGUF 任务历史回放、验收范围和下载。"><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23f6f7f2%22/%3E%3Cpath%20d%3D%22M3%2023V9l7-4v14l-7%204Zm10%205V8l7-4v20l-7%204Zm10-5V9l6-3v14l-6%203Z%22%20fill%3D%22%231d2e27%22/%3E%3C/svg%3E%0A" type="image/svg+xml"><title>LastCore — 把 AI 计算，交给你的设备。</title><style>
+:root{--paper:#f6f7f2;--white:#fff;--ink:#1d2e27;--muted:#67746c;--line:#dce3d8;--green:#d7ecb4;--leaf:#5a7846;--dark:#172a22;--radius:22px;--sans:Inter,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;--mono:"SFMono-Regular",Consolas,monospace}*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:28px}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}button{font:inherit;color:inherit;cursor:pointer}button,a{-webkit-tap-highlight-color:transparent}button:disabled{cursor:default;opacity:.4}a:focus-visible,button:focus-visible{outline:3px solid #73964d;outline-offset:5px}svg.icon{width:20px;height:20px;stroke-width:1.65;vertical-align:middle;flex-shrink:0}button{background:none;border:0}h1,h2,h3,p{margin:0}h1,h2,h3{line-height:1.15}h1{font-size:clamp(42px,5.05vw,73px);letter-spacing:-.055em;font-weight:650}h2{font-size:clamp(32px,3.6vw,47px);letter-spacing:-.045em;font-weight:620;line-height:1.22}h3{font-size:25px;font-weight:600;letter-spacing:-.04em}.wrap{max-width:1240px;margin-inline:auto;width:calc(100% - 112px)}.site-header{height:103px;display:flex;align-items:center;justify-content:space-between;gap:28px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:11px}.brand strong{font-size:27px;letter-spacing:-1.25px}.brand-mark{width:29px;height:32px}.brand-caption{font-family:var(--mono);font-size:8px;letter-spacing:1.3px;margin-left:17px;color:var(--muted);width:105px;line-height:1.55}nav{display:flex;gap:30px;font-size:13px;font-weight:550}nav a{transition:color .2s}nav a:hover{color:var(--leaf)}.nav-release{border:1px solid #d1dacb;border-radius:50px;display:flex;align-items:center;gap:18px;padding:10px 17px;font-size:12px;font-family:var(--mono)}.hero{padding-top:57px;padding-bottom:48px;display:grid;grid-template-columns:1fr 1.04fr;align-items:center;gap:18px;min-height:610px}.hero-copy{padding-bottom:9px;position:relative;z-index:2}.eyebrow{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;letter-spacing:1px;font-weight:500;margin-bottom:25px}.eyebrow-slash{color:#a3aea0;padding:0 8px}.status-dot{width:6px;height:6px;border-radius:50%;background:#66864d;display:inline-block;flex-shrink:0}.hero h1{white-space:nowrap}.word-accent{position:relative;display:inline-block}.accent-line{position:absolute;background:#d0e8b2;height:11px;bottom:2px;left:0;right:-6px;z-index:-1;transform:rotate(-1.5deg)}.hero-intro{color:var(--muted);font-size:15px;line-height:1.85;max-width:390px;margin-top:27px}.hero-actions{display:flex;gap:12px;align-items:center;margin-top:31px}.button{border-radius:7px;padding:14px 19px;min-height:49px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:13px;font-weight:550;transition:background .2s,transform .2s}.button:hover{transform:translateY(-2px)}.primary{background:var(--ink);color:#fff}.primary:hover{background:#34533f}.text-button{padding-inline:12px}.text-button:hover{background:#e9eee2}.outline{border:1px solid #b9c6b3;background:transparent}.outline:hover{background:#e7eddf}.hero-note{display:flex;align-items:center;gap:9px;font-size:10px;letter-spacing:.3px;color:#7b877c;margin-top:28px}.tiny-line{width:19px;height:1px;background:#849c73}.compute-visual{height:503px;position:relative;isolation:isolate;margin-left:-4px}.visual-grid{position:absolute;inset:0;background-image:linear-gradient(#dbe2d442 1px,transparent 1px),linear-gradient(90deg,#dbe2d442 1px,transparent 1px);background-size:27px 27px;mask-image:radial-gradient(ellipse,#000 15%,transparent 72%);z-index:-2}.compute-visual:before{content:"";position:absolute;inset:12% 0 9%;background:radial-gradient(ellipse at 50% 45%,#e0eace 0,transparent 71%);z-index:-3}.visual-topline{position:absolute;top:4px;left:37px;right:15px;display:flex;justify-content:space-between;font-family:var(--mono);color:#8b9785;letter-spacing:1.8px;font-size:8px}.routes{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.controller-device{position:absolute;top:64px;left:26%;width:276px;min-height:94px;border:1px solid #bacab1;background:#f8faf3;box-shadow:0 7px 18px #6f876712,0 1px 1px #fff inset;border-radius:13px;display:flex;align-items:center;gap:15px;padding:15px 18px}.controller-device strong{display:block;font-size:18px;letter-spacing:-.6px;line-height:1.6}.controller-icon{display:grid;place-items:center;width:42px;height:46px;background:#e3ecd5;border:1px solid #d3dfc3;border-radius:9px}.controller-icon .icon{width:24px;height:24px;color:#536b3d}.device-overline{display:block;font-family:var(--mono);font-size:7px;letter-spacing:.9px;color:#839076}.controller-address{font-family:var(--mono);font-size:8px;color:#687960;display:block;white-space:nowrap}.device-chip{position:absolute;bottom:-12px;right:19px;display:block;border:1px solid #bdcbaa;border-radius:4px;background:#e8f1dc;color:#677e52;font-size:8px;padding:2px 7px}.route-label{position:absolute;top:193px;background:var(--paper);padding:0 7px;color:#87977d;font-size:8px;letter-spacing:.5px}.route-first{left:15%}.route-second{right:9%;color:#95a18b}.mac-device{position:absolute;top:240px;left:7px;width:329px}.mac-screen{border:5px solid #273e31;border-bottom-width:8px;border-radius:11px 11px 6px 6px;background:#1a2b23;color:#edf6e1;box-shadow:0 12px 30px #49663822;height:213px;overflow:hidden}.window-bar{height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;color:#8ea68e;font-family:var(--mono);font-size:7px;border-bottom:1px solid #34483a}.window-bar .icon{width:12px;height:12px}.window-dots{display:flex;gap:4px}.window-dots b{height:4px;width:4px;border-radius:50%;background:#8a9b82;opacity:.6}.terminal-body{padding:18px 19px;font-family:var(--mono)}.terminal-comment{font-size:8px;color:#8fa189}.terminal-prompt{font-size:8px;margin-top:12px;color:#c3d0b7}.terminal-result{font-size:44px;font-weight:450;line-height:1.28;letter-spacing:-2px;margin-top:5px;color:#d7ebb3}.terminal-success{color:#bbd997;font-size:8px;display:flex;align-items:center;gap:5px;margin-top:15px}.terminal-success .icon{height:12px;width:12px}.terminal-success span{font-size:7px;color:#8f9e87}.mac-base{position:relative;background:#afbca8;height:11px;margin-inline:-13px;border-radius:2px 2px 70% 70%;box-shadow:0 5px 5px #81957317}.mac-base div{width:42px;height:4px;background:#82997b;border-radius:0 0 3px 3px;margin:auto}.device-caption{display:flex;justify-content:center;gap:10px;margin-top:19px;font-size:11px;letter-spacing:.4px;color:#607a54}.device-caption span{font-size:9px;color:#8a9682}.phone-device{position:absolute;top:246px;right:13px;width:129px;height:220px;background:#243c2d;border:4px solid #344e39;border-radius:19px;box-shadow:0 11px 23px #5c704422;transform:rotate(3deg)}.phone-screen{height:100%;border-radius:14px;background:#e8f0da;overflow:hidden;padding:21px 11px 10px}.phone-notch{position:absolute;z-index:1;top:5px;left:37px;width:49px;height:8px;border-radius:7px;background:#243c2d}.phone-mini-brand{font-size:8px;letter-spacing:-.3px;font-weight:650;color:#3b5230}.phone-screen strong{font-size:12px;letter-spacing:-.5px;display:block;line-height:1.4;margin-top:7px}.phone-art{height:35px;display:flex;align-items:flex-end;gap:4px;margin-top:12px}.phone-art span{display:block;width:16px;background:#a9c881;border-radius:1px;transform:skewY(-13deg)}.phone-art span:nth-child(1){height:25px}.phone-art span:nth-child(2){height:35px;background:#5f8247}.phone-art span:nth-child(3){height:22px;background:#bfd7a0}.phone-model{font-size:6px;color:#738763;margin-top:9px}.phone-model-line{background:#d4e1c1;height:2px;width:73%;margin-top:5px}.phone-action{border:1px solid #c1d2a9;background:#d5e6bd;font-size:7px;text-align:center;padding:5px;margin-top:10px;border-radius:3px;color:#4f6b3c}.phone-footnote{display:block;font-size:5px;text-align:center;margin-top:7px;color:#8ea47b}.phone-device .device-caption{width:150px;margin-left:-15px;margin-top:15px;gap:5px;font-size:10px;white-space:nowrap;transform:rotate(-3deg)}.phone-device .device-caption span{font-size:7px}.visual-caption{position:absolute;bottom:-3px;left:40px;right:0;font-size:8px;color:#829378;display:flex;align-items:center;gap:9px}.visual-caption span:last-child{margin-left:auto;margin-right:9px;letter-spacing:.5px}.caption-cross{font-size:16px}.proof-strip{border-block:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr);padding:27px 0;gap:30px}.proof-strip>div{display:flex;gap:21px;align-items:flex-start}.proof-number{color:#899a7c;font-family:var(--mono);font-size:10px;padding-top:4px}.proof-strip strong{font-size:14px;font-weight:550;letter-spacing:-.2px}.proof-strip p{font-size:11px;color:var(--muted);margin-top:4px}.section-space{padding-top:100px;padding-bottom:100px}.section-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:36px;margin-bottom:47px}.section-heading>.eyebrow,.section-heading .eyebrow{margin-bottom:20px;font-size:10px}.section-heading>p{font-size:13px;line-height:1.9;color:var(--muted);max-width:310px;padding-bottom:4px}.muted{color:#839077}.flow-path{display:grid;grid-template-columns:1fr 44px 1fr 44px 1fr;align-items:center}.flow-path article{padding:0 18px 0 0}.step-top{display:flex;align-items:center;gap:23px;margin-bottom:27px;font-family:var(--mono);font-size:9px;letter-spacing:1px;color:#86957b}.step-top .icon{width:23px;height:23px;color:#6a8059}.flow-path h3{font-size:22px;letter-spacing:-.6px}.flow-path p{font-size:12px;line-height:1.9;color:var(--muted);margin-top:15px}.flow-tag{display:inline-block;margin-top:23px;font-size:9px;letter-spacing:.5px;color:#72845f;border:1px solid #d7dfce;border-radius:30px;padding:4px 9px}.flow-arrow{color:#a9b49e;padding-top:24px;justify-self:start}.scope-note{font-size:10px;color:#89937e;border-top:1px solid var(--line);padding-top:19px;margin-top:40px}.replay-section{background:#eef1e7;padding-top:81px;padding-bottom:74px}.replay-shell{background:var(--dark);color:#eef4e4;border-radius:var(--radius);overflow:hidden;box-shadow:0 18px 60px #536d4020}.replay-top{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:23px 28px;border-bottom:1px solid #31483a}.history-label{display:flex;align-items:center;gap:8px;font-size:12px}.history-label .status-dot{background:#b0ce8e}.history-label>span:last-child{color:#859e88;font-size:10px;border-left:1px solid #446047;margin-left:6px;padding-left:13px}.replay-tabs{display:flex;gap:4px;padding:4px;background:#263e30;border-radius:7px}.replay-tabs button{color:#97ac90;padding:8px 17px;font-size:11px;border-radius:5px}.replay-tabs button[aria-selected=true]{background:#e2edc9;color:#283e2c;box-shadow:0 1px 3px #0002}.replay-layout{display:grid;grid-template-columns:255px 1fr;min-height:440px}.replay-sidebar{padding:30px 27px;border-right:1px solid #31483a}.small-label{font-family:var(--mono);font-size:8px;letter-spacing:1px;color:#869d80}.replay-steps{list-style:none;padding:0;margin:22px 0 28px}.replay-steps li{position:relative}.replay-steps li:not(:last-child):before{content:"";position:absolute;left:14px;top:36px;bottom:-3px;background:#3c5540;width:1px}.replay-steps button{padding:12px 0;display:flex;align-items:center;gap:13px;text-align:left;width:100%;font-size:11px;color:#8caa87}.step-circle{display:grid;place-items:center;width:28px;height:28px;flex-shrink:0;border-radius:50%;border:1px solid #3b5740;font-family:var(--mono);font-size:9px;background:var(--dark)}.replay-steps button.active{color:#dfedc6}.replay-steps button.active .step-circle{background:#d5e9b3;color:#32472e;border-color:#d5e9b3}.replay-steps small{display:block;font-family:var(--mono);font-size:7px;color:#6d8b6b;letter-spacing:.1px;margin-top:3px}.play-controls{display:flex;gap:7px}.play-button{display:flex;align-items:center;gap:7px;font-size:10px;color:#dcE8C8;border:1px solid #567447;border-radius:5px;padding:8px 12px;min-height:34px}.play-button:hover{background:#294333}.play-button .icon{width:12px;height:12px}.reset-button{border:1px solid #3d5a3e;border-radius:5px;width:34px;min-height:34px;color:#9bb38b}.reset-button .icon{width:13px;height:13px}.play-note{display:block;font-size:8px;color:#73916f;margin-top:11px}.replay-output{padding:29px 43px 31px;display:flex;flex-direction:column}.output-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;font-family:var(--mono);font-size:9px;letter-spacing:1px;color:#91a886}.result-state{letter-spacing:.3px;border:1px solid #4c6741;color:#bcd593;border-radius:30px;padding:3px 10px;font-size:8px}.prompt-label,.result-label{font-size:9px;color:#78946f;letter-spacing:.8px}.replay-prompt{font-family:var(--mono);font-size:13px;color:#c9d7bc;margin-top:10px;line-height:1.65}.result-label{margin-top:28px;color:#97b285}.result-word{font-size:clamp(39px,5.9vw,78px);color:#d2e9a8;line-height:1.1;margin-top:9px;letter-spacing:-3.5px;font-weight:450;min-height:86px}.result-quote{font-family:var(--mono);font-size:12px;color:#a8be98;margin-top:11px;min-height:20px;overflow-wrap:anywhere}.receipt-line{display:flex;justify-content:space-between;gap:15px;margin-top:31px;padding-top:16px;border-top:1px solid #36503a;font-family:var(--mono);font-size:9px;color:#92b176}.receipt-line span:first-child{display:flex;gap:7px;align-items:center}.receipt-line b{font-weight:400}.receipt-line .icon{width:13px;height:13px}.replay-stage-note{font-size:10px;color:#6f946b;margin-top:12px;min-height:17px;line-height:1.6}.replay-footer{border-top:1px solid #31483a;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 27px;color:#7f9b79;font-size:8px;font-family:var(--mono);flex-wrap:wrap}.replay-footer a{display:flex;align-items:center;gap:6px;color:#aac29b}.replay-footer .icon{width:12px;height:12px}.evidence-footnote{display:flex;justify-content:space-between;gap:25px;padding-top:22px;color:#708062;font-size:10px}.evidence-footnote>span{display:flex;align-items:flex-start;gap:7px;white-space:nowrap}.evidence-footnote .icon{width:15px;height:15px}.evidence-footnote p{max-width:475px;font-size:9px;line-height:1.8;color:#89967e}.download-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px}.download-card{background:#fbfcf8;border:1px solid #d9e2d0;border-radius:15px;padding:28px 28px 26px}.download-platform{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:9px;letter-spacing:.8px;color:#799067}.download-platform .icon{height:20px;width:20px}.preview-tag{margin-left:auto;border:1px solid #d7e1c9;background:#f0f4e8;padding:3px 8px;border-radius:4px;font-family:var(--sans);font-size:8px;letter-spacing:0}.download-card h3{margin-top:28px;font-size:27px;line-height:1.3}.download-card p{font-size:12px;color:var(--muted);line-height:1.8;max-width:320px;min-height:44px;margin-top:16px}.download-cta{margin-top:26px;justify-content:flex-start;font-size:12px;padding:12px 17px;min-height:45px}.download-cta>.icon:last-child{margin-left:18px;width:15px}.download-detail{font-size:9px;letter-spacing:.2px;color:#829475;margin-top:13px}.boundary-note{font-size:9px;line-height:1.9;color:#8a9880;border-top:1px solid #e0e6d7;margin-top:24px;padding-top:17px;min-height:48px;max-width:370px}.resource-row{display:flex;justify-content:space-between;gap:20px;padding:29px 0 0}.resource-row a{display:flex;align-items:center;gap:8px;font-size:11px;color:#657b53}.resource-row .icon{width:15px;height:15px}.resource-row .icon:last-child{width:11px;margin-left:18px}.closing{border-top:1px solid var(--line);padding-block:35px;display:flex;align-items:center;justify-content:space-between;gap:30px}.closing-brand{font-size:20px;letter-spacing:-.8px;font-weight:600}.closing-brand span{display:block;font-size:10px;letter-spacing:0;color:#8a9780;font-weight:400;margin-top:5px}.service-check{display:flex;flex-direction:column;align-items:flex-end;gap:7px}.service-check button{font-size:10px;border:1px solid #d8e2ce;border-radius:5px;padding:8px 10px;display:flex;align-items:center;gap:7px;color:#728563}.service-check .icon{width:12px;height:12px}.service-check span{font-size:8px;color:#8b9882;max-width:300px;text-align:right}.site-footer{display:flex;justify-content:space-between;gap:20px;font-family:var(--mono);font-size:8px;color:#98a18e;padding-bottom:25px;padding-top:12px}.site-footer a{display:flex;gap:5px;align-items:center}.site-footer .icon{width:11px;height:11px}.skip-link{position:fixed;top:-100px;left:10px;background:#173124;color:#fff;padding:10px 15px;z-index:100}.skip-link:focus{top:10px}section[id]{scroll-margin-top:35px}::selection{background:#d1e7b6;color:#1a3123}
+@media(min-width:1500px){.hero{gap:35px}.hero h1{font-size:77px}.compute-visual{height:540px}.phone-device{right:19px}.controller-device{top:72px}.mac-device{top:270px}.phone-device{top:275px}.route-label{top:212px}}
+@media(max-width:1150px){.wrap{width:calc(100% - 70px)}.brand-caption{display:none}.hero{gap:5px;min-height:550px}.hero h1{font-size:55px}.compute-visual{height:465px;transform:scale(.88);transform-origin:right center;margin-left:-65px;width:540px;max-width:none}.hero-intro{max-width:330px;font-size:13px}.hero-actions{gap:3px}.button{font-size:11px;padding-inline:15px}.terminal-result{font-size:44px}.section-space{padding-block:78px}.replay-layout{grid-template-columns:230px 1fr}.replay-output{padding:28px}.resource-row .icon:last-child{margin-left:0}}
+@media(max-width:900px){.wrap{width:calc(100% - 48px)}.site-header{height:85px;gap:12px}nav{gap:19px;font-size:11px}.nav-release{font-size:9px;gap:8px;padding:9px 11px}.hero{grid-template-columns:1fr;padding-top:49px;gap:12px}.hero-copy{max-width:650px}.hero h1{font-size:64px}.hero-intro{max-width:520px;font-size:14px;margin-top:22px}.hero-actions{margin-top:23px;gap:8px}.hero-note{margin-top:20px}.compute-visual{transform:none;height:484px;width:600px;max-width:100%;margin-inline:auto}.controller-device{left:27%;top:59px}.mac-device{left:27px}.phone-device{right:37px}.visual-topline{top:18px}.visual-caption{left:45px;right:31px}.route-label{top:193px}.proof-strip{gap:19px;padding-block:23px}.proof-strip>div{gap:10px}.proof-strip strong{font-size:11px}.proof-strip p{font-size:9px}.proof-number{font-size:8px}.section-heading{gap:26px}.section-heading>p{font-size:11px}.section-heading h2{font-size:37px}.flow-path{grid-template-columns:1fr 22px 1fr 22px 1fr}.step-top{gap:10px;font-size:7px}.flow-path h3{font-size:19px}.flow-path p{font-size:10px}.flow-path article{padding-right:7px}.replay-top{padding-inline:19px;gap:12px}.history-label{font-size:10px}.history-label>span:last-child{font-size:8px;padding-left:8px;margin-left:1px}.replay-tabs button{font-size:9px;padding:8px 11px}.replay-layout{grid-template-columns:200px 1fr}.replay-sidebar{padding-inline:21px}.replay-steps button{font-size:10px}.replay-steps small{font-size:6px}.replay-output{padding:27px 24px}.result-word{font-size:58px;min-height:65px}.receipt-line{font-size:7px;gap:6px}.evidence-footnote{display:block}.evidence-footnote p{max-width:none;margin-top:9px}.download-card{padding-inline:22px}.download-card h3{font-size:24px}.download-card p{font-size:11px}.resource-row a{font-size:9px}.resource-row .icon{width:12px}}
+@media(max-width:600px){.wrap{width:calc(100% - 38px)}.site-header{height:73px;gap:9px}.brand{gap:7px}.brand strong{font-size:24px}.brand-mark{width:23px;height:25px}nav{display:none}.nav-release{font-size:8px;padding:7px 9px;gap:8px}.nav-release .icon{height:12px;width:12px}.hero{padding-top:36px;padding-bottom:26px;gap:13px;min-height:0}.hero h1{font-size:clamp(38px,10.7vw,50px);line-height:1.24;letter-spacing:-.055em}.eyebrow{font-size:8px;letter-spacing:.6px;margin-bottom:20px;gap:6px}.eyebrow-slash{padding-inline:5px}.hero-intro{font-size:12px;max-width:330px;line-height:1.85;margin-top:19px}.hero-actions{margin-top:22px;gap:2px}.button{min-height:42px;padding:11px 13px;gap:7px;font-size:10px}.button .icon{width:15px;height:15px}.hero-note{font-size:8px;margin-top:18px;gap:7px}.accent-line{height:7px;bottom:4px}.compute-visual{width:100%;height:337px;transform:none;margin:0}.visual-grid{background-size:21px 21px}.visual-topline{top:6px;left:9px;right:4px;font-size:6px;letter-spacing:1.2px}.controller-device{width:206px;min-height:75px;left:50%;transform:translateX(-50%);top:34px;padding:11px 12px;gap:11px;border-radius:10px}.controller-icon{width:31px;height:36px;border-radius:6px}.controller-icon .icon{width:19px;height:19px}.controller-device strong{font-size:14px}.device-overline{font-size:5px}.controller-address{font-size:6px}.device-chip{font-size:6px;bottom:-10px;right:13px}.routes{height:355px;top:-5px}.route-label{font-size:6px;top:137px;padding-inline:4px}.route-first{left:7%}.route-second{right:4%}.mac-device{top:180px;left:0;width:220px}.mac-screen{border-width:4px;border-bottom-width:6px;border-radius:8px 8px 4px 4px;height:139px}.window-bar{height:20px;padding-inline:7px;font-size:5px}.window-bar .icon{width:9px;height:9px}.window-dots{gap:3px}.window-dots b{width:3px;height:3px}.terminal-body{padding:10px 11px}.terminal-comment{font-size:5px}.terminal-prompt{font-size:5px;margin-top:8px}.terminal-result{font-size:30px;margin-top:3px;letter-spacing:-1px}.terminal-success{font-size:5px;margin-top:8px;gap:3px}.terminal-success .icon{width:8px;height:8px}.terminal-success span{font-size:5px}.mac-base{height:7px;margin-inline:-5px}.mac-base div{width:28px;height:3px}.device-caption{font-size:8px;gap:7px;margin-top:12px}.device-caption span{font-size:6px}.phone-device{width:90px;height:150px;top:178px;right:2px;border-width:3px;border-radius:13px}.phone-screen{border-radius:9px;padding:12px 7px 7px}.phone-notch{width:34px;height:5px;top:3px;left:25px}.phone-mini-brand{font-size:6px}.phone-art{height:21px;gap:3px;margin-top:6px}.phone-art span{width:11px}.phone-art span:nth-child(1){height:15px}.phone-art span:nth-child(2){height:22px}.phone-art span:nth-child(3){height:14px}.phone-screen strong{font-size:8px;line-height:1.35;margin-top:6px}.phone-model{font-size:5px;margin-top:5px}.phone-model-line{margin-top:3px;height:1px}.phone-action{font-size:5px;padding:3px;margin-top:6px}.phone-footnote{font-size:4px;margin-top:4px}.phone-device .device-caption{width:105px;margin-left:-10px;margin-top:10px;font-size:7px;gap:4px}.phone-device .device-caption span{font-size:4.5px}.visual-caption{bottom:-25px;left:6px;right:0;font-size:6px;gap:5px}.visual-caption span:last-child{margin-right:0}.caption-cross{font-size:12px}.proof-strip{margin-top:26px;grid-template-columns:1fr;gap:14px;padding:23px 0}.proof-strip>div{gap:15px;align-items:center}.proof-number{font-size:9px}.proof-strip strong{font-size:12px}.proof-strip p{font-size:9px;display:inline;margin-left:8px}.section-space{padding-block:59px}.section-heading{display:block;margin-bottom:33px}.section-heading .eyebrow{font-size:8px;margin-bottom:17px}.section-heading h2{font-size:32px;line-height:1.25}.section-heading>p{font-size:11px;margin-top:18px;line-height:1.8;max-width:290px}.flow-path{grid-template-columns:1fr;gap:0}.flow-path article{padding:0 0 23px;border-bottom:1px solid var(--line)}.step-top{margin-bottom:14px;font-size:8px;justify-content:space-between}.step-top .icon{height:19px;width:19px}.flow-path h3{font-size:21px}.flow-path p{font-size:11px;margin-top:11px}.flow-tag{margin-top:12px;font-size:8px}.flow-arrow{padding-block:14px;transform:rotate(90deg);justify-self:center}.flow-arrow .icon{width:17px;height:17px}.scope-note{border:0;padding-top:0;margin-top:19px;font-size:9px;line-height:1.8}.replay-section{padding-top:51px;padding-bottom:46px}.replay-shell{border-radius:14px}.replay-top{display:block;padding:18px 16px 13px}.history-label{font-size:10px}.replay-tabs{margin-top:14px;justify-content:space-between}.replay-tabs button{font-size:10px;padding:8px 15px;flex:1}.replay-layout{display:flex;flex-direction:column;min-height:0}.replay-sidebar{padding:17px 17px 13px;border-right:0;border-bottom:1px solid #31483a}.small-label{font-size:7px}.replay-steps{display:grid;grid-template-columns:repeat(4,1fr);margin:10px 0 15px;gap:5px}.replay-steps button{display:block;padding:4px 0;font-size:8px;text-align:left;line-height:1.5}.step-circle{width:22px;height:22px;margin-bottom:8px;font-size:8px}.replay-steps small{font-size:5px;overflow-wrap:anywhere;line-height:1.4;max-width:55px;letter-spacing:-.1px}.replay-steps li:not(:last-child):before{top:15px;bottom:auto;left:26px;width:calc(100% - 17px);height:1px}.play-controls{display:inline-flex;vertical-align:middle}.play-button{padding:7px 9px;font-size:9px;min-height:29px}.reset-button{min-height:29px;width:29px}.play-note{display:inline-block;vertical-align:middle;margin:0 0 0 9px;max-width:137px;font-size:7px;line-height:1.7}.replay-output{padding:23px 19px 22px}.output-top{font-size:7px;margin-bottom:21px;gap:9px}.result-state{font-size:6px;padding:3px 7px}.prompt-label,.result-label{font-size:8px}.replay-prompt{font-size:10px;margin-top:9px;line-height:1.75}.result-label{margin-top:23px}.result-word{font-size:50px;line-height:1.18;margin-top:7px;letter-spacing:-2px;min-height:60px}.result-quote{font-size:9px;line-height:1.8;margin-top:6px}.receipt-line{margin-top:24px;padding-top:13px;display:block;font-size:7px}.receipt-line>span:last-child{display:block;margin:8px 0 0 19px}.receipt-line .icon{height:12px;width:12px}.replay-stage-note{font-size:8px;line-height:1.8;margin-top:10px;min-height:27px}.replay-footer{display:grid;grid-template-columns:1fr auto;padding:12px 17px;gap:8px;font-size:6px}.replay-footer span:last-child{grid-column:1/-1;font-size:6px;overflow-wrap:anywhere}.replay-footer a{font-size:7px}.evidence-footnote{font-size:8px;padding-top:16px}.evidence-footnote p{font-size:8px;line-height:1.85;margin-top:10px}.evidence-footnote .icon{width:12px;height:12px}.download-grid{grid-template-columns:1fr;gap:17px}.download-card{padding:23px 23px 21px}.download-platform{font-size:8px}.download-card h3{font-size:25px;margin-top:24px}.download-card p{font-size:11px;margin-top:13px;min-height:0}.download-cta{font-size:11px;margin-top:21px;min-height:44px;padding:12px 16px}.download-detail{font-size:8px;margin-top:12px}.boundary-note{font-size:8px;margin-top:20px;padding-top:14px;min-height:0}.resource-row{display:grid;grid-template-columns:1fr;gap:15px;padding-top:26px}.resource-row a{font-size:11px;padding-bottom:13px;border-bottom:1px solid var(--line)}.resource-row .icon:last-child{margin-left:auto}.closing{padding-block:29px;align-items:flex-start;gap:16px}.closing-brand{font-size:17px}.closing-brand span{font-size:8px;line-height:1.7;max-width:148px}.service-check{max-width:155px}.service-check button{font-size:8px;padding:6px 8px;min-height:29px}.service-check span{font-size:6px;line-height:1.8}.site-footer{display:grid;grid-template-columns:1fr auto;font-size:6px;padding-bottom:20px;gap:7px}.site-footer>span:nth-child(2){grid-column:1/-1;grid-row:2}.site-footer a{grid-column:2;grid-row:1}.site-footer .icon{width:9px;height:9px}}
+@media(max-width:365px){.wrap{width:calc(100% - 32px)}.proof-strip p{display:block;margin:3px 0 0}.mac-device{width:202px}.phone-device{right:0;width:84px;height:146px}.compute-visual{height:335px}.hero h1{font-size:37px}.replay-tabs button{padding-inline:10px}.play-note{max-width:117px}.phone-device .device-caption{width:100px}.download-platform{font-size:7px}.preview-tag{font-size:7px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.button:hover{transform:none}}
+@media print{body{background:#fff}.site-header{height:65px}.hero{padding-top:30px}.wrap{width:92%}.section-space{padding-block:45px}.replay-shell{box-shadow:none;print-color-adjust:exact;-webkit-print-color-adjust:exact}.hero,.flow-section,.download-card,.replay-shell{break-inside:avoid}.play-controls,.service-check,.nav-release{display:none}a:after{content:none}.site-footer{border-top:1px solid #ddd}}
+
+.model-link{display:inline-block;color:#536e3f;text-decoration:underline;text-underline-offset:3px;margin-left:6px}
+/* Separate figure captions from device labels at every breakpoint. */
+.compute-visual{height:550px}.visual-caption{top:528px;bottom:auto;left:37px;font-size:9px}.device-caption{font-size:12px}.device-caption span{font-size:10px}.replay-footer{font-size:9px}
+@media(min-width:1500px){.compute-visual{height:575px}.visual-caption{top:554px}}
+@media(max-width:1150px){.compute-visual{height:550px}.visual-caption{top:528px}}
+@media(max-width:900px){.compute-visual{height:535px}.visual-caption{top:507px;left:35px;right:25px;font-size:8px}}
+@media(max-width:600px){.compute-visual{height:381px}.visual-caption{top:362px;left:6px;right:0;font-size:7px;line-height:1.5}.device-caption{font-size:9px}.device-caption span{font-size:7px}.phone-device .device-caption{font-size:8px}.phone-device .device-caption span{font-size:5px}.replay-footer{font-size:7px}.replay-footer span:last-child{font-size:7px}}
+.verification-matrix{margin-top:27px;border-top:1px solid #d8e1cc}.verification-matrix article{display:grid;grid-template-columns:1fr 1.55fr auto;align-items:center;gap:24px;padding:23px 0;border-bottom:1px solid #d8e1cc}.verification-title span{display:block;font-size:7px;font-family:var(--mono);letter-spacing:1px;color:#8c9c7e}.verification-title strong{display:block;font-size:13px;font-weight:550;margin-top:6px}.verification-matrix p{font-size:10px;line-height:1.9;color:#839375}.verification-matrix a{font-size:9px;font-family:var(--mono);color:#657f4e;white-space:nowrap}@media(max-width:900px){.verification-matrix article{gap:16px;grid-template-columns:1fr 1.45fr}.verification-matrix a{grid-column:2;justify-self:start}.verification-matrix p{font-size:9px}.verification-title strong{font-size:12px}}@media(max-width:600px){.verification-matrix{margin-top:22px}.verification-matrix article{grid-template-columns:1fr;padding-block:20px;gap:12px}.verification-title strong{font-size:13px}.verification-matrix p{font-size:10px}.verification-matrix a{grid-column:1;font-size:8px}}
+
+</style></head>
+<body><a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header wrap"><a class="brand" href="#overview" aria-label="LastCore 首页"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 23V9l7-4v14l-7 4Zm10 5V8l7-4v20l-7 4Zm10-5V9l6-3v14l-6 3Z" fill="currentColor"/></svg><strong>LastCore</strong><span class="brand-caption">LOCAL COMPUTE. REAL RESULTS.</span></a><nav aria-label="主导航"><a href="#flow">工作方式</a><a href="#replay">实测回放</a><a href="#download">开始体验</a></nav><a class="nav-release" href="https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1" target="_blank" rel="noopener">v0.1.0-alpha.1 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></header>
+<main id="main">
+<section class="hero wrap" id="overview"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> 最小核心预发布 <span class="eyebrow-slash">/</span> OPEN SOURCE</div><h1>把 AI 计算，<br>交给<span class="word-accent">你的设备<span class="accent-line"></span></span>。</h1><p class="hero-intro">一台云端 Controller，连接 macOS 与 Android 的本地推理能力。让任务流转可见，让每次停止有据可查。</p><div class="hero-actions"><a class="button primary" href="#replay"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+</svg>
+ 看一遍真实任务</a><a class="button text-button" href="#download">获取预发布 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></div><div class="hero-note"><span class="tiny-line"></span> 固定 SmolLM2 GGUF · 设备侧 CPU 整模型执行</div></div>
+<div class="compute-visual" role="img" aria-label="架构示意：云端Controller把整模型任务交给Mac或Android设备，设备生成结果并回传。Android画面是示意，真机验收暂跳过。"><div class="visual-grid"></div><div class="visual-topline"><span>COMPUTE TOPOLOGY</span><span>01 — 03</span></div><svg class="routes" viewBox="0 0 600 510" aria-hidden="true"><path d="M304 139V216H169V287M304 216H520V286" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="4 5"/><path class="route-highlight" d="M304 139V216H169V287" fill="none" stroke="#5a8852" stroke-width="1.8"/><circle cx="304" cy="216" r="5" fill="#e8ecd9" stroke="#5a8852"/><circle cx="169" cy="284" r="4" fill="#5a8852"/><circle cx="520" cy="284" r="4" fill="#a7b8a6"/></svg>
+<div class="controller-device"><div class="controller-icon"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+</div><div><span class="device-overline">CLOUD / COORDINATOR</span><strong>Controller</strong><span class="controller-address">8.134.161.123 · HTTPS</span></div><span class="device-chip">调度与租约</span></div>
+<div class="route-label route-first">领取 → 执行 → 回传</div><div class="route-label route-second">同一任务协议</div>
+<div class="mac-device"><div class="mac-screen"><div class="window-bar"><span class="window-dots"><b></b><b></b><b></b></span><span>lastcore / whole-model</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 19h8" />
+  <path d="m4 17 6-6-6-6" />
+</svg>
+</div><div class="terminal-body"><div class="terminal-comment"># 历史结果摘要 · macOS CLI</div><div class="terminal-prompt">What is the capital of France?</div><div class="terminal-result">Paris</div><div class="terminal-success"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>
+ succeeded <span>· stop acknowledged</span></div></div></div><div class="mac-base"><div></div></div><div class="device-caption">macOS <span>真实整模型 CLI</span></div></div>
+<div class="phone-device"><div class="phone-notch"></div><div class="phone-screen"><span class="phone-mini-brand">LastCore</span><div class="phone-art"><span></span><span></span><span></span></div><strong>设备上的<br>原生推理</strong><div class="phone-model">SmolLM2 135M</div><div class="phone-model-line"></div><div class="phone-action">前台 Worker</div><span class="phone-footnote">界面示意</span></div><div class="device-caption">Android <span>真机验收暂跳过</span></div></div>
+<div class="visual-caption"><span class="caption-cross">+</span> 设备与轨迹为架构示意 <span>并非实时状态</span></div></div></section>
+<section class="proof-strip wrap" aria-label="核心能力"><div><span class="proof-number">01</span><div><strong>真实模型，真实结果</strong><p>固定 GGUF 与原生 CPU 后端</p></div></div><div><span class="proof-number">02</span><div><strong>可信连接，明确边界</strong><p>公网 HTTPS 与节点专属任务</p></div></div><div><span class="proof-number">03</span><div><strong>停止之后，再确认</strong><p>原生清理完成后回传停止确认</p></div></div></section>
+<section class="flow-section wrap section-space" id="flow"><div class="section-heading"><div><span class="eyebrow muted">HOW IT WORKS / 工作方式</span><h2>云端协调。<br>设备完成计算。</h2></div><p>任务明确交给一个设备运行完整模型。<br>这次预发布，让最小链路先真实跑通。</p></div><div class="flow-path"><article><div class="step-top"><span>01 / CONTROLLER</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+</div><h3>发出一个任务</h3><p>云端保存请求，分配给指定节点。<br>任务身份、预算与租约都可追溯。</p><span class="flow-tag">显式分配</span></article><span class="flow-arrow"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" />
+</svg>
+</span><article><div class="step-top"><span>02 / YOUR DEVICE</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 20v2" />
+  <path d="M12 2v2" />
+  <path d="M17 20v2" />
+  <path d="M17 2v2" />
+  <path d="M2 12h2" />
+  <path d="M2 17h2" />
+  <path d="M2 7h2" />
+  <path d="M20 12h2" />
+  <path d="M20 17h2" />
+  <path d="M20 7h2" />
+  <path d="M7 20v2" />
+  <path d="M7 2v2" />
+  <rect x="4" y="4" width="16" height="16" rx="2" />
+  <rect x="8" y="8" width="8" height="8" rx="1" />
+</svg>
+</div><h3>在设备侧生成</h3><p>macOS CLI 或 Android 前台 Worker，<br>使用固定模型与 CPU 原生后端。</p><span class="flow-tag">整模型执行</span></article><span class="flow-arrow"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" />
+</svg>
+</span><article><div class="step-top"><span>03 / RECEIPT</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" />
+</svg>
+</div><h3>带着证据回来</h3><p>生成结果与终态保存到 Controller。<br>取消和超时，也等待真实清理。</p><span class="flow-tag">停止确认</span></article></div><p class="scope-note">当前范围是单个设备的整模型任务；预训练模型跨设备分层推理不在此预发布范围。</p></section>
+<section class="replay-section section-space" id="replay"><div class="wrap"><div class="section-heading"><div><span class="eyebrow muted">RECORDED & VERIFIED / 实测回放</span><h2>从一个问题，<br>到一个真实的答案。</h2></div><p>下面重放已完成的真实任务记录。<br>点击步骤或播放，查看生成与停止如何收敛。</p></div><div class="replay-shell"><div class="replay-top"><div class="history-label"><span class="status-dot"></span> 历史实测回放 <span>非实时推理</span></div><div class="replay-tabs" role="tablist" aria-label="实测场景"><button id="tab-generation" role="tab" aria-selected="true" aria-controls="replay-panel" data-case="generation">生成结果</button><button id="tab-timeout" role="tab" aria-selected="false" aria-controls="replay-panel" data-case="timeout">超时停止</button><button id="tab-cancel" role="tab" aria-selected="false" aria-controls="replay-panel" data-case="cancel">取消清理</button></div></div><div class="replay-layout" id="replay-panel" role="tabpanel" aria-labelledby="tab-generation"><div class="replay-sidebar"><span class="small-label">说明性步骤 / 非逐帧日志</span><ol class="replay-steps" id="replay-steps"></ol><div class="play-controls"><button id="play-replay" class="play-button"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+</svg>
+<span>播放回放</span></button><button id="reset-replay" class="reset-button" aria-label="重置回放"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+  <path d="M3 3v5h5" />
+</svg>
+</button></div><span class="play-note">可暂停、逐步查看；不发起新任务</span></div><div class="replay-output"><div class="output-top"><span id="replay-platform">MACOS / WHOLE-MODEL CLI</span><span id="replay-state" class="result-state">succeeded</span></div><div class="prompt-label">公开验收摘要</div><p id="replay-prompt" class="replay-prompt"></p><div class="result-label" id="result-label">结果已保存</div><div class="result-word" id="replay-result">Paris.</div><p class="result-quote" id="replay-quote"></p><div class="receipt-line"><span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>
+ <b id="replay-receipt">stop acknowledged = true</b></span><span id="replay-elapsed"></span></div><div class="replay-stage-note" id="replay-stage-note" aria-live="polite"></div></div></div><div class="replay-footer"><span id="replay-time"></span><a id="evidence-link" href="evidence.json" target="_blank" rel="noopener">查看脱敏证据 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><span id="replay-source"></span></div></div><div class="evidence-footnote"><span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" />
+</svg>
+ 使用固定 SmolLM2-135M-Instruct-Q4_K_M</span><p>Android 同源码的主机 JNI 实测，与 Android 手机实测是两种证据。手机推理、Keystore、生命周期与设备 TLS 验收暂跳过。</p></div><div class="verification-matrix" aria-label="不同来源的验证范围"><article><div class="verification-title"><span>HISTORICAL CLOUD</span><strong>原云端整模型链路</strong></div><p>生成、原生超时、运行中取消与停止确认。<br>沿用已公开的历史实测，不发起新任务。</p><a href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/ACCEPTANCE.txt" target="_blank" rel="noopener">Controller 21c5d4b ↗</a></article><article><div class="verification-title"><span>REPAIRED MAC / LOCAL</span><strong>最新 Mac 恢复修复</strong></div><p>23 项回归、3 个本地恢复场景、1 次真实本地 GGUF 验证。<br>本地修复验收与原云端实测分别记录。</p><a href="https://github.com/7onytang/LastCore/blob/09a02efa3569057d7a5ed0b2df5b817c13e77bb5/submission/evidence/mac-worker-30b9efc-local.json" target="_blank" rel="noopener">Worker 30b9efc ↗</a></article></div></div></section>
+<section class="download-section wrap section-space" id="download"><div class="section-heading"><div><span class="eyebrow muted">GET THE PREVIEW / 开始体验</span><h2>把下一步，<br>交给你的设备。</h2></div><p>v0.1.0-alpha.1 · 开源预发布<br>选择适合你的路径，先完成最小闭环。</p></div><div class="download-grid"><article class="download-card"><div class="download-platform"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+  <path d="M12 18h.01" />
+</svg>
+<span>ANDROID / ARM64</span><span class="preview-tag">开发签名</span></div><h3>原生客户端</h3><p>导入固定 GGUF，本地生成；或启动前台 Worker，接收指定的云任务。</p><a class="button primary download-cta" href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/lastcore-android-arm64-debug-64af2e2.apk"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+ 下载开发签名 APK <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><div class="download-detail">Android 10+ · arm64 · APK 不含模型权重 <a class="model-link" href="https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b/SmolLM2-135M-Instruct-Q4_K_M.gguf">下载固定 GGUF ↗</a></div><div class="boundary-note">真机验收暂跳过。Release APK 尚未签名，不能直接安装。</div></article><article class="download-card"><div class="download-platform"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z" />
+  <path d="M20.054 15.987H3.946" />
+</svg>
+<span>MACOS / ARM64</span><span class="preview-tag">源码 CLI</span></div><h3>真实整模型 Worker</h3><p>使用固定模型与原生 CPU 后端，以源码 CLI 连接可信 HTTPS Controller。</p><a class="button outline download-cta" href="https://github.com/7onytang/LastCore/archive/09a02efa3569057d7a5ed0b2df5b817c13e77bb5.tar.gz"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+ 下载源码 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><div class="download-detail">Python 3.12+ · Apple Command Line Tools · 核心源 09a02ef</div><div class="boundary-note">整模型 Mac 路径为源码 CLI。另附 tiny bundle 只支持随机小模型 stage/demo，没有开发者签名或公证。</div></article></div><div class="resource-row"><a href="https://8.134.161.123/demo/lastcore-demo-kit.zip"><svg aria-hidden="true" focusable="false" class="icon"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+ 下载展示包 <svg aria-hidden="true" focusable="false" class="icon"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><a href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/QUICKSTART.txt" target="_blank" rel="noopener"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 19h8" />
+  <path d="m4 17 6-6-6-6" />
+</svg>
+ 最小安装指南 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><a href="https://8.134.161.123/docs" target="_blank" rel="noopener"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+ Controller API 文档 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><a href="https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1" target="_blank" rel="noopener"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+ 全部附件与校验 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></div></section>
+<section class="closing wrap"><div class="closing-brand">LastCore<span>从可解释的任务，到可验证的计算。</span></div><div class="service-check"><button id="check-health"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+ 检查公共 API</button><span id="health-state" aria-live="polite">尚未检查 · 不代表 Worker 在线</span></div></section>
+</main><footer class="wrap site-footer"><span>LastCore · MIT · v0.1.0-alpha.1</span><span>原创设备示意 / 实测记录回放 / 时间：北京时间</span><a href="https://github.com/7onytang/LastCore/tree/09a02efa3569057d7a5ed0b2df5b817c13e77bb5" target="_blank" rel="noopener">查看固定核心源码 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></footer>
+<script>
+/* Derived only from the published acceptance summary. No private job data. */
+window.LASTCORE_EVIDENCE = {
+  "mode": "public_historical_summary",
+  "timeZone": "Asia/Shanghai",
+  "sourceEvidence": "evidence.json",
+  "cases": {
+    "generation": {
+      "platform": "MACOS / WHOLE-MODEL CLI",
+      "prompt": "公开验收：固定 SmolLM2 整模型生成法国首都答案。",
+      "resultLabel": "公开结果摘要",
+      "displayResult": "Paris",
+      "result": "公开记录摘要，非逐字原响应。",
+      "elapsedSeconds": null,
+      "recordedAt": "2026-10-13T14:03:23.159854+08:00",
+      "timeLabel": "公开核验时间",
+      "sourceLabel": "模型证明源",
+      "sourceCommit": "21c5d4b7eeca8f418ab81570e7453395a2161f01",
+      "caseId": "generation",
+      "evidenceUrl": "evidence.json",
+      "steps": [
+        {
+          "title": "云端分配",
+          "state": "分配",
+          "display": "分配中",
+          "description": "整模型任务交给一个已注册节点。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "本机生成",
+          "state": "执行",
+          "display": "本机生成",
+          "description": "macOS CLI 调用固定模型与原生后端。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "结果回传",
+          "state": "回传",
+          "display": "结果回传",
+          "description": "真实输出摘要：Paris。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "确认停止",
+          "state": "succeeded",
+          "display": "Paris",
+          "description": "任务成功并完成停止确认。",
+          "note": "本机生成结果，云端保存结果与停止确认。 历史记录，非实时状态。"
+        }
+      ]
+    },
+    "timeout": {
+      "platform": "MACOS / NATIVE TIMEOUT",
+      "prompt": "公开验收：原生后端执行达到时间预算。",
+      "resultLabel": "公开结束记录",
+      "displayResult": "已停止",
+      "result": "执行超时，原生后端停止并回收。",
+      "elapsedSeconds": null,
+      "recordedAt": "2026-10-13T14:03:23.159854+08:00",
+      "timeLabel": "公开核验时间",
+      "sourceLabel": "模型证明源",
+      "sourceCommit": "21c5d4b7eeca8f418ab81570e7453395a2161f01",
+      "caseId": "timeout",
+      "evidenceUrl": "evidence.json",
+      "steps": [
+        {
+          "title": "云端分配",
+          "state": "分配",
+          "display": "任务分配",
+          "description": "任务进入同一条真实执行链路。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "达到期限",
+          "state": "期限",
+          "display": "达到期限",
+          "description": "原生后端达到执行预算。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "停止回收",
+          "state": "回收",
+          "display": "停止回收",
+          "description": "后台进程停止并被回收。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "确认结束",
+          "state": "failed",
+          "display": "已停止",
+          "description": "云端保存失败状态与停止确认。",
+          "note": "超时有结束状态，也有原生进程回收和停止确认。 历史记录，非实时状态。"
+        }
+      ]
+    },
+    "cancel": {
+      "platform": "MACOS / NATIVE CANCELLATION",
+      "prompt": "公开验收：运行中的原生后端收到取消。",
+      "resultLabel": "公开结束记录",
+      "displayResult": "已取消",
+      "result": "后端停止并回收，生成结果丢弃。",
+      "elapsedSeconds": null,
+      "recordedAt": "2026-10-13T14:03:23.159854+08:00",
+      "timeLabel": "公开核验时间",
+      "sourceLabel": "模型证明源",
+      "sourceCommit": "21c5d4b7eeca8f418ab81570e7453395a2161f01",
+      "caseId": "cancel",
+      "evidenceUrl": "evidence.json",
+      "steps": [
+        {
+          "title": "正在执行",
+          "state": "执行",
+          "display": "正在执行",
+          "description": "原生后端已进入真实运行。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "收到取消",
+          "state": "取消",
+          "display": "收到取消",
+          "description": "取消请求交给守卫处理。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "清理进程",
+          "state": "清理",
+          "display": "清理进程",
+          "description": "停止并回收后端，丢弃生成结果。",
+          "note": "说明性回放，非逐帧日志；不重跑任务。"
+        },
+        {
+          "title": "确认取消",
+          "state": "cancelled",
+          "display": "已取消",
+          "description": "云端保存取消状态与停止确认。",
+          "note": "取消后停止执行、丢弃结果，再确认清理结束。 历史记录，非实时状态。"
+        }
+      ]
+    }
+  }
+};
+
+/* Local replay of published historical evidence. No task mutation or credential input. */
+(() => {
+  "use strict";
+  const evidence = window.LASTCORE_EVIDENCE;
+  if (!evidence || !evidence.cases) return;
+  const byId = (id) => document.getElementById(id);
+  const stepList = byId("replay-steps"), panel = byId("replay-panel");
+  const playButton = byId("play-replay"), reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let caseId = "generation", stepIndex = 3, timer = null;
+  const dateFormat = new Intl.DateTimeFormat("zh-CN", {timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false});
+  const setText = (id, text) => {byId(id).textContent = text;};
+  function pause() {
+    if (timer !== null) window.clearInterval(timer);
+    timer = null;
+    playButton.querySelector("span").textContent = "播放回放";
+    playButton.setAttribute("aria-pressed", "false");
+    playButton.querySelector("svg").style.opacity = "1";
+  }
+  function render() {
+    const record = evidence.cases[caseId], current = record.steps[stepIndex];
+    const final = stepIndex === record.steps.length - 1;
+    stepList.replaceChildren();
+    record.steps.forEach((step, index) => {
+      const li = document.createElement("li"), button = document.createElement("button"), circle = document.createElement("span"), label = document.createElement("span"), small = document.createElement("small");
+      button.type = "button"; button.className = index === stepIndex ? "active" : "";
+      button.setAttribute("aria-current", index === stepIndex ? "step" : "false");
+      button.setAttribute("aria-label", `第 ${index + 1} 步：${step.title}`);
+      circle.className = "step-circle"; circle.textContent = String(index + 1).padStart(2, "0");
+      label.append(document.createTextNode(step.title)); small.textContent = step.state; label.append(small);
+      button.append(circle, label); button.addEventListener("click", () => {pause();stepIndex = index;render();});
+      li.append(button); stepList.append(li);
+    });
+    document.querySelectorAll("[data-case]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.case === caseId)));
+    panel.setAttribute("aria-labelledby", `tab-${caseId}`);
+    setText("replay-platform", record.platform);
+    setText("replay-state", current.state);
+    setText("replay-prompt", record.prompt);
+    setText("result-label", final ? record.resultLabel : "记录中的阶段");
+    setText("replay-result", final ? record.displayResult : current.display);
+    setText("replay-quote", final ? record.result : current.description);
+    setText("replay-receipt", final ? "stop acknowledged = true" : "尚未到停止确认步骤");
+    setText("replay-elapsed", final && record.elapsedSeconds !== null ? `elapsed ${record.elapsedSeconds} s` : "");
+    setText("replay-stage-note", current.note);
+    setText("replay-time", `${record.timeLabel} ${dateFormat.format(new Date(record.recordedAt))} · 北京时间`);
+    setText("replay-source", `${record.sourceLabel} ${record.sourceCommit.slice(0, 7)} · case ${record.caseId}`);
+    byId("evidence-link").href = record.evidenceUrl;
+  }
+  function selectCase(id) {if (!evidence.cases[id]) return; pause();caseId = id;stepIndex = evidence.cases[id].steps.length - 1;render();}
+  document.querySelectorAll("[data-case]").forEach((button) => {
+    if (!evidence.cases[button.dataset.case]) {button.disabled = true;return;}
+    button.addEventListener("click", () => selectCase(button.dataset.case));
+    button.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = [...document.querySelectorAll("[data-case]")].filter((tab) => !tab.disabled);
+      const current = tabs.indexOf(button), next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      selectCase(tabs[next].dataset.case);tabs[next].focus();
+    });
+  });
+  playButton.addEventListener("click", () => {
+    if (timer !== null) {pause();return;}
+    if (reducedMotion.matches) {stepIndex = (stepIndex + 1) % evidence.cases[caseId].steps.length;render();setText("replay-stage-note", `${evidence.cases[caseId].steps[stepIndex].note} 已遵循减少动态效果设置，改为逐步前进。`);return;}
+    if (stepIndex === evidence.cases[caseId].steps.length - 1) stepIndex = 0;
+    render(); playButton.querySelector("span").textContent = "暂停回放";playButton.setAttribute("aria-pressed", "true");
+    timer = window.setInterval(() => {
+      stepIndex += 1; render();
+      if (stepIndex >= evidence.cases[caseId].steps.length - 1) pause();
+    }, 1400);
+  });
+  byId("reset-replay").addEventListener("click", () => {pause();stepIndex = 0;render();});
+  document.addEventListener("visibilitychange", () => {if(document.hidden) pause();});
+  reducedMotion.addEventListener("change", pause);
+  let checking = false;
+  byId("check-health").addEventListener("click", async () => {
+    if (checking) return;
+    checking = true; byId("check-health").disabled = true;
+    const signal = new AbortController(), timeout = window.setTimeout(() => signal.abort(), 5000);
+    setText("health-state", "检查中 · 仅请求公开 /healthz");
+    try {
+      const response = await fetch("https://8.134.161.123/healthz", {method: "GET", credentials: "omit", redirect: "error", cache: "no-store", signal: signal.signal});
+      if (!response.ok) throw new Error("unconfirmed");
+      const body = await response.json();if(body.status !== "ok") throw new Error("unconfirmed");
+      setText("health-state", `API 可达 · ${dateFormat.format(new Date())} 北京时间 · 不代表 Worker 在线`);
+    } catch (_) {setText("health-state", "未确认 API 可达 · 可能离线或受浏览器跨域限制");}
+    finally {window.clearTimeout(timeout);checking = false;byId("check-health").disabled = false;}
+  });
+  window.addEventListener("offline", () => {setText("health-state", "已离线 · 此页仍可查看历史记录");});
+  render();
+})();
+
+</script>
+</body></html>
