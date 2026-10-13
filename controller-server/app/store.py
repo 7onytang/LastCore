@@ -43,6 +43,8 @@ class Store:
                     UNIQUE(task_id, position)
                 );
                 CREATE INDEX IF NOT EXISTS assignments_node ON assignments(node_id);
+                CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
+                CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at DESC);
             """)
 
     @contextmanager
@@ -93,16 +95,26 @@ class Store:
             raise HTTPException(401, "invalid node credential", headers={"WWW-Authenticate": "Bearer"})
         return node
 
-    def _node_view(self, db, node):
+    def _node_view(self, db, node, *, busy=None):
         data = dict(node)
         data.pop("token_hash")
         data["accepting_tasks"] = bool(data["accepting_tasks"])
-        busy = db.execute("""SELECT 1 FROM assignments a JOIN tasks t ON t.id=a.task_id
+        if busy is None:
+            busy = db.execute("""SELECT 1 FROM assignments a JOIN tasks t ON t.id=a.task_id
                              WHERE a.node_id=? AND t.status IN ('queued','running') LIMIT 1""",
                           (node["id"],)).fetchone()
         data["status"] = ("offline" if node["last_seen"] <= self.clock() - self.ttl
                           else "busy" if busy else "available" if node["accepting_tasks"] else "draining")
         return data
+
+    def _node_views(self, db):
+        # Completed shards remain reserved until their entire task terminates.
+        busy = {row["node_id"] for row in db.execute("""
+            SELECT DISTINCT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
+            WHERE t.status IN ('queued','running')
+        """)}
+        return [self._node_view(db, node, busy=node["id"] in busy)
+                for node in db.execute("SELECT * FROM nodes ORDER BY id").fetchall()]
 
     def register(self, request):
         node_id, token = str(uuid4()), secrets.token_urlsafe(32)
@@ -114,7 +126,7 @@ class Store:
 
     def nodes(self):
         with self.transaction() as db:
-            return [self._node_view(db, n) for n in db.execute("SELECT * FROM nodes ORDER BY id").fetchall()]
+            return self._node_views(db)
 
     def heartbeat(self, node_id, token, request):
         with self.transaction() as db:
@@ -131,17 +143,32 @@ class Store:
         task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         if task is None:
             raise HTTPException(404, "task not found")
-        result = dict(task)
-        result["request"] = json.loads(result["request"])
-        assignments = [dict(a) for a in db.execute("""
+        return self._task_views(db, [task])[0]
+
+    def _task_views(self, db, tasks):
+        if not tasks:
+            return []
+        # Public list/poll calls select at most 100 tasks. Load every shard so
+        # peer addresses still describe the full pipeline before poll filtering.
+        task_ids = [task["id"] for task in tasks]
+        placeholders = ",".join("?" for _ in task_ids)
+        by_task = {task_id: [] for task_id in task_ids}
+        for row in db.execute(f"""
             SELECT a.*, n.endpoint FROM assignments a JOIN nodes n ON n.id=a.node_id
-            WHERE a.task_id=? ORDER BY a.position
-        """, (task_id,)).fetchall()]
-        for i, assignment in enumerate(assignments):
-            assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
-            assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
-        result["assignments"] = assignments
-        return result
+            WHERE a.task_id IN ({placeholders}) ORDER BY a.task_id, a.position
+        """, task_ids):
+            by_task[row["task_id"]].append(dict(row))
+        results = []
+        for task in tasks:
+            result = dict(task)
+            result["request"] = json.loads(result["request"])
+            assignments = by_task[task["id"]]
+            for i, assignment in enumerate(assignments):
+                assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
+                assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
+            result["assignments"] = assignments
+            results.append(result)
+        return results
 
     @staticmethod
     def _peer(assignment):
@@ -149,7 +176,7 @@ class Store:
 
     def create_task(self, request):
         with self.transaction() as db:
-            nodes = [self._node_view(db, n) for n in db.execute("SELECT * FROM nodes").fetchall()]
+            nodes = self._node_views(db)
             try:
                 plan = allocate([n for n in nodes if n["status"] == "available"], request.num_layers,
                                 request.layer_memory_mb, request.max_nodes)
@@ -170,18 +197,17 @@ class Store:
 
     def tasks(self):
         with self.transaction() as db:
-            return [self._task_view(db, t["id"]) for t in
-                    db.execute("SELECT id FROM tasks ORDER BY created_at DESC LIMIT 100").fetchall()]
+            rows = db.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100").fetchall()
+            return self._task_views(db, rows)
 
     def assignments(self, node_id, token):
         with self.transaction() as db:
             self._node_auth(db, node_id, token)
             # Include terminal commands until the node observes them; no silent reuse after expiry.
-            rows = db.execute("""SELECT DISTINCT t.id FROM tasks t JOIN assignments a ON a.task_id=t.id
+            rows = db.execute("""SELECT DISTINCT t.* FROM tasks t JOIN assignments a ON a.task_id=t.id
                                  WHERE a.node_id=? ORDER BY t.created_at DESC LIMIT 100""", (node_id,)).fetchall()
             result = []
-            for row in rows:
-                task = self._task_view(db, row["id"])
+            for task in self._task_views(db, rows):
                 for assignment in task["assignments"]:
                     if assignment["node_id"] == node_id:
                         result.append({**assignment, "task_status": task["status"],
