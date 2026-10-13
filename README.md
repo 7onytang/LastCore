@@ -69,6 +69,39 @@ docker compose exec -T controller python -m app.diagnostics --database /data/con
 
 源文件使用 SQLite `mode=ro`，同一读事务保持检查快照一致，不初始化数据库、不执行任务到期清理或修复；活动 WAL 数据库按 SQLite 的正常读锁协议读取，可能需要访问或创建共享内存 `-shm` 文件，不使用可能漏读 WAL 的 `immutable` 模式。路径不存在时拒绝检查，不创建空库。通过诊断仅说明所列结构和当前快照可读，不代表精确 schema 迁移版本、安全审计或真实节点推理验收。若需要确定的备份内容，应对离线备份运行诊断。实现复用 [SQLite 官方 PRAGMA](https://www.sqlite.org/pragma.html) 与 Python 标准库，无额外依赖。
 
+## 在线 SQLite 备份
+
+运行中的数据库使用内置在线备份工具，不需要 Controller token，也不启动 API 服务：
+
+```bash
+cd controller-server
+mkdir -m 700 -p backups
+python -m app.backup --database data/controller.sqlite3 \
+  --output backups/controller-20261013T120000+0800.sqlite3
+```
+
+为每次备份指定新的文件名，示例时间按北京时间（`Asia/Shanghai`），实际使用时替换。源路径必须是已有数据库，目标父目录必须已存在；目标文件或同名 SQLite sidecar 已存在时拒绝执行。工具使用 Python 标准库 [Connection.backup](https://docs.python.org/3.12/library/sqlite3.html#sqlite3.Connection.backup)，正确读取活动 WAL 中已提交的数据，不包含尚未提交的事务。历史开源 [sqlitebck](https://github.com/husio/python-sqlite3-backup) 已归档并指向标准库实现，因此无需新增依赖。
+
+备份先写到目标目录中的私有临时文件，完成 `integrity_check`、关闭数据库并同步文件后，通过 hard link 原子发布，绝不覆盖已有目标。结果是权限 `0600` 的独立 SQLite 文件，不需要随附 WAL/SHM 文件；失败时清理本次临时文件。源连接采用 `mode=ro`，不会创建路径拼错的数据库或修改业务数据，但读取活动 WAL 仍可能使用或初始化 SQLite 的共享内存 sidecar；不要对活动数据库使用 `immutable=1`。
+
+默认总预算 60 秒、连续锁等待 5 秒，可用 `--timeout` 和 `--lock-timeout` 指定有限正秒数。预算在 SQLite 分步复制和完整性检查期间生效；持续写入导致反复重启复制时也会到期。底层阻塞文件系统 I/O 无法由这些检查硬中断。源及目标均应放在受信任的本地文件系统上，目标目录需要支持同目录 hard link；不支持时失败，不降级为覆盖写入。备份是完成时的一致性快照，不保证固定为命令开始时刻。完整性检查验证 SQLite 结构，不代替业务恢复演练。
+
+对于 Compose 数据卷，可在运行中的非 root Controller 容器内备份，再复制到宿主机：
+
+```bash
+cd controller-server
+# 需要已构建包含 app.backup 的镜像，并且 Controller 正在运行。
+docker compose exec -T controller python -c 'from pathlib import Path; Path("/data/backups").mkdir(mode=0o700, exist_ok=True)'
+BACKUP_NAME="$(docker compose exec -T controller python -c 'from datetime import datetime, timedelta, timezone; print("controller-" + datetime.now(timezone(timedelta(hours=8), "Asia/Shanghai")).strftime("%Y%m%dT%H%M%S%z") + ".sqlite3")')"
+docker compose exec -T controller python -m app.backup \
+  --database /data/controller.sqlite3 --output "/data/backups/$BACKUP_NAME"
+# 仅在上一条命令退出码为 0 后执行复制；宿主目录同样使用私有权限。
+mkdir -m 700 -p backups
+docker cp "$(docker compose ps -q controller):/data/backups/$BACKUP_NAME" "backups/$BACKUP_NAME"
+```
+
+容器内备份仍在原数据卷，只能防误操作，不能防数据卷丢失；复制完成后按自己的保留策略保存到独立存储。备份包含节点凭据摘要及任务数据，应限制访问并妥善加密。恢复前停止 Controller，把备份恢复到干净的数据目录，避免混入旧 `-wal`/`-shm`/`-journal` 文件，再启动并验证节点和任务状态；此工具不执行恢复或删除旧备份。
+
 ## API 与权限
 
 所有受保护接口使用 `Authorization: Bearer <token>`。注册 token 仅用于入网，管理员 token 用于创建和查看任务，注册返回的节点 token 仅管理该节点。节点 token 只返回一次，服务器保存 SHA-256 摘要；节点程序需要持久化 `node_id` 和 `node_token`。断线后使用原凭据重新发心跳，避免重复注册。
@@ -153,6 +186,8 @@ SQLite 初始化和每次事务在退出时显式关闭连接，包括初始化�
 ```bash
 pytest -q tests/test_store_lifecycle.py
 ```
+
+备份回归覆盖活动 WAL、未提交事务隔离、完整性失败、有限锁等待、不覆盖已有目标，以及恢复真实 Store 后的原节点凭据、任务终态和活动预留。恢复测试注入受控时间以避免测试数据自然过期；生产恢复仍使用真实时间，并按原 TTL/deadline 清理过期任务。CI 还检查数据卷在线备份、独立副本完整性、拒覆盖及容器内诊断，最后删除本次临时容器和数据卷。
 
 ## 后续集成
 
