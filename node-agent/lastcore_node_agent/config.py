@@ -19,6 +19,7 @@ class AgentConfig:
     state_dir: Path = Path.home() / ".lastcore" / "node-agent"
     heartbeat_interval: float = 10.0
     poll_interval: float = 1.0
+    watchdog_interval: float = 1.0
     accepting_tasks: bool = True
     executor: str = "demo"
     model_config_path: str = ""

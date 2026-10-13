@@ -7,8 +7,11 @@ from lastcore_node_agent.credentials import (
     NodeCredentials,
     StateError,
     acquire_state_lock,
+    clear_pending_report,
     load_credentials,
+    load_pending_reports,
     load_settled,
+    record_pending_report,
     save_credentials,
     settle_journal,
 )
@@ -79,3 +82,44 @@ def test_journal_last_status_wins(tmp_path):
     settle_journal(tmp_path, "a", "completed")
     settle_journal(tmp_path, "a", "failed")
     assert load_settled(tmp_path) == {"a": "failed"}
+
+
+def test_pending_report_missing_file(tmp_path):
+    assert load_pending_reports(tmp_path) == {}
+
+
+def test_pending_report_roundtrip(tmp_path):
+    record_pending_report(tmp_path, "a-1", "completed", None)
+    record_pending_report(tmp_path, "a-2", "failed", "ValueError: boom")
+    assert load_pending_reports(tmp_path) == {
+        "a-1": ("completed", None),
+        "a-2": ("failed", "ValueError: boom"),
+    }
+
+
+def test_pending_report_clear(tmp_path):
+    record_pending_report(tmp_path, "a-1", "failed", "boom")
+    clear_pending_report(tmp_path, "a-1")
+    assert load_pending_reports(tmp_path) == {}
+    clear_pending_report(tmp_path, "missing")
+    assert load_pending_reports(tmp_path) == {}
+
+
+def test_pending_report_record_overwrites(tmp_path):
+    record_pending_report(tmp_path, "a-1", "failed", "boom")
+    record_pending_report(tmp_path, "a-1", "completed", None)
+    assert load_pending_reports(tmp_path) == {"a-1": ("completed", None)}
+
+
+def test_pending_report_corrupted_raises(tmp_path):
+    (tmp_path / "pending-reports.json").write_text("{not json")
+    with pytest.raises(StateError):
+        load_pending_reports(tmp_path)
+    with pytest.raises(StateError):
+        record_pending_report(tmp_path, "a-1", "failed", None)
+
+
+def test_pending_report_invalid_entry_raises(tmp_path):
+    (tmp_path / "pending-reports.json").write_text('{"a-1": {"error": "no status"}}')
+    with pytest.raises(StateError):
+        load_pending_reports(tmp_path)

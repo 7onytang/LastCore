@@ -9,6 +9,7 @@ from pathlib import Path
 
 CREDENTIALS_FILE = "node-credentials.json"
 JOURNAL_FILE = "journal.json"
+PENDING_REPORTS_FILE = "pending-reports.json"
 LOCK_FILE = "agent.lock"
 JOURNAL_LIMIT = 512
 
@@ -98,6 +99,40 @@ def load_settled(state_dir: Path) -> dict[str, str]:
         if isinstance(entry, dict) and isinstance(entry.get("id"), str):
             settled[entry["id"]] = str(entry.get("status", ""))
     return settled
+
+
+def load_pending_reports(state_dir: Path) -> dict[str, tuple[str, str | None]]:
+    data = _read_json(Path(state_dir) / PENDING_REPORTS_FILE)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise StateError("pending reports file must contain a JSON object")
+    pending: dict[str, tuple[str, str | None]] = {}
+    for assignment_id, entry in data.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("status"), str):
+            raise StateError(f"pending report for {assignment_id} is invalid")
+        error = entry.get("error")
+        pending[str(assignment_id)] = (entry["status"], error if isinstance(error, str) else None)
+    return pending
+
+
+def record_pending_report(state_dir: Path, assignment_id: str, status: str,
+                          error: str | None) -> None:
+    path = Path(state_dir) / PENDING_REPORTS_FILE
+    data = _read_json(path) or {}
+    if not isinstance(data, dict):
+        raise StateError("pending reports file must contain a JSON object")
+    data[assignment_id] = {"status": status, "error": error}
+    _atomic_write_json(path, data)
+
+
+def clear_pending_report(state_dir: Path, assignment_id: str) -> None:
+    path = Path(state_dir) / PENDING_REPORTS_FILE
+    data = _read_json(path)
+    if not isinstance(data, dict) or assignment_id not in data:
+        return
+    del data[assignment_id]
+    _atomic_write_json(path, data)
 
 
 def acquire_state_lock(state_dir: Path):

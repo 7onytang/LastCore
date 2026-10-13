@@ -6,11 +6,14 @@ import types
 import httpx
 import pytest
 
+import lastcore_node_agent.agent as agent_module
 from lastcore_node_agent.agent import CredentialRejected, NodeAgent
 from lastcore_node_agent.credentials import (
     NodeCredentials,
     load_credentials,
+    load_pending_reports,
     load_settled,
+    record_pending_report,
     save_credentials,
 )
 from lastcore_node_agent.executor import (
@@ -66,11 +69,14 @@ def test_happy_path_registers_persists_and_completes(fake, client, clock, tmp_pa
     thread, captured = run_in_thread(agent)
     assert wait_until(lambda: fake.register_calls == 1)
     task_id, assignment_id = fake.add_task("node-1", layers=(0, 4))
-    assert wait_until(lambda: fake.tasks[task_id]["status"] == "completed")
-    reports = [r for r in fake.reports if r[0] == assignment_id]
-    assert [r[1] for r in reports] == ["running", "completed"]
-    assert load_settled(config.state_dir).get(assignment_id) == "completed"
-    assert agent.stats.completed == [assignment_id]
+    # The controller ACK lands before the agent's post-ACK bookkeeping (pending
+    # clear + stats append) finishes; wait for the terminal state instead of
+    # reading inside that window (CI run 38286083766 raced exactly here).
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
+        == ["running", "completed"]
+        and load_settled(config.state_dir).get(assignment_id) == "completed"
+        and agent.stats.completed == [assignment_id])
     assert load_credentials(config.state_dir) is not None
     agent.stop_event.set()
     stop_agent(thread, captured)
@@ -182,6 +188,32 @@ def test_heartbeat_stall_cancels_running_task(fake, client, clock, tmp_path):
     stop_agent(thread, captured)
 
 
+def test_total_outage_local_watchdog_still_cancels(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state", watchdog_interval=0.02)
+    factory = FactoryRecorder(lambda: SlowExecutor(slices=200, slice_seconds=0.05))
+    agent = make_agent(fake, client, config, clock, factory.create)
+    thread, captured = run_in_thread(agent)
+    assert wait_until(lambda: fake.register_calls == 1)
+    task_id, assignment_id = fake.add_task("node-1")
+    assert wait_until(lambda: agent.stats.started == [assignment_id])
+    fake.heartbeat_error = httpx.ConnectError("down")
+    fake.assignments_error = httpx.ConnectError("down")
+    polls_before = agent.stats.polls
+    clock[0] += 61.0
+    executor = factory.instances[0]
+    assert wait_until(lambda: executor.cancel_observed, timeout=5)
+    assert agent.stats.polls == polls_before
+    assert agent.stats.stopped == []
+    fake.heartbeat_error = None
+    fake.assignments_error = None
+    assert wait_until(lambda: agent.stats.stopped == [assignment_id], timeout=5)
+    assert factory.instances[0].cancel_observed
+    assert [r[1] for r in fake.reports if r[0] == assignment_id] == ["running"]
+    assert load_settled(config.state_dir).get(assignment_id) == "stopped"
+    agent.stop_event.set()
+    stop_agent(thread, captured)
+
+
 def test_saved_credentials_rejected_stops_without_reregistering(fake, client, clock, tmp_path):
     state_dir = tmp_path / "state"
     save_credentials(state_dir, NodeCredentials("ghost", "bad-token", 30))
@@ -250,6 +282,219 @@ def test_agent_retries_until_controller_reachable(fake, client, clock, tmp_path)
     assert wait_until(lambda: fake.register_calls == 1)
     task_id, assignment_id = fake.add_task("node-1")
     assert wait_until(lambda: fake.tasks[task_id]["status"] == "completed")
+    agent.stop_event.set()
+    stop_agent(thread, captured)
+
+
+def _gated_broken_factory():
+    gate = threading.Event()
+
+    def create():
+        gate.wait(5)
+        return ExplodingExecutor()
+
+    return FactoryRecorder(create), gate
+
+
+def _gated_failing_factory():
+    gate = threading.Event()
+
+    def create():
+        gate.wait(5)
+        raise RuntimeError("no executor")
+
+    return FactoryRecorder(create), gate
+
+
+def test_terminal_report_outage_replays_after_recovery(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state", retry_backoff=0.01)
+    factory, gate = _gated_failing_factory()
+    agent = make_agent(fake, client, config, clock, factory.create)
+    thread, captured = run_in_thread(agent)
+    assert wait_until(lambda: fake.register_calls == 1)
+    task_id, assignment_id = fake.add_task("node-1")
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id] == ["running"])
+    fake.report_error = httpx.ConnectError("report down")
+    gate.set()
+    assert wait_until(lambda: agent.stats.failed == [assignment_id], timeout=5)
+    pending = load_pending_reports(config.state_dir)
+    assert set(pending) == {assignment_id}
+    assert pending[assignment_id][0] == "failed"
+    assert pending[assignment_id][1].startswith("executor unavailable")
+    assert fake.tasks[task_id]["status"] == "running"
+    fake.report_error = None
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
+        == ["running", "failed"] and load_pending_reports(config.state_dir) == {}, timeout=5)
+    assert agent._pending == {}
+    assert fake.tasks[task_id]["status"] == "failed"
+    assert load_settled(config.state_dir).get(assignment_id) == "failed"
+    agent.stop_event.set()
+    stop_agent(thread, captured)
+
+
+def test_pending_terminal_report_replayed_after_restart(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state", retry_backoff=0.01)
+    factory, gate = _gated_broken_factory()
+    agent = make_agent(fake, client, config, clock, factory.create)
+    thread, captured = run_in_thread(agent)
+    assert wait_until(lambda: fake.register_calls == 1)
+    task_id, assignment_id = fake.add_task("node-1")
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id] == ["running"])
+    fake.report_error = httpx.ConnectError("report down")
+    gate.set()
+    assert wait_until(lambda: agent._pending != {}, timeout=5)
+    agent.stop_event.set()
+    stop_agent(thread, captured)
+    assert load_pending_reports(config.state_dir).get(assignment_id, (None, None))[0] == "failed"
+
+    fake.report_error = None
+    replay_factory = FactoryRecorder(ExplodingExecutor)
+    restarted = make_agent(fake, client, config, clock, replay_factory.create)
+    thread2, captured2 = run_in_thread(restarted)
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
+        == ["running", "failed"] and load_pending_reports(config.state_dir) == {}, timeout=5)
+    assert restarted.stats.started == []
+    assert replay_factory.instances == []
+    assert load_pending_reports(config.state_dir) == {}
+    assert load_settled(config.state_dir).get(assignment_id) == "failed"
+    restarted.stop_event.set()
+    stop_agent(thread2, captured2)
+
+
+def test_pending_terminal_report_cleared_when_controller_terminal(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state")
+    factory = FactoryRecorder(lambda: SliceDemoExecutor(slices=1, slice_seconds=0.0))
+    agent = make_agent(fake, client, config, clock, factory.create)
+    thread, captured = run_in_thread(agent)
+    assert wait_until(lambda: fake.register_calls == 1)
+    task_id, assignment_id = fake.add_task("node-1")
+    assert wait_until(lambda: agent.stats.completed == [assignment_id])
+    agent.stop_event.set()
+    stop_agent(thread, captured)
+    reports_before = list(fake.reports)
+
+    record_pending_report(config.state_dir, assignment_id, "completed", None)
+    replay_factory = FactoryRecorder(ExplodingExecutor)
+    restarted = make_agent(fake, client, config, clock, replay_factory.create)
+    thread2, captured2 = run_in_thread(restarted)
+    assert wait_until(lambda: load_pending_reports(config.state_dir) == {}, timeout=5)
+    assert fake.reports == reports_before
+    assert restarted.stats.started == []
+    assert replay_factory.instances == []
+    restarted.stop_event.set()
+    stop_agent(thread2, captured2)
+
+
+def test_pending_handoff_survives_crash_before_settle_completed(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state")
+    factory = FactoryRecorder(lambda: SliceDemoExecutor(slices=1, slice_seconds=0.0))
+    agent = make_agent(fake, client, config, clock, factory.create)
+    original = agent_module.settle_journal
+
+    class Crash(BaseException):
+        pass
+
+    def crash(*args, **kwargs):
+        raise Crash()
+
+    agent_module.settle_journal = crash
+    try:
+        thread, captured = run_in_thread(agent)
+        assert wait_until(lambda: fake.register_calls == 1)
+        task_id, assignment_id = fake.add_task("node-1")
+        assert wait_until(lambda: "error" in captured, timeout=5)
+        thread.join(5)
+        assert not thread.is_alive()
+        assert isinstance(captured["error"], Crash)
+        assert [r[1] for r in fake.reports if r[0] == assignment_id] == ["running"]
+    finally:
+        agent_module.settle_journal = original
+    assert load_pending_reports(config.state_dir).get(assignment_id, (None, None))[0] == "completed"
+    assert load_settled(config.state_dir) == {}
+
+    replay_factory = FactoryRecorder(ExplodingExecutor)
+    restarted = make_agent(fake, client, config, clock, replay_factory.create)
+    thread2, captured2 = run_in_thread(restarted)
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
+        == ["running", "completed"] and load_pending_reports(config.state_dir) == {}, timeout=5)
+    assert restarted.stats.started == []
+    assert replay_factory.instances == []
+    assert fake.tasks[task_id]["status"] == "completed"
+    restarted.stop_event.set()
+    stop_agent(thread2, captured2)
+
+
+def test_pending_handoff_survives_crash_before_settle_factory_failure(fake, client, clock, tmp_path):
+    config = make_config(tmp_path / "state")
+    factory, gate = _gated_failing_factory()
+    agent = make_agent(fake, client, config, clock, factory.create)
+    original = agent_module.settle_journal
+
+    class Crash(BaseException):
+        pass
+
+    def crash(*args, **kwargs):
+        raise Crash()
+
+    agent_module.settle_journal = crash
+    try:
+        thread, captured = run_in_thread(agent)
+        assert wait_until(lambda: fake.register_calls == 1)
+        task_id, assignment_id = fake.add_task("node-1")
+        assert wait_until(
+            lambda: [r[1] for r in fake.reports if r[0] == assignment_id] == ["running"])
+        gate.set()
+        assert wait_until(lambda: "error" in captured, timeout=5)
+        thread.join(5)
+        assert not thread.is_alive()
+        assert isinstance(captured["error"], Crash)
+    finally:
+        agent_module.settle_journal = original
+    assert load_pending_reports(config.state_dir).get(
+        assignment_id) == ("failed", "executor unavailable: RuntimeError: no executor")
+    assert load_settled(config.state_dir) == {}
+
+    replay_factory = FactoryRecorder(ExplodingExecutor)
+    restarted = make_agent(fake, client, config, clock, replay_factory.create)
+    thread2, captured2 = run_in_thread(restarted)
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
+        == ["running", "failed"] and load_pending_reports(config.state_dir) == {}, timeout=5)
+    assert restarted.stats.started == []
+    assert replay_factory.instances == []
+    assert fake.tasks[task_id]["status"] == "failed"
+    restarted.stop_event.set()
+    stop_agent(thread2, captured2)
+
+
+def test_pending_blocks_reexecution_when_journal_pruned_and_report_failing(fake, client, clock, tmp_path):
+    state = tmp_path / "state"
+    config = make_config(state, retry_backoff=0.01)
+    fake.nodes["node-1"] = {"token": "tok-1", "last_seen": clock[0]}
+    save_credentials(state, NodeCredentials("node-1", "tok-1", 30))
+    task_id, assignment_id = fake.add_task("node-1")
+    record_pending_report(state, assignment_id, "completed", None)
+    factory = FactoryRecorder(lambda: SlowExecutor(slices=200, slice_seconds=0.05))
+    agent = make_agent(fake, client, config, clock, factory.create)
+    fake.report_error = httpx.ConnectError("report down")
+    thread, captured = run_in_thread(agent)
+    assert wait_until(lambda: agent.stats.polls >= 5)
+    assert agent.stats.started == []
+    assert factory.instances == []
+    assert fake.reports == []
+    assert assignment_id in load_pending_reports(state)
+    fake.report_error = None
+    assert wait_until(
+        lambda: [r[1] for r in fake.reports if r[0] == assignment_id] == ["completed"]
+        and load_pending_reports(state) == {}, timeout=5)
+    assert agent.stats.started == []
+    assert factory.instances == []
+    assert fake.tasks[task_id]["status"] == "completed"
     agent.stop_event.set()
     stop_agent(thread, captured)
 

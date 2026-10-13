@@ -25,6 +25,7 @@ class FakeController:
         self.heartbeat_error = None
         self.assignments_error = None
         self.register_error = None
+        self.report_error = None
 
     def add_task(self, node_id, layers=(0, 4), model_id="m", deadline_offset=60.0, status="queued",
                  deadline=None):
@@ -89,6 +90,8 @@ class FakeController:
             node, node_id = self._node_from_path(request)
             if node is None:
                 return httpx.Response(401, json={"detail": "invalid node credential"})
+            if self.report_error is not None:
+                raise self.report_error
             parts = path.split("/")
             assignment_id = parts[5]
             task = next((t for t in self.tasks.values() if assignment_id in t["assignments"]), None)
