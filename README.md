@@ -1,19 +1,66 @@
 # LastCore
 
-将日常设备组织为分布式 AI 推理网络。仓库当前包含云端调度服务器（`controller-server/`）与节点侧程序（`node-agent/`）。
+LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲置算力执行推理。面向希望组织多台电脑和移动设备的开发者，当前提供两条独立路径：**tiny 模型的连续分层推理原型**，以及**固定 SmolLM2 模型在选定单设备上的完整推理**。
 
-## 已实现
+技术栈：Python 3.12+、FastAPI、SQLite、NumPy/TCP、llama.cpp，以及 Android Java/JNI。项目业务时间统一使用 `Asia/Shanghai`；协议存储可使用 UTC。
 
-- Python + FastAPI HTTP API，SQLite 持久化节点、任务、分层分配及状态。
-- 节点注册、独立节点凭据、心跳、在线/忙碌/排空/离线状态。
-- 按可用内存及计算权重分配连续模型层，返回上下游节点地址。
-- 节点轮询任务、回报执行状态；取消、超时和节点离线导致任务终止。
-- SQLite 写事务防止并发任务重复预留节点；重启保留任务与预留状态。
-- 非 root Docker 镜像、Compose 数据卷和健康检查，以及自动化测试。
-- Node Agent：凭据持久化、心跳、任务轮询/去重、running/completed/failed 上报、取消/超时/心跳断链时的本地停止，执行通过 `Executor` 接口委托推理引擎（对接协议见 `node-agent/PROTOCOL.md`）。
-- 推理引擎与通信层原型（`inference-engine/` + `communication/`）：把自研 tiny decoder-only transformer 按层切成连续片段，每个节点只加载并执行本段，activation 沿 `next_node` 逐跳传输，链路结果与单机逐字节一致。
+## 当前功能与验证范围
 
-首版是控制平面、节点生命周期管理与一个可验证的 tiny 推理引擎原型：分层切分与节点间 tensor（activation）传输已能跑通，并与单机结果逐字节一致。尚未实现真实大模型（如 Qwen）的加载/分片与权重映射、模型下载/缓存、量化/压缩、KV cache 与 batching、NAT 穿透或离线后的自动迁移。任务完成表示所有节点上报完成，Controller 不保存模型输出。当前内存预算按层均匀估算；提交方应预留权重、激活、KV cache 等开销。计算权重由节点注册时上报，尚无自动性能测量。
+| 功能 | 实现状态 | 验证与限制 |
+| --- | --- | --- |
+| 节点注册、独立凭据、心跳与状态管理 | 已实现 | Controller 与 Agent 测试覆盖；节点断线不会自动迁移任务 |
+| 按内存与计算权重分配连续模型层 | 已实现 | 所有层完整覆盖且不重叠；内存按层估算，算力由节点上报 |
+| Agent 轮询、去重、状态上报和本地停止 | 已实现 | 支持取消、超时、心跳断链；实际停止依赖节点遵守协议 |
+| tiny 分层推理与 activation 逐跳传输 | 已实现 | 有本机双节点进程与单机逐字节一致验证；不是预训练大模型跨设备推理 |
+| 固定 SmolLM2-135M 整模型生成 | 已实现 | 固定 GGUF、后端和 SHA256；每个任务在一个选定 worker 上执行 |
+| 整模型任务结果、幂等、租约与停止确认 | 已实现 | 独立 `/v1/inference` API，默认关闭；与 legacy `/v1/tasks` 分开 |
+| macOS 整模型工作节点 | 已实现，CLI 入口 | 已有云端真实任务验收记录；冻结 macOS bundle 服务 tiny 路径 |
+| Android 前台 UI、工作节点与 JNI 后端 | 已实现，真机未验收 | 有 APK 构建与主机 JVM/JNI 证据；不代表 Android 真机、Keystore 或生命周期已验证 |
+| SQLite 诊断、在线备份、恢复及部署归档 | 已实现 | 保留数据与凭据的验收范围见发布记录 |
+| 预训练大模型跨设备分层、KV cache/batching、NAT 穿透、离线自动迁移 | 未实现 | 不作为当前可交付功能 |
+| 生产客户端签名、公证与 Windows 发布 | 未交付 | Android debug 为开发签名，release APK 未签名；macOS bundle 未签名/未公证 |
+
+已有公开版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。最终参赛版本须在项目完成后再次固定。
+
+**两种任务的结果语义不同：** legacy `/v1/tasks` 完成表示各分片上报完成，Controller 不存储该路径的模型输出；整模型 `/v1/inference/jobs` 保存有界文本结果和停止确认。单设备 SmolLM2 成功不能证明真实预训练模型已跨设备分层。
+
+## 核心文件清单
+
+| 模块 | 核心文件 | 职责 |
+| --- | --- | --- |
+| Controller | [main.py](controller-server/app/main.py)、[store.py](controller-server/app/store.py)、[scheduler.py](controller-server/app/scheduler.py) | API、鉴权、持久化、预留与连续分层调度 |
+| 整模型任务 | [inference_jobs.py](controller-server/app/inference_jobs.py)、[REAL_JOBS.md](controller-server/REAL_JOBS.md) | 整模型协议、幂等、租约、结果及清理屏障 |
+| Node Agent | [agent.py](node-agent/lastcore_node_agent/agent.py)、[executor.py](node-agent/lastcore_node_agent/executor.py)、[inference_adapter.py](node-agent/lastcore_node_agent/inference_adapter.py) | 节点生命周期、任务领取和引擎执行 |
+| tiny 引擎 | [model.py](inference-engine/inference_engine/model.py)、[stage.py](inference-engine/inference_engine/stage.py)、[pipeline.py](inference-engine/inference_engine/pipeline.py) | 模型前向、分段执行与链路编排 |
+| 通信 | [channel.py](communication/communication/channel.py)、[protocol.py](communication/communication/protocol.py) | TCP 帧、tensor 编解码、取消与超时 |
+| 真实模型运行时 | [bootstrap.py](real-model-runtime/bootstrap.py)、[runtime.py](real-model-runtime/runtime.py)、[worker.py](real-model-runtime/worker.py)、[job_guardian.py](real-model-runtime/job_guardian.py) | 固定模型准备、本机生成、云任务与进程监管 |
+| Android | [MainActivity.java](android-app/app/src/main/java/ai/lastcore/android/MainActivity.java)、[CloudWorker.java](android-app/app/src/main/java/ai/lastcore/android/CloudWorker.java)、[local_runtime.cpp](android-app/app/src/main/cpp/local_runtime.cpp) | 前台界面、工作节点与 JNI 推理入口 |
+| 运维与验证 | [backup.py](controller-server/app/backup.py)、[diagnostics.py](controller-server/app/diagnostics.py)、[双节点脚本](integration/run_two_node_local.sh)、[归档工具](ops/staging/prepare_release.py) | 备份、诊断、真实本机 tiny 链路与固定提交打包 |
+
+架构：客户端/Agent 经 HTTP(S) 接入 Controller；Controller 使用 SQLite 管理节点与任务。tiny 路径由首段到末段逐跳传输 activation；整模型路径由指定 worker 领取任务、调用本地 llama.cpp 并回报文本，两条路径的预留互斥。详细约定见 [Node Agent 协议](node-agent/PROTOCOL.md)、[通信协议](communication/PROTOCOL.md)与[整模型 API](controller-server/REAL_JOBS.md)。
+
+## 安装、运行与验证入口
+
+| 目标 | 说明 |
+| --- | --- |
+| 启动本地 Controller | 按下方“本地运行”，访问 `http://127.0.0.1:8000/docs` |
+| 运行 tiny 双节点链路 | 按下方“Integrated candidate verification and staging”安装模块依赖并运行集成脚本 |
+| 本机真实文本生成 / macOS worker | [real-model-runtime/README.md](real-model-runtime/README.md) |
+| macOS tiny bundle | [node-agent/desktop/README.md](node-agent/desktop/README.md) |
+| Android 构建和安装 | [android-app/README.md](android-app/README.md)；真机验收仍待完成 |
+| Docker 与 HTTPS 部署 | 下方“Docker 部署”及 [HTTPS 运维说明](ops/public-ip-https/README.md) |
+
+各模块 README 提供安装和验证命令。凭据只在本机私有配置中填写，不提交仓库。既有版本安装步骤见 [QUICKSTART.txt](submission/evidence/QUICKSTART.txt)。
+
+## 参赛材料
+
+队伍名：**Tibo重置了吗**。提交截止：**2026 年 10 月 13 日 18:00（北京时间）**。赛题全称、官方开赛时间、README 官方模板与评分等级描述尚待补充。
+
+- [提交核对与六个评分维度的具体文件依据](submission/README.md)
+- [AI_USAGE.md](AI_USAGE.md)与[真实 AI 对话记录索引](ai-logs/README.md)
+- [本地提交历史快照](submission/git-history.txt)：保留原始时间偏移，不单独证明平台仓库创建时间或赛事合规。
+
+按用户要求，**最终 Demo、3–8 张实际运行截图和统一 ZIP 等项目完成后再制作**。当前尚未定稿这些材料，也未发送邮件。最终应将源代码、README、AI 使用说明/日志、截图和 Demo 入口放入同一压缩包，发送至 `seproject@yeah.net`；主题为 `【Tibo重置了吗 + 赛题全称】`。
 
 ## 本地运行
 
@@ -224,7 +271,7 @@ pytest -q tests/test_capacity_expiry_scaling.py
 
 ## 后续集成
 
-- 接入真实大模型：替换 `inference-engine/model.py` 的算子与权重映射，在两节点验证真实模型的加载、分片、tensor 传输与输出（协议见 `node-agent/PROTOCOL.md`）。
+- 接入预训练大模型跨设备分层：扩展 `inference-engine/inference_engine/model.py` 的算子与权重映射，在两物理节点验证加载、分片、tensor 传输与输出（协议见 `node-agent/PROTOCOL.md`）；现有 SmolLM2 整模型路径不代表这项能力已完成。
 - 按 [IP HTTPS 部署说明](ops/public-ip-https/README.md) 验证实际公开证书、续期和节点接入；保留隔离部署及数据回滚边界。
 - 后续增加模型元数据、非均匀内存估算、可靠命令队列、取消确认、结果存储、自动恢复和调度性能优化。
 

@@ -1,0 +1,49 @@
+LastCore v0.1.0-alpha.1 — 最小核心预发布
+
+Controller/API 文档：https://8.134.161.123/docs
+先核对包内 SHA256SUMS。源码是85ddad9；Android保留实际构建64af2e2；Mac tiny bundle保留实际构建88a80e3。不要把保留产物冒称新源码重新构建。
+
+Android（用户已暂跳过真机验收，以下供日后安装）
+1. Android 10+、arm64：安装 lastcore-android-arm64-debug-64af2e2.apk，按手机界面允许侧载。它只有开发签名。USB调试已授权时也可用：
+   adb install -r /absolute/path/lastcore-android-arm64-debug-64af2e2.apk
+   lastcore-android-arm64-release-unsigned-64af2e2.apk 未签名，不能直接安装。
+2. 下载模型（APK不含权重）：
+   https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b/SmolLM2-135M-Instruct-Q4_K_M.gguf
+   文件105454144 bytes；SHA256 bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169。
+   打开app → Import model → 选择此GGUF → 输入短提示 → Generate locally。
+3. 云工作：origin填 https://8.134.161.123，首次注册凭据由部署操作员私下提供，仅在app密码栏填写 → Register cloud worker → Start cloud worker。
+   Controller管理员给这个节点创建整模型任务后才会执行；app不提供管理员任务创建入口。保持此页面前台；Cancel或离开页面请求停止。
+   不要公开token、贴到聊天或加入Git。未知注册/领取或损坏状态需操作员恢复，不要反复注册或删除账本绕过恢复。
+
+macOS真实整模型CLI（源码路径，无整模型冻结App）
+需要macOS arm64、Python3.12+及Apple Command Line Tools；首次准备需互联网，约1GB磁盘。在交付包所在目录执行：
+
+   tar -xzf lastcore-source-85ddad92758d072097de87857f7ed1a229c8f76e.tar.gz
+   cd 85ddad92758d072097de87857f7ed1a229c8f76e
+   python3 -m venv real-model-runtime/.venv
+   real-model-runtime/.venv/bin/python -m pip install cmake==4.1.0 -r node-agent/requirements.txt
+   real-model-runtime/.venv/bin/python real-model-runtime/bootstrap.py
+   real-model-runtime/.venv/bin/python real-model-runtime/runtime.py --prompt 'What is the capital of France?' --tokens 32 --timeout 60
+
+上述bootstrap会校验固定模型与后端。若Command Line Tools缺失，先按macOS安装界面完成安装。
+
+在私有目录创建worker.json，权限0600；以下仅是占位模板。runtime_root换成刚解压源码内real-model-runtime的绝对路径；首次registration_token由操作员私下配置，不随公开包提供：
+
+   {
+     "controller_url": "https://8.134.161.123",
+     "registration_token": "REPLACE_PRIVATELY",
+     "state_dir": "~/Library/Application Support/LastCore/real-worker",
+     "runtime_root": "/absolute/path/to/85ddad92758d072097de87857f7ed1a229c8f76e/real-model-runtime",
+     "name": "macos-real-model-worker"
+   }
+
+   chmod 600 /absolute/private/worker.json
+   real-model-runtime/.venv/bin/python real-model-runtime/worker.py --config /absolute/private/worker.json
+
+保持CLI运行；管理员为该节点分配任务。首次成功注册后可移除配置中的registration_token，保留私有state_dir供凭据复用和恢复。Ctrl-C请求取消清理；以Controller停止确认为准。不要删除进行中账本。
+
+Mac legacy/tiny bundle另有范围
+lastcore-node-agent-macos-arm64-unsigned-88a80e3.tar.gz 是macOS14+ arm64的tiny随机小模型分层节点，支持stage/demo，不能当作上述SmolLM2整模型App。解压后需整体保留lastcore-node-agent及_internal，按源码node-agent/desktop/README.md配置私有env并运行preflight；默认loopback endpoint不代表公网可达。它没有Developer ID签名/公证；本轮不扩展签名、商店或自启动。
+
+验收边界
+已验证真实云任务→Mac整模型、同Android源码主机JDK/JNI生成与停止，以及APK构建/签名/对齐和Linux CI。Android真机推理、Keystore、生命周期及设备TLS仍未执行；主机成功不替代手机验收。Windows、商店发布及预训练模型多设备层执行不在本预发布范围。

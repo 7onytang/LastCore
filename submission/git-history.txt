@@ -1,0 +1,80 @@
+Local Git history snapshot; timestamps include their recorded offsets. Business timezone: Asia/Shanghai.
+Not proof of hosting-platform creation time or official start-time compliance.
+
+20eb50ef45f53a6e76b67d2d802f4200e4c836ba	2026-10-11T19:52:21+08:00	2026-10-11T19:52:21+08:00	chore: initialize LastCore repository
+ee57405f925a6aba44a9b3a9402599cf55b04d61	2026-10-11T20:37:40+08:00	2026-10-11T20:37:40+08:00	LC-1: implement Docker-ready controller server MVP
+73fabf4e1bdf295afb273b0772f15763d1b6fbe8	2026-10-11T06:19:00-07:00	2026-10-11T06:19:00-07:00	LC-1: implement node-agent with credential persistence, heartbeat, task dedup, cancel/timeout stop
+1efa841e5dc4dbd14579d715510cb0295a4a73f7	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	communication: 帧协议与 tensor 编解码（校验优先）
+5d365429522141bd03b7832225ae11a994273f4a	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	communication: TCP 通道与监听（timeout / deadline / cancel）
+242a330f60f33ff40f50d53696e34df5a0959a49	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	inference-engine: tiny 模型、确定性权重与按段加载
+a6265a7c85fb54d3a40aad4161cbf2399a6a3166	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	inference-engine: 分层切分与单机结果逐字节一致
+0e7ea1d078de2b49f9c6eec12d3e9f31254d0c28	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	inference-engine: TCP 分层流水线与节点 CLI
+af75a1e1398703d9bf79d7c434cbb14dfec4e26f	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	inference-engine: 对接 Controller assignment 的执行入口
+e4e8a85f7df5fee200a85000feaa03e1c113ee9c	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	inference-engine: 本地双节点联调示例与两进程端到端验证
+dcd189e304b5c3aee92de160030b6c69db698f36	2026-10-11T06:19:01-07:00	2026-10-11T06:19:01-07:00	docs+ci: 模块协议文档与分布式推理 CI 工作流
+449b5c40c3636b360a57cd15eaae56895d49e902	2026-10-11T06:34:16-07:00	2026-10-11T06:34:16-07:00	communication: 持续收包时也检查 cancel 与 deadline（deadline 改按 epoch 秒）
+fd6a9cf9297ecc09b62cf108487190c95e3b3b37	2026-10-11T06:34:18-07:00	2026-10-11T06:34:18-07:00	inference-engine: deadline 到期后停止等待，不再空转轮询
+8c665cfe03f1c852e82c9b265cae1ff6c0a3270d	2026-10-11T06:51:57-07:00	2026-10-11T06:51:57-07:00	Merge PR #1: LC-1 云端调度服务器 MVP 与 Docker 部署配置
+cbd8774df6f8e5da820f9e23f4297ca14711affb	2026-10-11T06:19:00-07:00	2026-10-11T06:52:07-07:00	LC-1: implement node-agent with credential persistence, heartbeat, task dedup, cancel/timeout stop
+497877abfb26b7429ca2ca67cff83be6a486298b	2026-10-11T06:38:02-07:00	2026-10-11T06:52:07-07:00	node-agent: carry the raw assignment row on ExecutionContext
+c7ad520a0a467c639fbd264ce137cea44cb83f51	2026-10-11T06:39:54-07:00	2026-10-11T06:52:07-07:00	node-agent: run assignments on inference-engine StageServer
+67bb3b76f2663251a6226b64ac9258814b9c3e13	2026-10-11T06:42:15-07:00	2026-10-11T06:52:07-07:00	node-agent: stage executor CLI and end-to-end agent inference test
+ae28fe517030b89f7129d42de5e9f61e2140fc5f	2026-10-11T06:43:20-07:00	2026-10-11T06:52:07-07:00	node-agent: align protocol docs with inference-engine v1 and record interface diffs
+ce6e22074ef60a3108378f20fdb53e967694640c	2026-10-11T06:47:22-07:00	2026-10-11T06:52:07-07:00	node-agent: normalize controller HttpUrl trailing slash for inference-engine endpoints
+6d1c74bf9b727640cc9e92ba2cb221a48de9d511	2026-10-11T06:47:40-07:00	2026-10-11T06:52:07-07:00	node-agent: record HttpUrl trailing-slash endpoint diff in protocol notes
+2318c5957ad69703c4bac666dd3afee724532629	2026-10-11T06:52:07-07:00	2026-10-11T06:52:07-07:00	node-agent: tighten E2E cancel phase to cancel a genuinely serving stage
+f527823e7a483cb12fa2c0e0edce216ccefc1a30	2026-10-12T09:16:20-07:00	2026-10-12T09:16:20-07:00	LC-178: fix node-agent outage watchdog and pending terminal report replay
+d3951e7b549f3aa1721bf8fed5f6af4d45a187d6	2026-10-12T10:15:35-07:00	2026-10-12T10:15:35-07:00	LC-178: durable pending-first terminal handoff and pending execution dedup
+fda180568b18a367441d3ef86a7dcd4c4f6724e6	2026-10-12T10:58:08-07:00	2026-10-12T10:58:08-07:00	LC-178: fix flaky happy-path assertion racing post-ACK bookkeeping
+49ede56061bb0fa95a2637a4965a5f93f2471da0	2026-10-12T10:30:31-07:00	2026-10-12T11:21:03-07:00	communication: enforce required tensor name/sha256 and make writes cancellable
+5ffe720243579ab9747588debe715f14a113d4d6	2026-10-12T10:39:13-07:00	2026-10-12T11:21:03-07:00	node-agent: pass assignment deadline to StageServer and fix epoch deadline docs
+5ec103b1281f60b8479b91728fcc4b76b11d8436	2026-10-13T01:33:38+08:00	2026-10-12T11:21:03-07:00	node-agent: make two-node E2E script portable and fail-fast; align README boundary
+29a639d1e4a549527d57d3b4258fcd322c7ec3cf	2026-10-13T01:56:05+08:00	2026-10-12T11:21:03-07:00	node-agent: fail fast on client_check, task2 listener, and dead agent in E2E
+6b77fe93f7a3c3b491f9c7898719265a599e4a24	2026-10-13T01:41:45+08:00	2026-10-12T11:21:03-07:00	inference-engine: enforce stage HELLO contract
+33daf197136e29ac518c08be37a8875d26b7185b	2026-10-13T02:09:02+08:00	2026-10-12T11:21:03-07:00	inference-engine: bound stage HELLO layer ranges
+abc9f773f39ec861a40774139b55ba72564529f7	2026-10-12T12:27:05-07:00	2026-10-12T12:27:05-07:00	LC-215: bump pytest pin to 9.0.3 (GHSA-6w46-j5rx-g56g)
+4a1752291c413a6cc1945a432d5f9a31416f4308	2026-10-12T12:39:22-07:00	2026-10-12T12:39:22-07:00	LC-224: bump controller-server pytest pin to 9.0.3 (GHSA-6w46-j5rx-g56g)
+7aefc47d13578036c279d4400e9a791a28f5b853	2026-10-13T03:51:33+08:00	2026-10-13T03:51:33+08:00	LC-228: add controller missing-boundary regression tests (P0/P1/P2)
+efeb4bfd494e73666347f96a1ba53c0404f9a7e7	2026-10-12T12:53:19-07:00	2026-10-12T12:53:19-07:00	LC-227: add bearer challenges to all 401 responses
+418e306e995b731ef304106ec3b4699cbd91dab8	2026-10-12T15:11:33-07:00	2026-10-12T15:11:33-07:00	LC-234: merge LC-228 boundary regression tests into LC-227 API401 bearer challenge fix
+69f552fdc727195f7778ea9dea2c66532241276b	2026-10-12T16:33:15-07:00	2026-10-12T16:33:15-07:00	candidate C2 step1: main 8c665cfe + PR21 33daf197 (AI automation attribution)
+4ca8d751a4c1c3455043d4fa522e563600bf0c13	2026-10-12T16:33:15-07:00	2026-10-12T16:33:15-07:00	candidate C2: main 8c665cfe + PR21 33daf197 + PR26 418e306e (AI automation attribution)
+f90e254d0d3148d2873ee8991e4a361c6e648bc0	2026-10-12T17:59:12-07:00	2026-10-12T17:59:12-07:00	Merge PR3 4a175229 into PR21+PR26 candidate: port watchdog, durable pending, dedup, CI pins
+053671b67ada4d79dd5089e2dc2cf3dbf1cacff9	2026-10-12T20:26:12-07:00	2026-10-12T20:26:12-07:00	fix(controller): expire overdue tasks without API traffic
+d9e8dc6b9b15623a1d2e6888df4696d9aa34af59	2026-10-12T20:31:12-07:00	2026-10-12T20:31:12-07:00	test(controller): close idle expiry probe connections explicitly
+2e615d4bfe925bbfee2516263a1142a30f08babc	2026-10-12T20:32:43-07:00	2026-10-12T20:32:43-07:00	fix: close SQLite store connections deterministically
+761f52217d534fb6a49930e6e9bc04368b8adb28	2026-10-12T20:34:23-07:00	2026-10-12T20:34:23-07:00	feat(controller): add verified WAL-safe SQLite backup CLI
+e5c50a1f128a218828ad0f3c650109436c71df1b	2026-10-12T20:34:25-07:00	2026-10-12T20:34:25-07:00	feat(controller): add redacted read-only database diagnostics
+3f3b286ebd2dde5e1654fd62bfce5dc33a87d475	2026-10-12T20:36:15-07:00	2026-10-12T20:36:15-07:00	test(controller): verify backup business recovery and container smoke
+a6e65af5ce7a331bd1248f2d0384602f8ca8417d	2026-10-12T20:44:15-07:00	2026-10-12T20:44:15-07:00	ci(controller): verify database diagnostics inside deployment image
+6779aab9eac8755cae667fc3436f376d14acfa7a	2026-10-12T20:45:47-07:00	2026-10-12T20:45:47-07:00	Integrate independently verified Controller idle expiry
+eb6aaafa916a9993a4adbe08392e03f9ae8ad462	2026-10-12T20:45:47-07:00	2026-10-12T20:45:47-07:00	Integrate deterministic SQLite connection lifecycle
+18c3e47640254c68dc6b8d1825eedeab52307d7e	2026-10-12T20:46:23-07:00	2026-10-12T20:46:23-07:00	Integrate redacted read-only database diagnostics
+cc64969fbe40bc37405e73d9e0c6469f93dfabd4	2026-10-12T20:47:43-07:00	2026-10-12T20:47:43-07:00	Package macOS tiny stage executor with complete dependencies and license evidence
+128b7d161583be50c434d9a51f9adae6e59501f5	2026-10-12T20:47:57-07:00	2026-10-12T20:47:57-07:00	Add pinned real local model runtime with lifecycle verification
+c6492d044329311f3e0b71b6e7a4f3a0bec85630	2026-10-12T20:47:58-07:00	2026-10-12T20:47:58-07:00	ci(controller): provide Compose credentials to diagnostics step
+90318b230adf5d5ccc311d5923d9c6def67983a9	2026-10-12T20:48:06-07:00	2026-10-12T20:48:06-07:00	Integrate verified online SQLite backup and recovery checks
+91b9399befed66ee7abdf5f96bb78a4273995af1	2026-10-12T20:49:45-07:00	2026-10-12T20:49:45-07:00	Record diagnostics CI environment fix in integration history
+5ab611adbb2b15bfe728c365ab36c17a82672582	2026-10-12T20:52:45-07:00	2026-10-12T20:52:45-07:00	Reject credential-bearing controller URLs and redact preflight diagnostics
+bd52678aba31e906602da6c32aebf5beaae0ff74	2026-10-12T20:53:16-07:00	2026-10-12T20:53:16-07:00	Fix backup CLI regression test working directory
+7d51700e350875e9ee55c7e45e5ad40d34a3167a	2026-10-12T20:53:18-07:00	2026-10-12T20:53:18-07:00	Fix diagnostics module regression test working directory
+514a6d65db63723c5029518e774feae346204046	2026-10-12T20:53:47-07:00	2026-10-12T20:53:47-07:00	Integrate backup CLI cwd regression fix
+fe6bd53de838d144c64ecbd2359e5c751128e444	2026-10-12T20:53:47-07:00	2026-10-12T20:53:47-07:00	Integrate diagnostics CLI cwd regression fix
+7c75f05098fbc767fc8a197b2fd7e1f2c729df59	2026-10-12T20:54:38-07:00	2026-10-12T20:54:38-07:00	Integrate independently verified macOS stage bundle
+e3c900e2d5e846bd05770b2d4e817c99e45b2763	2026-10-12T20:54:38-07:00	2026-10-12T20:54:38-07:00	Integrate independently verified local real model runtime
+90ad3e505af96acf0b5719b8917b698059161fc7	2026-10-12T20:58:10-07:00	2026-10-12T20:58:10-07:00	Fail explicitly on backend output overflow and reverify reused runtime artifacts
+43917d972d0d197473652b122357f68af1f1db7b	2026-10-12T21:02:18-07:00	2026-10-12T21:02:18-07:00	Integrate verified real runtime lifecycle and license hardening
+16bbf122b08e1942d986253a8e1dbcff6d222659	2026-10-12T21:05:00-07:00	2026-10-12T21:05:00-07:00	Prepare isolated source release, integration recovery CI and MIT license
+29e06ba56374fc864a2d667cd8e452031c48a36f	2026-10-12T21:06:41-07:00	2026-10-12T21:06:41-07:00	Include LastCore MIT license in desktop artifact and ignore local builds
+88a80e3b98b47b345487be913b96c663e662360a	2026-10-12T21:07:39-07:00	2026-10-12T21:08:07-07:00	ci: build macOS artifacts with licenses and frozen-source binding
+6a44f355fe37dd61cfb7762f38ed3704f9cf812c	2026-10-12T21:12:20-07:00	2026-10-12T21:15:23-07:00	Prepare pinned public IP HTTPS ingress and renewal monitoring
+ee3058ef7e94bdbb491798e4a1384da47a057937	2026-10-12T21:38:42-07:00	2026-10-12T21:38:42-07:00	Add default-disabled fenced whole-model jobs and guarded macOS worker
+35709e9079bee9f264202f1ce84fffb90026993e	2026-10-12T21:41:47-07:00	2026-10-12T21:41:47-07:00	Align guardian JSON budgets with bounded Unicode job data
+21c5d4b7eeca8f418ab81570e7453395a2161f01	2026-10-12T21:43:18-07:00	2026-10-12T21:43:18-07:00	Normalize default execution budget for idempotent request replay
+5578330cc7b5206c0b56cbdc04663eff3997b151	2026-10-11T06:51:12-07:00	2026-10-12T22:08:43-07:00	LC-10: 调度逐层分配改用堆选择，输出与原实现逐字节一致（100k×128 约 51 倍提速）
+b0b494b5c2b6d5340e7aa5ec226ffc0cf9aa0f2d	2026-10-12T21:59:51-07:00	2026-10-12T22:08:43-07:00	perf(controller): batch views and index active task queries
+b6c7d5f27b034ec5fcc036976e9cccb2cd781f10	2026-10-12T22:12:56-07:00	2026-10-12T22:36:47-07:00	perf(controller): filter eligible nodes and batch task expiry
+d3111079fd2f13ca4aa9092aa283af586d7c655d	2026-10-12T22:36:51-07:00	2026-10-12T22:36:51-07:00	Integrate source-bound Android whole-model worker and native APK CI
+64af2e2f55697f9927dc4603135e5468752bd811	2026-10-12T22:37:17-07:00	2026-10-12T22:37:17-07:00	Document integrated worker provenance and artifact delivery boundaries
+85ddad92758d072097de87857f7ed1a229c8f76e	2026-10-12T22:37:10-07:00	2026-10-12T22:49:22-07:00	fix(release): bind lock digest to exported archive bytes
+2e8c76b88fdff8f265dadafa1a0e0e6597133bed	2026-10-12T23:05:51-07:00	2026-10-12T23:05:51-07:00	Merge pull request #37 from 7onytang/codex/release-integration-candidate
