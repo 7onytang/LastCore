@@ -43,4 +43,4 @@ LastCore 三分钟展示讲稿（公开资料版）
 - Mac 模型证明源为 Controller21c5；Host JNI 证明源为客户端1ffc与Controller b0b；当前已发布部署源为85dd。等价组件与实际产物来源见公开manifest。
 - 截图应标‘演示页面真实渲染’，路径图应标‘任务路径示意’，不能标成 Android 真机截图。
 
-当前最终页面源：63a5c9f0c7e2afa995a23211ef25bcb81e0b4f16；02-demo-history-replay.png 保留 027aefe 原采集。原页面源：027aefe5252528c80dc7cb03b9374a4ed24b0a4e；截图可使用相同源码localhost8766真实渲染并保留其URL，不改标为公网Demo截图。网站上线后链接行为另行只读验证。材料作者唯一制作统一ZIP，本讲稿不触发额外展示包。
+当前最终页面源：63a5c9f0c7e2afa995a23211ef25bcb81e0b4f16；01/03 按该源实际采集，02 保留 027aefe5252528c80dc7cb03b9374a4ed24b0a4e 原采集，04/05 保留原 HTTPS 服务采集。五张截图均保留实际 URL，不改标为公网 Demo 截图。网站上线后链接行为另行只读验证。材料作者唯一制作统一 ZIP，本讲稿不触发额外展示包。
