@@ -6,9 +6,11 @@ import secrets
 import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
@@ -87,8 +89,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
             # after shutdown. An idle worker wakes immediately on this event.
             await worker
 
-    app = FastAPI(title="LastCore Controller", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="LastCore Controller", version="0.2.0", lifespan=lifespan)
     bearer = HTTPBearer(auto_error=False)
+
+    @app.get("/showcase", include_in_schema=False)
+    def showcase():
+        return FileResponse(Path(__file__).with_name("showcase.html"))
 
     def credential(auth: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
         if auth is None or auth.scheme.lower() != "bearer":

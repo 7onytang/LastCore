@@ -85,6 +85,8 @@ uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 
 另一个终端访问 `http://127.0.0.1:8000/healthz`，浏览器访问 `http://127.0.0.1:8000/docs`。接口文档的 Authorize 输入框填写所需 Bearer token。默认数据库为 `controller-server/data/controller.sqlite3`；可用 `CONTROLLER_DATABASE_PATH` 覆盖。缺少 token、token 少于 32 字符或两者相同，服务会拒绝启动。
 
+旧版确定性 layer demo 可用 `python -m app.demo` 启动三个本机 Agent 并比较分布式结果；独立运行 Controller 时，演示看板位于 `http://127.0.0.1:8000/showcase`。该路径用于兼容性演示，不替代当前 `node-agent/` 的推理引擎流程。
+
 ## Docker 部署
 
 云服务器需要 Docker Engine 和 Compose v2：
@@ -306,6 +308,10 @@ The [Android application](android-app/README.md) uses the same separate whole-mo
 On the component sources recorded in [integration provenance](ops/staging/integration-sources.json), the macOS CLI worker and the portable Android worker with the actual host JVM/JNI backend have separately completed public-HTTPS Controller model jobs. The latter verifies portable worker/JNI behavior on the host; it does not validate Android framework, Keystore or physical-device execution. Source-only integration and a successful APK build do not establish a new cloud deployment or repeat those model runs.
 
 Release artifacts must keep their actual build commit, source-file hashes, platform, signing state, licenses and verification scope. The macOS frozen node-agent bundle serves the existing tiny/layer path; the whole-model macOS worker is currently the separate Python CLI described above. Distribute model download metadata with the pinned upstream URL/revision/hash instead of copying model caches. Never include private configuration, node/admin/registration tokens, signing keys or build caches in client/source archives.
+
+### SwiftUI macOS demo client
+
+`macos-client/` is an experimental native UI prototype for the legacy deterministic `lastcore/linear-demo-v1` layer task. It stores node credentials in Keychain and supports connection, assignment polling, and pausing new work. It is separate from the current packaged CLI worker and is not the verified real-model desktop path. On macOS 13+ with Xcode command-line tools, run `cd macos-client && swift run`.
 
 ## License
 
