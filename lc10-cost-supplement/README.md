@@ -24,12 +24,12 @@ The commands were run from the isolated task directory against clean detached
 checkouts; the JSON paths are outside those checkouts.
 
 ```sh
-python3 lc10-cost-supplement/work/cost_budget_validation.py --repo lc10-cost-supplement/work/source-repo --output lc10-cost-supplement/work/outputs/cost-budget-e0f.json
+python3 lc10-cost-supplement/cost_budget_validation.py --repo lc10-cost-supplement/work/source-repo --output lc10-cost-supplement/cost-budget-e0f.json
 # exit 0
 ```
 
 The same command was run after checking out `a878d6388cdd955df4bf3953619e3f056f201391`, with output changed to
-`lc10-cost-supplement/work/outputs/cost-budget-a878.json`; it also exited 0.
+`lc10-cost-supplement/cost-budget-a878.json`; it also exited 0.
 
 Exit 0 means the illustrative two-stage case fit and the expected over-budget
 case was rejected. It does not mean the production scheduler enforced either

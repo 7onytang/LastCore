@@ -33,6 +33,10 @@ def test_first_segment_maps_to_a_downstream_peer():
     assert plan.deadline == 1_700_000_000.0
 
 
+def test_http_url_with_valid_port_and_trailing_slash_is_accepted():
+    assert parse_endpoint("http://10.0.0.12:9000/") == ("10.0.0.12", 9000)
+
+
 def test_last_segment_maps_to_an_upstream_peer():
     plan = assignment_plan(assignment(id="assignment-2", position=1, layer_start=2, layer_end=4,
                                       previous_node={"node_id": "node-1",

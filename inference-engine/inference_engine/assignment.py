@@ -51,8 +51,8 @@ class AssignmentPlan:
 def parse_endpoint(value: str) -> tuple[str, int]:
     """Parse the peer address forms the Controller and node-agent exchange.
 
-    Accepts ``host:port`` and ``scheme://host:port`` 鈥?the Controller serialises
-    pydantic ``HttpUrl`` with a trailing slash (``http://10.0.0.12:9000/``) 鈥?and
+    Accepts ``host:port`` and ``scheme://host:port`` — the Controller serialises
+    pydantic ``HttpUrl`` with a trailing slash (``http://10.0.0.12:9000/``) — and
     rejects anything without a usable host and a numeric port.
 
     IPv6 literals are rejected on purpose: ``communication.ChannelListener`` binds

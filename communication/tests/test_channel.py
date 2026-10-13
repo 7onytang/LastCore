@@ -342,3 +342,22 @@ def test_invalid_address_string_is_rejected():
     from communication.errors import TransportError
     with pytest.raises(TransportError, match="host:port"):
         Channel.connect("not-an-address")
+
+
+def test_connect_deadline_is_checked_after_synchronous_name_resolution(monkeypatch):
+    socket_created = False
+
+    def slow_resolve(*_args, **_kwargs):
+        time.sleep(0.05)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 1))]
+
+    def unexpected_socket(*_args, **_kwargs):
+        nonlocal socket_created
+        socket_created = True
+        raise AssertionError("expired deadline must stop before TCP socket creation")
+
+    monkeypatch.setattr(channel_module.socket, "getaddrinfo", slow_resolve)
+    monkeypatch.setattr(channel_module.socket, "socket", unexpected_socket)
+    with pytest.raises(ChannelTimeout, match="deadline exceeded while connecting"):
+        Channel.connect(("example.test", 1), deadline=time.time() + 0.01)
+    assert not socket_created

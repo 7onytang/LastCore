@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,21 @@ def run_node(args, *, wait_for_ready=False, timeout=TIMEOUT):
             return process, (match.group(1), int(match.group(2)))
     process.kill()
     raise AssertionError("node never reported READY")
+
+
+def wait_for_stats(paths, *, served, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        payloads = []
+        for path in paths:
+            try:
+                payloads.append(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError):
+                break
+        if len(payloads) == len(paths) and all(item.get("served") == served for item in payloads):
+            return payloads
+        time.sleep(0.02)
+    raise AssertionError(f"stats files were not flushed within {timeout}s: {paths}")
 
 
 @pytest.fixture
@@ -76,6 +92,7 @@ def test_two_os_processes_reproduce_the_single_process_logits(checkpoint, tmp_pa
                                       "lastcore/tiny-cpu", "--out", str(tmp_path / "d.json")])
         assert code == 0, distributed
         result = json.loads(distributed.strip().splitlines()[-1])
+        stats_a, stats_b = wait_for_stats([tmp_path / "a.json", tmp_path / "b.json"], served=1)
     finally:
         for process in (node_a, node_b):
             if process is not None:
@@ -86,8 +103,6 @@ def test_two_os_processes_reproduce_the_single_process_logits(checkpoint, tmp_pa
     assert result["next_token"] == expected["next_token"]
     assert result["shape"] == expected["shape"]
 
-    stats_a = json.loads((tmp_path / "a.json").read_text())
-    stats_b = json.loads((tmp_path / "b.json").read_text())
     assert stats_a["served"] == 1 and stats_b["served"] == 1
     assert [stats_a["layers"], stats_b["layers"]] == [[0, 2], [2, 4]]
     assert stats_a["parameter_bytes"] + stats_b["parameter_bytes"] == generated["bytes"]

@@ -91,6 +91,8 @@ def _connect_with_guards(host: str, port: int, connect_timeout: float,
             if result == 0:
                 sock.setblocking(True)
                 return sock
+            sock.close()
+            break
         except (TaskCancelled, ChannelTimeout):
             sock.close()
             raise
