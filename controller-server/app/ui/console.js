@@ -48,6 +48,7 @@ async function refresh() {
       request('/v1/nodes',token),request('/v1/tasks',token),
       fetch('/v1/inference/workers',{headers:{Authorization:`Bearer ${token}`},cache:'no-store',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(12000)})
     ]);
+    if (workersResponse.status === 401) { const error = new Error('凭据无效或已失效，请重新连接。'); error.code = 'unauthorized'; throw error; }
     const workers = workersResponse.status === 404 ? null : workersResponse.ok ? (await workersResponse.json()).workers : undefined;
     if (ticket !== generation) return;
     const nodes = nodesData.nodes, tasks = tasksData.tasks;

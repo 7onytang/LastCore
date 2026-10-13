@@ -1,5 +1,7 @@
 # LastCore
 
+正式发行入口：[v0.1.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.1)。安装、运行入口沿用下方及各模块 README；本次发布说明与未验收范围见 [发布记录](submission/RELEASE-v0.1.1.md)。按用户要求，本次整合未重跑真实任务、真机验收或部署；GitHub Release 不代表公网服务已更新。
+
 Native Mac `LastCoreClient` targeted linear tasks, numeric result display,
 build/verification and the arm64 DMG are documented in
 [macos-client/README.md](macos-client/README.md). This is a small deterministic
