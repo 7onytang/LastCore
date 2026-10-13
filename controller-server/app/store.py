@@ -4,7 +4,7 @@ import json
 import secrets
 import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ class Store:
         self.ttl = heartbeat_ttl
         self.clock = clock
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS nodes (
@@ -47,22 +47,20 @@ class Store:
 
     @contextmanager
     def transaction(self):
-        db = sqlite3.connect(self.path, timeout=15)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys=ON")
-        try:
-            db.execute("BEGIN IMMEDIATE")
-            self._expire(db)
-            # Persist expiry even when the subsequent request is rejected.
-            db.commit()
-            db.execute("BEGIN IMMEDIATE")
-            yield db
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
+        with closing(sqlite3.connect(self.path, timeout=15)) as db:
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA foreign_keys=ON")
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                self._expire(db)
+                # Persist expiry even when the subsequent request is rejected.
+                db.commit()
+                db.execute("BEGIN IMMEDIATE")
+                yield db
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
 
     def _end_task(self, db, task_id, status, error=None):
         db.execute("UPDATE tasks SET status=?, error=? WHERE id=?", (status, error, task_id))

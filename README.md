@@ -128,6 +128,12 @@ pytest -q
 
 测试覆盖两个节点的连续分层、算力权重及内存限制、鉴权和节点隔离、回报幂等、并发预留、断线/超时/取消/执行失败、数据库重启持久化和输入校验。GitHub Actions 使用 Python 3.12，并额外执行 Compose 配置校验、镜像构建和容器健康检查。测试使用模拟节点状态，不代表真实分布式推理已验证。
 
+SQLite 初始化和每次事务在退出时显式关闭连接，包括初始化、事务准备和请求执行失败的路径；事务提交、请求失败回滚及已提交的过期清理语义保持一致。实现复用 Python 标准库 [`contextlib.closing`](https://github.com/python/cpython/blob/main/Doc/library/sqlite3.rst)，无需新增依赖。连接生命周期回归测试保留真实连接引用，验证退出后连接已经关闭，并确认数据提交、回滚和过期清理的持久化结果：
+
+```bash
+pytest -q tests/test_store_lifecycle.py
+```
+
 ## 后续集成
 
 - 接入真实 Node Agent 和推理引擎，在两个节点验证模型加载、tensor 传输及输出。
