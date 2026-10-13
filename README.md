@@ -1,6 +1,6 @@
 # LastCore
 
-将日常设备组织为分布式 AI 推理网络。仓库当前实现云端调度服务器 MVP，目录为 `controller-server/`。
+将日常设备组织为分布式 AI 推理网络。仓库当前包含云端调度服务器（`controller-server/`）与节点侧程序（`node-agent/`）。
 
 ## 已实现
 
@@ -10,8 +10,10 @@
 - 节点轮询任务、回报执行状态；取消、超时和节点离线导致任务终止。
 - SQLite 写事务防止并发任务重复预留节点；重启保留任务与预留状态。
 - 非 root Docker 镜像、Compose 数据卷和健康检查，以及自动化测试。
+- Node Agent：凭据持久化、心跳、任务轮询/去重、running/completed/failed 上报、取消/超时/心跳断链时的本地停止，执行通过 `Executor` 接口委托推理引擎（对接协议见 `node-agent/PROTOCOL.md`）。
+- 推理引擎与通信层原型（`inference-engine/` + `communication/`）：把自研 tiny decoder-only transformer 按层切成连续片段，每个节点只加载并执行本段，activation 沿 `next_node` 逐跳传输，链路结果与单机逐字节一致。
 
-首版是控制平面。尚未实现 Node Agent、模型加载/分片、tensor 传输、真实推理、NAT 穿透或离线后的自动迁移。任务完成表示所有节点上报完成，不包含模型输出。当前内存预算按层均匀估算；提交方应预留权重、激活、KV cache 等开销。计算权重由节点注册时上报，尚无自动性能测量。
+首版是控制平面、节点生命周期管理与一个可验证的 tiny 推理引擎原型：分层切分与节点间 tensor（activation）传输已能跑通，并与单机结果逐字节一致。尚未实现真实大模型（如 Qwen）的加载/分片与权重映射、模型下载/缓存、量化/压缩、KV cache 与 batching、NAT 穿透或离线后的自动迁移。任务完成表示所有节点上报完成，Controller 不保存模型输出。当前内存预算按层均匀估算；提交方应预留权重、激活、KV cache 等开销。计算权重由节点注册时上报，尚无自动性能测量。
 
 ## 本地运行
 
@@ -48,9 +50,57 @@ curl --fail http://127.0.0.1:8000/healthz
 docker compose logs --tail 100 controller
 ```
 
-Compose 默认仅绑定云服务器的 `127.0.0.1:8000`。公网节点接入通过服务器上的 HTTPS 反向代理转发到该端口，配置域名、证书和防火墙。在受信任的 VPN/内网中，可将 `.env` 的 `CONTROLLER_BIND_ADDRESS` 设置为服务器内网地址；仅在明确需要时绑定 `0.0.0.0`。认证令牌通过 TLS 或受信任的加密隧道传输。
+Compose 默认仅绑定云服务器的 `127.0.0.1:8000`。公网节点接入通过服务器上的 HTTPS 反向代理转发到该端口。无需购买域名时，可使用 [IP HTTPS 部署说明](ops/public-ip-https/README.md) 中固定 Caddy 和 Let’s Encrypt 短期 IP 证书方案；必须验证实际受信任证书和自动续期管理，不能把本地测试或暂存 CA 证书当作上线证明。在受信任的 VPN/内网中，可将 `.env` 的 `CONTROLLER_BIND_ADDRESS` 设置为服务器内网地址；仅在明确需要时绑定 `0.0.0.0`。认证令牌通过 TLS 或受信任的加密隧道传输。
 
 持久化数据在 `controller-data` 数据卷。`docker compose down` 停止服务且保留数据；`docker compose down -v` 会删除数据，不能用于常规更新。更新使用 `docker compose up -d --build --wait`。首版只部署一个 Controller 实例，数据库放本机文件系统，不放 NFS。备份使用 SQLite backup API 或停服后复制整个数据卷，不能只复制正在写入的 `.sqlite3` 文件。
+
+### 数据库只读诊断
+
+`/healthz` 仅表示进程健康。检查已有 Controller 数据库的物理完整性、外键以及必需表、字段和外键声明时，使用：
+
+```bash
+cd controller-server
+python -m app.diagnostics --database data/controller.sqlite3 --timeout-seconds 10
+# Docker 中使用现有数据卷，不需要管理员或注册 token
+docker compose exec -T controller python -m app.diagnostics --database /data/controller.sqlite3
+```
+
+命令输出一份脱敏 JSON，时间显式使用北京时间 `Asia/Shanghai`。退出码 0 表示所列检查通过，1 表示发现完整性、外键或结构问题，2 表示无法打开、文件损坏、锁等待或扫描超时。预算须大于 0 且不超过 300 秒；SQLite 锁等待最多为预算与 1 秒中的较小值，长扫描用进度回调中断，耗时不是硬实时保证。不会输出节点凭据、任务内容、SQL 错误文本或违规行。
+
+源文件使用 SQLite `mode=ro`，同一读事务保持检查快照一致，不初始化数据库、不执行任务到期清理或修复；活动 WAL 数据库按 SQLite 的正常读锁协议读取，可能需要访问或创建共享内存 `-shm` 文件，不使用可能漏读 WAL 的 `immutable` 模式。路径不存在时拒绝检查，不创建空库。通过诊断仅说明所列结构和当前快照可读，不代表精确 schema 迁移版本、安全审计或真实节点推理验收。若需要确定的备份内容，应对离线备份运行诊断。实现复用 [SQLite 官方 PRAGMA](https://www.sqlite.org/pragma.html) 与 Python 标准库，无额外依赖。
+
+## 在线 SQLite 备份
+
+运行中的数据库使用内置在线备份工具，不需要 Controller token，也不启动 API 服务：
+
+```bash
+cd controller-server
+mkdir -m 700 -p backups
+python -m app.backup --database data/controller.sqlite3 \
+  --output backups/controller-20261013T120000+0800.sqlite3
+```
+
+为每次备份指定新的文件名，示例时间按北京时间（`Asia/Shanghai`），实际使用时替换。源路径必须是已有数据库，目标父目录必须已存在；目标文件或同名 SQLite sidecar 已存在时拒绝执行。工具使用 Python 标准库 [Connection.backup](https://docs.python.org/3.12/library/sqlite3.html#sqlite3.Connection.backup)，正确读取活动 WAL 中已提交的数据，不包含尚未提交的事务。历史开源 [sqlitebck](https://github.com/husio/python-sqlite3-backup) 已归档并指向标准库实现，因此无需新增依赖。
+
+备份先写到目标目录中的私有临时文件，完成 `integrity_check`、关闭数据库并同步文件后，通过 hard link 原子发布，绝不覆盖已有目标。结果是权限 `0600` 的独立 SQLite 文件，不需要随附 WAL/SHM 文件；失败时清理本次临时文件。源连接采用 `mode=ro`，不会创建路径拼错的数据库或修改业务数据，但读取活动 WAL 仍可能使用或初始化 SQLite 的共享内存 sidecar；不要对活动数据库使用 `immutable=1`。
+
+默认总预算 60 秒、连续锁等待 5 秒，可用 `--timeout` 和 `--lock-timeout` 指定有限正秒数。预算在 SQLite 分步复制和完整性检查期间生效；持续写入导致反复重启复制时也会到期。底层阻塞文件系统 I/O 无法由这些检查硬中断。源及目标均应放在受信任的本地文件系统上，目标目录需要支持同目录 hard link；不支持时失败，不降级为覆盖写入。备份是完成时的一致性快照，不保证固定为命令开始时刻。完整性检查验证 SQLite 结构，不代替业务恢复演练。
+
+对于 Compose 数据卷，可在运行中的非 root Controller 容器内备份，再复制到宿主机：
+
+```bash
+cd controller-server
+# 需要已构建包含 app.backup 的镜像，并且 Controller 正在运行。
+docker compose exec -T controller python -c 'from pathlib import Path; Path("/data/backups").mkdir(mode=0o700, exist_ok=True)'
+BACKUP_NAME="$(docker compose exec -T controller python -c 'from datetime import datetime, timedelta, timezone; print("controller-" + datetime.now(timezone(timedelta(hours=8), "Asia/Shanghai")).strftime("%Y%m%dT%H%M%S%z") + ".sqlite3")')"
+docker compose exec -T controller python -m app.backup \
+  --database /data/controller.sqlite3 --output "/data/backups/$BACKUP_NAME"
+# 仅在上一条命令退出码为 0 后执行复制；宿主目录同样使用私有权限。
+mkdir -m 700 -p backups
+docker cp "$(docker compose ps -q controller):/data/backups/$BACKUP_NAME" "backups/$BACKUP_NAME"
+```
+
+容器内备份仍在原数据卷，只能防误操作，不能防数据卷丢失；复制完成后按自己的保留策略保存到独立存储。备份包含节点凭据摘要及任务数据，应限制访问并妥善加密。恢复前停止 Controller，把备份恢复到干净的数据目录，避免混入旧 `-wal`/`-shm`/`-journal` 文件，再启动并验证节点和任务状态；此工具不执行恢复或删除旧备份。
 
 ## API 与权限
 
@@ -116,7 +166,7 @@ Compose 默认仅绑定云服务器的 `127.0.0.1:8000`。公网节点接入通�
 
 **Controller 无法强制终止远端进程。** 当前取消或失败后会立即释放调度预留，实际计算停止依赖上述 Agent 协议。首版尚无强制 fencing、节点取消确认、命令保留游标和离线恢复，因此不适用于不遵守协议的节点。返回的最近 100 条记录用于原型接入；大规模使用需增加可靠命令队列。
 
-任务 queued → running → completed。任一分配失败、任一已分配节点心跳过期或任务到期，整个任务变为 failed，其余未完成分配也变为 failed；管理员可将活动任务变为 cancelled。相同状态的回报可重试，终态不接受新的状态。超时清理在 API 访问数据库时执行；没有请求时不运行后台扫描。节点回归不会恢复已失败的任务，需要创建新任务，暂不自动重试以避免重复计算。
+任务 queued → running → completed。任一分配失败、任一已分配节点心跳过期或任务到期，整个任务变为 failed，其余未完成分配也变为 failed；管理员可将活动任务变为 cancelled。相同状态的回报可重试，终态不接受新的状态。服务启动时清理已过期任务，运行期间默认每秒后台扫描，即使没有 API 请求也会持久化终态并释放预留；API 访问数据库时仍会清理。`CONTROLLER_EXPIRY_INTERVAL_SECONDS` 可设为 0.1 至 60 秒，间隔为两次扫描之间的等待时间，并非实时保证；数据库锁等待及扫描耗时可能延迟清理。后台 SQLite 错误会记录日志并在下个间隔重试，启动清理失败则拒绝启动；关闭服务时等待当前扫描完成，避免遗留数据库写入。节点回归不会恢复已失败的任务，需要创建新任务，暂不自动重试以避免重复计算。后台清理仍不能强制终止远端计算。
 
 ## 验证
 
@@ -124,12 +174,90 @@ Compose 默认仅绑定云服务器的 `127.0.0.1:8000`。公网节点接入通�
 cd controller-server
 source .venv/bin/activate
 pytest -q
+python scripts/smoke_idle_expiry.py
 ```
 
-测试覆盖两个节点的连续分层、算力权重及内存限制、鉴权和节点隔离、回报幂等、并发预留、断线/超时/取消/执行失败、数据库重启持久化和输入校验。GitHub Actions 使用 Python 3.12，并额外执行 Compose 配置校验、镜像构建和容器健康检查。测试使用模拟节点状态，不代表真实分布式推理已验证。
+Controller 测试覆盖连续分层、算力与内存限制、鉴权、节点隔离、回报幂等、并发预留、断线/超时/取消/失败、重启持久化及输入校验。后台扫描测试直接读取 SQLite，验证无请求时 deadline/TTL 清理、启动失败、重试及正常停机；HTTP smoke 使用临时数据库和随机本机端口启动真实 Uvicorn，注册并建任务后停止 HTTP 请求，检查 TTL 终态落盘和资源清理。GitHub Actions 还执行 Compose 校验、镜像构建和容器健康检查。
+
+Controller 测试中的节点状态为模拟数据。`inference-engine/` 的验证覆盖两个或三个独立进程的 tiny 模型链路与单机结果逐字节一致；这与控制平面验证分开，也不代表生产规模模型或物理设备矩阵已验收。
+
+SQLite 初始化和每次事务在退出时显式关闭连接，包括初始化、事务准备和请求执行失败的路径；事务提交、请求失败回滚及已提交的过期清理语义保持一致。实现复用 Python 标准库 [`contextlib.closing`](https://github.com/python/cpython/blob/main/Doc/library/sqlite3.rst)，无需新增依赖。连接生命周期回归测试保留真实连接引用，验证退出后连接已经关闭，并确认数据提交、回滚和过期清理的持久化结果：
+
+```bash
+pytest -q tests/test_store_lifecycle.py
+```
+
+备份回归覆盖活动 WAL、未提交事务隔离、完整性失败、有限锁等待、不覆盖已有目标，以及恢复真实 Store 后的原节点凭据、任务终态和活动预留。恢复测试注入受控时间以避免测试数据自然过期；生产恢复仍使用真实时间，并按原 TTL/deadline 清理过期任务。CI 还检查数据卷在线备份、独立副本完整性、拒覆盖及容器内诊断，最后删除本次临时容器和数据卷。
+
+### 调度与查询性能
+
+调度器精确复用 [Multica PR #8](https://github.com/7onytang/LastCore/pull/8) 的 `a878d638` 提交，保留作者与来源，只引入调度器及其测试。它使用 Python 标准库 [heapq](https://github.com/python/cpython/blob/main/Lib/heapq.py)，将逐层选择从 O(层数 × 候选节点数) 降为 O(层数 × log 候选节点数)，保留内存限制、权重及相同权重时的次序。随机对照原算法验证输出一致，无新增安装依赖。
+
+节点列表与创建任务批量读取活跃预留；任务列表及节点轮询一次加载所选任务的全部分片，再组装上下游信息。一次非空节点列表、任务列表、节点轮询分别执行 3、3、4 次 SELECT（包含请求前的过期清理、轮询鉴权），不再为每个结果重复读取。最近 100 个任务限制、返回顺序、凭据隔离、整个任务结束前保留已完成分片节点、`BEGIN IMMEDIATE` 和过期落盘语义保持不变。
+
+启动时幂等创建 `tasks(status)` 和 `tasks(created_at DESC)` 索引，使过期检查、批量预留查询及最新任务列表不再随已终止任务数量进行全表扫描。已有数据库无需导出或重建；首次创建索引会消耗磁盘及启动时间，历史库较大时应预留维护窗口并先备份。旧版本仍能读取这些额外索引，回退应用代码无需删除业务数据。节点轮询的历史筛选仍可能随该节点的历史记录增长，固定查询次数不代表所有请求恒定耗时。
+
+方案先核对 CPython 的标准库实现、[SQLAlchemy 的批量关系加载](https://docs.sqlalchemy.org/en/20/orm/queryguide/relationships.html#select-in-loading)和 [SQLite 查询规划](https://www.sqlite.org/queryplanner.html)：前者是持续维护的 PSF 许可标准库，SQLite 为公有领域实现，均已在运行依赖中；ORM 改造会扩大此次变更，因此只在现有参数化 SQL 上应用批量查询，不复制第三方源码或新增依赖。
+
+```bash
+cd controller-server
+source .venv/bin/activate
+pytest -q tests/test_store_batch_views.py tests/test_store_query_scaling.py
+pytest -q tests/test_controller.py -k scheduler
+```
+
+回归使用真实临时 SQLite 库：验证 105 个多节点任务的限量、顺序、完整上下游信息与鉴权；比较 1,000/20,000 条历史记录下的 SQLite 指令量；重新打开旧库两次验证索引幂等、数据和节点凭据保留。查询扩展性使用指令量而非墙钟阈值判断，不能据此宣称生产延迟或真实设备吞吐。完整 Controller、双节点 tiny HTTP/TCP 链路和备份恢复仍按上述命令独立验证。
+
+创建任务时，数据库直接筛选最近心跳未过期、愿意接单且没有活跃流水线预留的节点，仅读取调度所需字段；历史离线或排空节点仍保留并可通过节点列表查询。启动时幂等增加 `nodes(last_seen) WHERE accepting_tasks != 0` 部分索引，避免任务创建时加载整个历史节点注册表。TTL 边界、已完成分片在活跃流水线中的预留、容量不足时的 409 行为保持不变。
+
+大量任务同时到期时，清理先按 deadline/节点心跳失败原因分组，再每批最多 500 个任务更新任务和未完成分片。每批实际大小还受当前 SQLite 连接的绑定参数上限约束；整个扫描仍在原有单个事务中，任一批失败都会回滚整次清理，后续请求失败前已经提交的清理仍保留。deadline 和节点超时同时发生时优先记录 deadline，已完成分片及其他终态记录保持原样。此优化不会缩小单次事务的锁定范围，也不能强制停止远端执行。
+
+实现参考维护中的 MIT 许可 [Peewee 批量写入](https://github.com/coleifer/peewee)与 [SQLite 参数上限](https://www.sqlite.org/limits.html)，复用现有标准库参数化 SQL，无新增 ORM 依赖或复制第三方源码。首次部分索引创建同样需要预留磁盘与维护时间。
+
+```bash
+cd controller-server
+source .venv/bin/activate
+pytest -q tests/test_capacity_expiry_scaling.py
+```
+
+回归覆盖 1,000/20,000 个历史离线节点下的调度 SQL 指令量、1,201 个混合原因到期任务、降低至 99 的绑定参数上限、后续批次故障回滚与重试、请求拒绝后的清理落盘和旧注册表重新打开。它验证有限批次及状态一致性，不代表生产规模延迟验收。
 
 ## 后续集成
 
-- 接入真实 Node Agent 和推理引擎，在两个节点验证模型加载、tensor 传输及输出。
-- 为云端部署配置 SSH 身份、目标服务器、域名/TLS 和允许的访问范围。
+- 接入真实大模型：替换 `inference-engine/model.py` 的算子与权重映射，在两节点验证真实模型的加载、分片、tensor 传输与输出（协议见 `node-agent/PROTOCOL.md`）。
+- 按 [IP HTTPS 部署说明](ops/public-ip-https/README.md) 验证实际公开证书、续期和节点接入；保留隔离部署及数据回滚边界。
 - 后续增加模型元数据、非均匀内存估算、可靠命令队列、取消确认、结果存储、自动恢复和调度性能优化。
+
+## Isolated real local model runtime
+
+`real-model-runtime/` provides a pinned llama.cpp CPU completion adapter with a verified SmolLM2-135M-Instruct GGUF. See [setup, run and verification instructions](real-model-runtime/README.md). This local prompt-to-text smoke path is independent of the existing Controller and inference protocols; it does not establish distributed model execution or Android/cloud deployment.
+
+## Integrated candidate verification and staging
+
+`integration/run_two_node_local.sh` starts a real local Controller and two real tiny stage agents, compares the distributed logits with a single-machine reference, waits for both completed reports, and verifies that its processes and ports are cleaned up. Set `CONTROLLER_PY`, `NODE_PY`, and `ENGINE_PY` to separate Python environments installed from the respective modules' requirements. `LC11_RUN_DIR` selects a private local evidence directory. It generates tiny weights; this is not pretrained multi-device LLM inference.
+
+```sh
+CONTROLLER_PY=/path/to/controller/bin/python \
+NODE_PY=/path/to/node/bin/python ENGINE_PY=/path/to/engine/bin/python \
+LC11_RUN_DIR=/private/tmp/lastcore-integrated-evidence bash integration/run_two_node_local.sh
+/path/to/controller/bin/python integration/verify_backup_recovery.py \
+  --run-dir /private/tmp/lastcore-integrated-evidence
+```
+
+The recovery command backs up that completed run, starts a real Controller from a new restored copy, and checks that both persisted node credentials are accepted. Keep the evidence directory private because it includes local test credentials. GitHub Actions performs the integrated tiny and recovery checks and builds the isolated Linux staging image; a local pass does not claim the remote CI has run.
+
+For macOS bundle installation, preflight and bounded real bundle verification, see [desktop instructions](node-agent/desktop/README.md). For fixed source packaging, isolated loopback-only Linux staging, runtime acceptance and rollback, see [staging instructions](ops/staging/README.md). Public IP HTTPS and Android physical-device acceptance remain separate release gates; no domain purchase is required by these preparation files.
+
+The optional [real whole-model jobs API](controller-server/REAL_JOBS.md) connects a selected [macOS CLI worker](real-model-runtime/README.md) to the fixed local GGUF adapter. It stores bounded generated text/results under a separate `/v1/inference` namespace and defaults to disabled. Its local acceptance uses an actual Controller and native model backend, covering generated text, idempotency, backend timeout, cancellation acknowledgment and cleanup. A whole-model worker runs the complete model on one device; it does not implement multi-device pretrained layer distribution. Existing `/v1/tasks` behavior and tiny protocols remain independent. Enable/deploy the optional API only after fixed-source review and separately verify the actual public-cloud loop.
+
+### Android foreground whole-model worker
+
+The [Android application](android-app/README.md) uses the same separate whole-model API with a pinned arm64 JNI backend. Its foreground UI supports private Controller credentials, fixed-model installation, connection and bounded job execution; it remains ineligible for legacy layer assignments. Follow its README for the approved SDK/NDK toolchain and run `android-app/build-apk.sh` to build debug, unsigned release and instrumentation APKs, run Java admission/HTTPS checks and lint, and verify embedded source and license bindings. The native APK workflow repeats those build checks on Linux. Debug APKs use a development key; unsigned release APKs require signing before installation. Android physical-device execution is deferred.
+
+On the component sources recorded in [integration provenance](ops/staging/integration-sources.json), the macOS CLI worker and the portable Android worker with the actual host JVM/JNI backend have separately completed public-HTTPS Controller model jobs. The latter verifies portable worker/JNI behavior on the host; it does not validate Android framework, Keystore or physical-device execution. Source-only integration and a successful APK build do not establish a new cloud deployment or repeat those model runs.
+
+Release artifacts must keep their actual build commit, source-file hashes, platform, signing state, licenses and verification scope. The macOS frozen node-agent bundle serves the existing tiny/layer path; the whole-model macOS worker is currently the separate Python CLI described above. Distribute model download metadata with the pinned upstream URL/revision/hash instead of copying model caches. Never include private configuration, node/admin/registration tokens, signing keys or build caches in client/source archives.
+
+## License
+
+LastCore's own source is licensed under [MIT](LICENSE), using the [OSI MIT template](https://opensource.org/license/mit). Third-party software and model weights retain their own terms. The real model/backend license texts and manifest are in `real-model-runtime/licenses/`; desktop packaging collects and verifies the frozen runtime's license materials. The top-level license does not replace those third-party notices.

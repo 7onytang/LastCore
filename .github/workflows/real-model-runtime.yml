@@ -1,0 +1,72 @@
+name: Real local model runtime
+on:
+  push:
+    paths: ["real-model-runtime/**", ".github/workflows/real-model-runtime.yml"]
+  pull_request:
+    paths: ["real-model-runtime/**", ".github/workflows/real-model-runtime.yml"]
+  workflow_dispatch:
+    inputs:
+      real_model_smoke:
+        description: Build pinned llama.cpp and run the real fixed GGUF smoke and cleanup checks
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  lifecycle-and-license:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Synthetic subprocess lifecycle tests (not real LLM evidence)
+        run: |
+          python -m pip install -r node-agent/requirements.txt
+          python -m unittest discover -s real-model-runtime/tests -v
+      - name: Verify full license text and saved source-bound metadata
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('real-model-runtime')
+          digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          manifest = json.loads((root / 'licenses/manifest.json').read_text())
+          for entry in manifest['licenses']:
+              assert digest(root / 'licenses' / entry['file']) == entry['sha256']
+          saved = json.loads((root / 'evidence/verification.json').read_text())
+          assert digest(root / 'runtime.py') == saved['runtime_source_sha256']
+          assert digest(root / 'verify_real.py') == saved['verification_source_sha256']
+          assert saved['license_text_checksums_verified']
+          assert saved['output_limit_bytes_per_stream'] == 1048576
+          assert {x['case'] for x in saved['real_backend_lifecycle']} == {'timeout', 'cancel'}
+          assert all(x['backend_reaped'] for x in saved['real_backend_lifecycle'])
+          print('License/source metadata verified; saved local evidence is not this CI real-model execution.')
+          PY
+  real-model-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.real_model_smoke
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build fixed backend and verify fixed GGUF hashes
+        working-directory: real-model-runtime
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install cmake==4.1.0
+          .venv/bin/pip install -r ../controller-server/requirements-dev.txt -r ../node-agent/requirements.txt
+          .venv/bin/python bootstrap.py
+      - name: Real prompt and backend interruption cleanup
+        working-directory: real-model-runtime
+        run: .venv/bin/python verify_real.py
+      - name: Actual Controller to real worker generation, timeout and cancel
+        run: real-model-runtime/.venv/bin/python integration/verify_real_jobs_local.py --runtime-root real-model-runtime > real-model-runtime/evidence/jobs-local.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-model-evidence
+          path: real-model-runtime/evidence

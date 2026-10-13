@@ -1,0 +1,22 @@
+{
+  "baseline_candidate": "b0b494b5c2b6d5340e7aa5ec226ffc0cf9aa0f2d",
+  "android": {
+    "source_head": "1ffc0bd3cc8098ffaf4ac723014adff9c86ea8d8",
+    "source_baseline": "e9745f5ccf97e284255d5dc48d9d7199c8e98921",
+    "imported_paths": ["android-app/", ".github/workflows/android-native.yml"],
+    "excluded_intermediate_changes": ["desktop workflow edits", "desktop workflow and binding-helper deletion"],
+    "actual_model_proof_scope": "public HTTPS Controller to portable worker and actual host JVM/JNI; Android physical device deferred"
+  },
+  "controller_capacity_expiry": {
+    "source_head": "1c43cbdeb34f0c5ade2f0d4b25536fdb5f40ba21",
+    "source_baseline": "2affe671844e1b5cea6dbabc9f06d27b88b373eb",
+    "integration_method": "cherry-pick with original source trailer",
+    "changed_paths": ["controller-server/app/store.py", "controller-server/tests/test_capacity_expiry_scaling.py", "README.md"]
+  },
+  "preserved_components": {
+    "macos_workflow_and_binding_helper": "exact baseline_candidate bytes",
+    "real_jobs_api_and_guardian_runtime": "exact baseline_candidate bytes",
+    "legacy_node_engine_communication": "exact baseline_candidate bytes"
+  },
+  "release_binding": "The separately generated clean Git archive manifest supplies the final integrated source_commit and SHA256; component proof scope must remain explicit."
+}

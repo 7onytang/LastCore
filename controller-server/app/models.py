@@ -13,6 +13,7 @@ class NodeRegistration(StrictModel):
     endpoint: HttpUrl
     available_memory_mb: int = Field(gt=0, le=10_000_000)
     compute_weight: float = Field(gt=0, le=1_000_000)
+    accepting_tasks: bool = True
 
 
 class Heartbeat(StrictModel):

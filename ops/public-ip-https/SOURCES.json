@@ -1,0 +1,28 @@
+{
+  "caddy_version": "2.11.7",
+  "caddy_license": "Apache-2.0",
+  "release": "https://github.com/caddyserver/caddy/releases/tag/v2.11.7",
+  "linux_amd64": {
+    "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz",
+    "sha256": "727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b"
+  },
+  "mac_arm64": {
+    "url": "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_mac_arm64.tar.gz",
+    "sha256": "cda3030e5d5b13eb9f0b6fb541037f633bddd958c070c5f561d7a5cccb581665"
+  },
+  "license": {
+    "url": "https://raw.githubusercontent.com/caddyserver/caddy/v2.11.7/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  "certmagic_version": "0.25.6",
+  "certmagic_ip_support": "https://github.com/caddyserver/certmagic/blob/v0.25.6/acmeissuer.go#L345-L380",
+  "caddy_ip_explicit_issuer": "https://github.com/caddyserver/caddy/blob/v2.11.7/modules/caddyhttp/autohttps.go#L317-L338",
+  "caddy_profile_adapter": "https://github.com/caddyserver/caddy/blob/v2.11.7/modules/caddytls/acmeissuer.go#L255-L272",
+  "caddy_renewal": "https://github.com/caddyserver/certmagic/blob/v0.25.6/maintain.go",
+  "systemd_template": "https://github.com/caddyserver/dist/blob/master/init/caddy.service",
+  "le_ip_ga": "https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability/",
+  "le_directory": "https://acme-v02.api.letsencrypt.org/directory",
+  "le_terms": "https://letsencrypt.org/documents/LE-SA-v1.8-July-06-2026.pdf",
+  "le_legal_repository": "https://letsencrypt.org/repository/",
+  "checked_at_beijing": "2026-10-13"
+}
