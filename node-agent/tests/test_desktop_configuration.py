@@ -59,3 +59,12 @@ def test_launcher_redacts_invalid_runtime_configuration(tmp_path, monkeypatch, c
     finally:
         os.environ.clear()
         os.environ.update(old)
+
+
+
+def test_private_env_rejects_url_credential_without_echo(tmp_path, capsys):
+    path = private_config(tmp_path, "NODE_AGENT_EXECUTOR=stage\nNODE_AGENT_CONTROLLER_URL=http://user:review-password@localhost/?token=review-token\n")
+    with pytest.raises(SystemExit) as exc:
+        launcher.main(['--env-file', str(path)])
+    assert exc.value.code == 2
+    assert "review-" not in capsys.readouterr().err

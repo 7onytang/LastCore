@@ -27,7 +27,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from env_file import read_env_file
+from env_file import read_env_file, validate_controller_url
 
 MIN_PYTHON = (3, 12)
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
@@ -220,16 +220,21 @@ def check_controller(result: list, controller_url: str | None, timeout: float) -
     if not controller_url:
         result.append((WARN, "no --controller-url given; skipping controller reachability check"))
         return
-    url = controller_url.rstrip("/") + "/healthz"
+    try:
+        url = validate_controller_url(controller_url) + "/healthz"
+    except ValueError:
+        result.append((FAIL, "Controller URL must be absolute HTTP(S), without userinfo, query or fragment"))
+        return
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with opener.open(url, timeout=timeout) as response:
-            body = response.read().decode("utf-8", "replace")[:200]
-            result.append((PASS, f"controller reachable {url} -> {response.status} {body}"))
+            # Neither URLs, remote bodies nor exception strings are safe log data.
+            # Health probes need only the status; do not read or echo arbitrary body.
+            result.append((PASS, f"controller reachable: HTTP {response.status}"))
     except urllib.error.HTTPError as exc:
-        result.append((FAIL, f"controller answered with error {exc.code} at {url}"))
+        result.append((FAIL, f"controller answered with error HTTP {exc.code}"))
     except Exception as exc:
-        result.append((FAIL, f"controller unreachable {url} ({type(exc).__name__}: {exc}); "
+        result.append((FAIL, f"controller unreachable ({type(exc).__name__}); "
                              "check address/firewall; agent will retry every 1s at startup"))
 
 

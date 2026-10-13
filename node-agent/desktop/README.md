@@ -1,6 +1,6 @@
 # macOS tiny CPU stage bundle
 
-当前 bundle 支持显式 `NODE_AGENT_EXECUTOR=stage`（真实 tiny CPU 分层推理）与 `demo`（模拟）。缺少模式或自定义模式会拒绝启动；私有配置覆盖继承的 NODE_AGENT 配置。默认 stage checkpoint 是自动生成的小型随机权重，**不是预训练 LLM，也不代表完整产品上线**。包包含 node-agent、inference-engine、communication、NumPy 及其 native 库，不需要用户另装 Python。
+当前 bundle 支持显式 `NODE_AGENT_EXECUTOR=stage`（真实 tiny CPU 分层推理）与 `demo`（模拟）。缺少模式或自定义模式会拒绝启动；Controller URL 禁止 userinfo、query、fragment；preflight 仅输出状态/异常类型，不回显 URL、远端正文或异常原文；私有配置覆盖继承的 NODE_AGENT 配置。默认 stage checkpoint 是自动生成的小型随机权重，**不是预训练 LLM，也不代表完整产品上线**。包包含 node-agent、inference-engine、communication、NumPy 及其 native 库，不需要用户另装 Python。
 
 构建使用 macOS arm64 / CPython 3.12.14，`requirements-build-lock.txt` 锁定含 NumPy 的完整构建依赖及 wheel SHA256。复用 PyInstaller 官方 `hook-numpy.py` 与 `collect_submodules`，避免自写 native 依赖收集器（https://github.com/pyinstaller/pyinstaller/blob/develop/PyInstaller/hooks/hook-numpy.py）。锁定 NumPy wheel 最低 macOS 14；其他系统/架构需重新构建及验证。
 

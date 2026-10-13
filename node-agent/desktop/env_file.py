@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import stat
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ALLOWED_KEYS = frozenset({
     "NODE_AGENT_CONTROLLER_URL",
@@ -23,6 +24,26 @@ ALLOWED_KEYS = frozenset({
     "NODE_AGENT_REGISTRATION_TOKEN",
     "NODE_AGENT_REQUEST_TIMEOUT",
 })
+
+
+def validate_controller_url(value: str) -> str:
+    """Controller credentials belong in Authorization, never in the URL.
+
+    Use CPython's urlsplit; parsing errors are intentionally not echoed because
+    even a malformed URL can contain user credentials or query tokens.
+    """
+    error = "Controller URL must be absolute HTTP(S), without userinfo, query or fragment"
+    try:
+        parsed = urlsplit(value)
+        if (not value or any(c.isspace() or ord(c) < 32 for c in value)
+                or parsed.scheme not in {"http", "https"} or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or "?" in value or "#" in value):
+            raise ValueError(error)
+        parsed.port  # Validate port without letting its original text escape.
+    except ValueError:
+        raise ValueError(error) from None
+    return value.rstrip("/")
 
 
 def read_env_file(path: str | Path) -> dict[str, str]:
@@ -49,4 +70,6 @@ def read_env_file(path: str | Path) -> dict[str, str]:
         if key in values:
             raise ValueError(f"duplicate environment key {key!r} at {source} line {line_number}")
         values[key] = value
+    if values.get("NODE_AGENT_CONTROLLER_URL"):
+        validate_controller_url(values["NODE_AGENT_CONTROLLER_URL"])
     return values

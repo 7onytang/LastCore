@@ -267,3 +267,46 @@ def test_windows_wrapper_resolves_node_agent_root_from_windows_folder():
     assert '"..\\..\\.venv"' in script
     assert '"..\\.."' in script
     assert '"..\\run_agent.py"' in script
+
+
+@pytest.mark.parametrize("url", [
+    "http://review-user:review-password@127.0.0.1:9/?access_token=review-query-secret",
+    "http://127.0.0.1:9/?access_token=review-query-secret",
+    "http://127.0.0.1:9/#review-fragment-secret",
+    "http://127.0.0.1:review-password",
+    "http://[review-password",
+])
+def test_controller_rejects_secret_bearing_or_malformed_url_without_echo(url, monkeypatch):
+    def no_network(*args, **kwargs):
+        raise AssertionError("invalid URL must not cause network request")
+    monkeypatch.setattr(preflight.urllib.request, "build_opener", no_network)
+    result = []
+    preflight.check_controller(result, url, 1)
+    assert statuses(result) == {"FAIL"}
+    assert "review-" not in json.dumps(result)
+
+
+def test_controller_exception_does_not_echo_server_or_url_content(monkeypatch):
+    class Opener:
+        def open(self, *args, **kwargs):
+            raise TimeoutError("review-private-exception-content")
+    monkeypatch.setattr(preflight.urllib.request, "build_opener", lambda *args: Opener())
+    result = []
+    preflight.check_controller(result, "http://127.0.0.1:9/review-private-path", 1)
+    assert statuses(result) == {"FAIL"}
+    assert "TimeoutError" in json.dumps(result)
+    assert "review-private" not in json.dumps(result)
+
+
+def test_controller_health_body_not_read_or_echoed(monkeypatch):
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): raise AssertionError("health body must not be read")
+    class Opener:
+        def open(self, *args, **kwargs): return Response()
+    monkeypatch.setattr(preflight.urllib.request, "build_opener", lambda *args: Opener())
+    result = []
+    preflight.check_controller(result, "http://127.0.0.1:9/review-private-path", 1)
+    assert result == [("PASS", "controller reachable: HTTP 200")]

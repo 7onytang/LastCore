@@ -92,3 +92,30 @@ echo "== artifacts =="
 echo "bundle: $bundle"
 du -sh "$bundle"
 shasum -a 256 "$bundle/lastcore-node-agent" "$bundle/lastcore-preflight"
+
+# A sidecar binds this complete directory artifact to its build checkout.
+# Release review must require source_tracked_clean=true and independently check
+# source/binary correspondence; unsigned local manifests are integrity evidence.
+"$venv_dir/bin/python" - "$node_agent_root/.." "$bundle" <<'PY'
+import datetime, hashlib, json, subprocess, sys
+from pathlib import Path
+from zoneinfo import ZoneInfo
+repo, bundle = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
+commit = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+clean = all(subprocess.run(['git', '-C', str(repo), 'diff', '--quiet', *args]).returncode == 0
+            for args in ([], ['--cached']))
+artifacts = {}
+for path in sorted(bundle.rglob('*')):
+    relative = str(path.relative_to(bundle))
+    if path.is_symlink():
+        artifacts[relative] = {'symlink': str(path.readlink())}
+    elif path.is_file():
+        artifacts[relative] = {'size_bytes': path.stat().st_size,
+                               'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+manifest = {'built_at': datetime.datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(),
+            'source_commit': commit, 'source_tracked_clean': clean, 'files': artifacts}
+sidecar = bundle.with_suffix('.manifest.json')
+sidecar.write_text(json.dumps(manifest, indent=2) + '\n')
+print(f'artifact manifest: {sidecar} (source {commit}, tracked clean={clean})')
+PY
+shasum -a 256 "$bundle.manifest.json"
