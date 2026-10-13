@@ -3,9 +3,11 @@ import secrets
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .errors import ControllerError
 from .models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
 from .store import Store
 
@@ -36,6 +38,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     store = store or Store(settings.database_path, settings.heartbeat_ttl_seconds)
     app = FastAPI(title="LastCore Controller", version="0.1.0")
     bearer = HTTPBearer(auto_error=False)
+
+    @app.exception_handler(ControllerError)
+    def translate_controller_error(request: Request, error: ControllerError):
+        return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
 
     def credential(auth: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
         if auth is None or auth.scheme.lower() != "bearer":
