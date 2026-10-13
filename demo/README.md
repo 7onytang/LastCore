@@ -1,6 +1,6 @@
 # LastCore product demo
 
-A Chinese static product showcase with original SVG/CSS device illustrations and an interactive **public historical-summary replay**. It never creates, claims, cancels or runs a model job. The current Controller deployment remains source `85ddad9`; this separate presentation branch does not redeploy the Controller. Current core links pin `09a02ef`, which includes repaired Mac Worker `30b9efc`; the Mac download points to that fixed GitHub source archive, while the immutable Alpha Android/download attachments retain their original build identity.
+A Chinese static product showcase with original SVG/CSS device illustrations and an interactive **public historical-summary replay**. LastCore targets a network of multiple edge-device types; macOS and Android are current implementation paths, while other edge-device adaptations are in development. No additional device type or completed support is claimed. It never creates, claims, cancels or runs a model job. The current Controller deployment remains source `85ddad9`; this separate presentation branch does not redeploy the Controller. Current core links pin `09a02ef`, which includes repaired Mac Worker `30b9efc`; the Mac download points to that fixed GitHub source archive, while the immutable Alpha Android/download attachments retain their original build identity.
 
 Run locally without dependencies:
 

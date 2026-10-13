@@ -167,7 +167,8 @@
     "当前部署源85dd与模型证明源21c5/1ffc+b0b分别记录；有关API与worker/JNI组件的等价关系见公开manifest。",
     "Android APK 已构建；真机推理、framework/Keystore及设备TLS未验证。",
     "macOS frozen bundle服务legacy/tiny；整模型运行使用独立Python CLI。",
-    "Debug APK仅开发签名；release APK未签名。"
+    "Debug APK仅开发签名；release APK未签名。",
+    "项目不限定于 macOS/Android；两者为当前实现路径，其他边缘设备适配正在开发，尚无新增设备验收声明。"
   ],
   "sources": [
     {
@@ -214,5 +215,13 @@
   "private_source_extraction_performed": false,
   "new_model_execution_performed": false,
   "current_core_source_commit": "09a02efa3569057d7a5ed0b2df5b817c13e77bb5",
-  "current_core_scope": "Core includes Mac Worker recovery30b9; deployed Controller remains85dd. Demo is static presentation only."
+  "current_core_scope": "Core includes Mac Worker recovery30b9; deployed Controller remains85dd. Demo is static presentation only.",
+  "product_direction": {
+    "target": "multiple edge-device types",
+    "current_implementation_paths": [
+      "macOS",
+      "Android"
+    ],
+    "other_edge_device_adaptations": "in development; no model/device type/support completion invented"
+  }
 }
