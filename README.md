@@ -13,13 +13,11 @@ LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI �
 
 ## 工作台、演示与实际截图
 
-公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接、节点/任务查看和派发；公网默认入口切换以主线部署回执为准。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
+公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。部署负责人已在北京时间 18:04:30 核验默认入口转至工作台，实际部署源码 `cc7c7ba`，与正式发布源码有一行 401 处理差异，见[部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
 
 保留的历史展示地址：[LastCore Demo](https://8.134.161.123/demo/)。该地址与统一 ZIP 镜像的可达性、内容和摘要由最后交付验收核对。也可直接打开 [离线展示页面](demo/offline.html)，按[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt)展示；页面提供历史结果回放、下载和公开证据入口，不创建新的模型任务。
 
-[5 张实际截图及采集范围](screenshots/README.md)包含桌面网页、历史回放、移动浏览器，以及线上 Swagger 和健康响应。设备画面为架构示意，移动截图不是 Android 真机证明。
-
-上述 5 图属于既有版本的实际采集，原始 URL/时间/源码保持；它们不冒充新工作台首页或真实 Mac App 的新增截图。正式包的新首页图片按主线实际采集清单另行定稿。
+[3 张正式工作台实际截图](screenshots/formal-v0.1.1/README.md)于北京时间 18:08:34 匿名采集，包含桌面、移动浏览器及 HTTPS 健康响应；来源为实际部署 `cc7c7ba`，未登录指标显示“—”。另保留[5 张历史截图及范围](screenshots/README.md)，共 8 张，历史回放与设备示意不冒称当前推理或真机画面。移动网页不等于 Android 真机。
 
 ## 当前功能与验证范围
 
@@ -37,13 +35,13 @@ LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI �
 | SQLite 诊断、在线备份、恢复及部署归档 | 已实现 | 保留数据与凭据的验收范围见发布记录 |
 | 预训练大模型跨设备分层、tiny 路径 KV cache/batching、自动 NAT 穿透、故障任务自动迁移 | 未实现 | 不作为当前可交付功能 |
 | 其他类型边缘设备适配 | 开发中 | 用户确认的后续开发范围；具体设备与支持状态以实际源码和验收材料为准 |
-| 生产客户端签名、公证与 Windows 发布 | 未交付 | Android debug 为开发签名，release APK 未签名；macOS bundle 未签名/未公证 |
+| 生产客户端签名、公证与 Windows 发布 | 未交付 | Android debug 为开发签名，release APK 未签名；原生 Swift DMG 为 ad-hoc 开发签名、未 Developer ID 签名/公证，旧 Python bundle 未签名/未公证 |
 
-已有公开版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。最终参赛版本须在项目完成后再次固定。
+早期 Alpha 历史版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。当前正式源码与支持范围见顶部 v0.1.1 发布记录；新材料包单独绑定最终材料提交。
 
 Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7onytang/LastCore/pull/59) 合入，修复源提交为 `30b9efc`，核心合并提交为 `7a9cd49`：注册被明确拒绝后允许纠正并重试、节点凭据绑定原 Controller origin、已停止任务的恢复上报先于模型文件检查。相关测试共 23 项通过（含 8 项新增回归），本地真实 HTTP Controller 的三个恢复场景及一次真实固定 GGUF 任务也通过。依据见[独立复核记录](submission/evidence/mac-worker-30b9efc-review.md)、[本地模型证据](submission/evidence/mac-worker-30b9efc-local.json)和[回归测试](real-model-runtime/tests/test_worker_recovery.py)。自动 CI 通过；手动 `real-model-smoke` 为跳过，真实模型依据来自上述本地验收。
 
-上述 PR #59 恢复修复验收是历史本地测试。本轮另已完成公网 HTTPS Controller `f9139762` → Mac mini worker `30b9efc` 的一次真实 GGUF 生成与停止清理，见[本轮公开模型摘要](submission/evidence/public-gguf-f913-generation-summary.json)；它不代表 Android 真机或分布式 GGUF 验收。**旧版无 origin 的 worker 凭据需先独立确认原服务器地址，再按[显式迁移说明](real-model-runtime/README.md#worker-credential-and-recovery-corrections)离线绑定**，不能删除状态目录或盲目绑定当前地址来绕过恢复。最终参赛提交与展示材料仍待项目完成后统一固定。
+上述 PR #59 恢复修复验收是历史本地测试。本轮另已完成公网 HTTPS Controller `f9139762` → Mac mini worker `30b9efc` 的一次真实 GGUF 生成与停止清理，见[本轮公开模型摘要](submission/evidence/public-gguf-f913-generation-summary.json)；它不代表 Android 真机或分布式 GGUF 验收。**旧版无 origin 的 worker 凭据需先独立确认原服务器地址，再按[显式迁移说明](real-model-runtime/README.md#worker-credential-and-recovery-corrections)离线绑定**，不能删除状态目录或盲目绑定当前地址来绕过恢复。正式材料依据固定源码和既有验收整理，不新增模型执行。
 
 **结果语义按任务类型区分：** tiny `/v1/tasks` 完成表示各分片上报完成，其 logits 由数据面返回，不存储在 Controller；定向 `lastcore/linear-demo-v1` 使用同一任务命名空间并保存数值结果；整模型 `/v1/inference/jobs` 保存有界文本结果和停止确认。单设备 SmolLM2 成功不能证明真实预训练模型已跨设备分层。
 
@@ -58,7 +56,7 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 | 创新性 / 15 | 资源约束下连续分层与逐跳 activation；整模型任务的结果和停止收敛 | [scheduler.py](controller-server/app/scheduler.py)、[pipeline.py](inference-engine/inference_engine/pipeline.py)、[任务协议](controller-server/REAL_JOBS.md)；不宣称算法首创或预训练模型跨设备已完成 |
 | 代码实现 / 15 | 恢复/凭据边界回归、事务及容量扩展、固定 Git 归档检查 | [恢复测试](real-model-runtime/tests/test_worker_recovery.py)、[容量测试](controller-server/tests/test_capacity_expiry_scaling.py)、[真实 Git 归档测试](ops/staging/tests/test_prepare_release.py) |
 | 项目架构 / 15 | 控制面与执行面分离、两种任务协议隔离、执行所有权与停止确认 | [Node Agent 协议](node-agent/PROTOCOL.md)、[通信协议](communication/PROTOCOL.md)、[整模型 API](controller-server/REAL_JOBS.md)、[guardian](real-model-runtime/job_guardian.py) |
-| 展示效果 / 10 | 实际运行的桌面/移动网页、交互回放、线上 Swagger 与健康响应 | [工作台源码](controller-server/app/ui/index.html)、[Demo 源码](demo/index.html)、[5 张实际截图及范围](screenshots/README.md)、[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt) |
+| 展示效果 / 10 | 实际运行的桌面/移动网页、交互回放、线上 Swagger 与健康响应 | [工作台源码](controller-server/app/ui/index.html)、[Demo 源码](demo/index.html)、[3 张正式截图](screenshots/formal-v0.1.1/README.md)、[5 张历史截图及范围](screenshots/README.md)、[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt) |
 
 正式材料与三条证据路径见 [submission/FORMAL_SUBMISSION.md](submission/FORMAL_SUBMISSION.md)；既有材料核对见 [submission/README.md](submission/README.md)。健康响应只证明采集时可达；回放是历史结果说明，移动浏览器截图不是 Android 真机验收。
 
@@ -68,7 +66,7 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 | --- | --- | --- |
 | Controller | [main.py](controller-server/app/main.py)、[store.py](controller-server/app/store.py)、[scheduler.py](controller-server/app/scheduler.py) | API、鉴权、持久化、预留与连续分层调度 |
 | 原生 Mac 客户端 | [ClientModel.swift](macos-client/Sources/LastCoreClient/ClientModel.swift)、[安装与运行](macos-client/README.md) | 定向线性任务、本机状态与数值结果显示 |
-| 管理工作台 | [index.html](controller-server/app/ui/index.html)、[console.js](controller-server/app/ui/console.js) | 管理员连接、节点/任务查看和派发；凭据不写入源码 |
+| 管理工作台 | [index.html](controller-server/app/ui/index.html)、[console.js](controller-server/app/ui/console.js) | 管理员连接与节点/任务只读查看；派发经 `/docs` 或 API，凭据不写入源码 |
 | 整模型任务 | [inference_jobs.py](controller-server/app/inference_jobs.py)、[REAL_JOBS.md](controller-server/REAL_JOBS.md) | 整模型协议、幂等、租约、结果及清理屏障 |
 | Node Agent | [agent.py](node-agent/lastcore_node_agent/agent.py)、[executor.py](node-agent/lastcore_node_agent/executor.py)、[inference_adapter.py](node-agent/lastcore_node_agent/inference_adapter.py) | 节点生命周期、任务领取和引擎执行 |
 | tiny 引擎 | [model.py](inference-engine/inference_engine/model.py)、[stage.py](inference-engine/inference_engine/stage.py)、[pipeline.py](inference-engine/inference_engine/pipeline.py) | 模型前向、分段执行与链路编排 |
@@ -103,7 +101,7 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 - [AI_USAGE.md](AI_USAGE.md)与[真实 AI 对话记录索引](ai-logs/README.md)
 - [本地提交历史快照](submission/git-history.txt)：保留原始时间偏移，不单独证明平台仓库创建时间或赛事合规。
 
-已验证的核心进入正式交付阶段：Demo 源码与离线页面在 `demo/`；5 张实际截图在 `screenshots/`，每张均有原始来源、时间、尺寸和 SHA256。截图中的设备图是示意、交互是历史回放，线上健康截图仅证明当时服务可达。原 `a6` ZIP 与镜像保持不变；正式版在源码、实际入口与截图收口后，从最终固定提交生成一个新版本包，保留准确来源。邮件尚未发送；最终提交地址为 `seproject@yeah.net`，主题为 `【Tibo重置了吗 + 赛题全称】`。
+已验证的核心进入正式交付阶段：Demo 源码与离线页面在 `demo/`；3 张正式工作台截图与 5 张历史截图在 `screenshots/`，每张均有原始来源、时间、尺寸和 SHA256。截图中的设备图是示意、交互是历史回放，线上健康截图仅证明当时服务可达。原 `a6` ZIP 与镜像保持不变；正式版在源码、实际入口与截图收口后，从最终固定提交生成一个新版本包，保留准确来源。邮件尚未发送；最终提交地址为 `seproject@yeah.net`，主题为 `【Tibo重置了吗 + 赛题全称】`。
 
 ## 本地运行
 
