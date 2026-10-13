@@ -47,6 +47,9 @@ class Store:
                 CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at DESC);
                 CREATE INDEX IF NOT EXISTS nodes_accepting_heartbeat ON nodes(last_seen)
                     WHERE accepting_tasks != 0;
+                CREATE TABLE IF NOT EXISTS assignment_results (
+                    assignment_id TEXT PRIMARY KEY REFERENCES assignments(id), result TEXT NOT NULL
+                );
             """)
 
     @contextmanager
@@ -169,7 +172,8 @@ class Store:
         placeholders = ",".join("?" for _ in task_ids)
         by_task = {task_id: [] for task_id in task_ids}
         for row in db.execute(f"""
-            SELECT a.*, n.endpoint FROM assignments a JOIN nodes n ON n.id=a.node_id
+            SELECT a.*, n.endpoint, ar.result FROM assignments a JOIN nodes n ON n.id=a.node_id
+            LEFT JOIN assignment_results ar ON ar.assignment_id=a.id
             WHERE a.task_id IN ({placeholders}) ORDER BY a.task_id, a.position
         """, task_ids):
             by_task[row["task_id"]].append(dict(row))
@@ -178,10 +182,15 @@ class Store:
             result = dict(task)
             result["request"] = json.loads(result["request"])
             assignments = by_task[task["id"]]
+            for assignment in assignments:
+                assignment["result"] = json.loads(assignment["result"]) if assignment["result"] else None
             for i, assignment in enumerate(assignments):
                 assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
                 assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
             result["assignments"] = assignments
+            result["result"] = ([value for assignment in assignments for value in assignment["result"]]
+                                if result["status"] == "completed" and assignments
+                                and all(a["result"] is not None for a in assignments) else None)
             results.append(result)
         return results
 
@@ -194,13 +203,17 @@ class Store:
             # Retain historical nodes in the registry without materializing
             # offline/draining entries on the scheduling path. node_id is NOT
             # NULL, so NOT IN safely excludes all active pipeline reservations.
+            target_clause = " AND n.id=?" if request.target_node_id is not None else ""
+            parameters = [self.clock() - self.ttl]
+            if request.target_node_id is not None:
+                parameters.append(str(request.target_node_id))
             nodes = [dict(node) for node in db.execute("""
                 SELECT n.id, n.endpoint, n.available_memory_mb, n.compute_weight FROM nodes n
                 WHERE n.accepting_tasks != 0 AND n.last_seen > ? AND n.id NOT IN (
                     SELECT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
                     WHERE t.status IN ('queued','running')
                 )
-            """, (self.clock() - self.ttl,)).fetchall()]
+            """ + target_clause, parameters).fetchall()]
             try:
                 plan = allocate(nodes, request.num_layers,
                                 request.layer_memory_mb, request.max_nodes)
@@ -246,12 +259,24 @@ class Store:
             if assignment is None:
                 raise HTTPException(404, "assignment not found")
             task = self._task_view(db, assignment["task_id"])
+            linear = task["request"]["model_id"] == "lastcore/linear-demo-v1"
+            if linear and report.status == "completed":
+                if report.result is None or len(report.result) != assignment["layer_end"] - assignment["layer_start"]:
+                    raise HTTPException(422, "completed linear result must contain every assigned row")
+            elif report.result is not None:
+                raise HTTPException(422, "result is only accepted for completed linear assignments")
             if assignment["status"] == report.status:
+                previous = next(a["result"] for a in task["assignments"] if a["id"] == assignment_id)
+                if report.result != previous:
+                    raise HTTPException(409, "assignment retry conflicts with the saved result")
                 return task  # Retries are idempotent, including terminal acknowledgements.
             if task["status"] not in ACTIVE or assignment["status"] not in ("pending", "running"):
                 raise HTTPException(409, "assignment is terminal")
             db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
                        (report.status, report.error if report.status == "failed" else None, assignment_id))
+            if report.result is not None:
+                db.execute("INSERT INTO assignment_results VALUES (?,?)",
+                           (assignment_id, json.dumps(report.result, allow_nan=False)))
             if report.status == "failed":
                 self._end_task(db, task["id"], "failed", report.error or "node reported failure")
             elif not db.execute("SELECT 1 FROM assignments WHERE task_id=? AND status!='completed'",
