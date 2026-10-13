@@ -17,6 +17,7 @@ struct Session {
     std::chrono::steady_clock::time_point deadline;
 };
 std::mutex registry_mutex;
+std::mutex generation_mutex;
 std::unordered_map<jlong, std::shared_ptr<Session>> sessions;
 std::atomic<jlong> next_id{1};
 std::once_flag backend_once;
@@ -45,9 +46,11 @@ std::string bytes(JNIEnv * env, jbyteArray array, size_t maximum) {
     if (env->ExceptionCheck() || value.find('\0') != std::string::npos) throw std::runtime_error("Invalid UTF-8 input");
     return value;
 }
-std::string generate(Session & s, const std::string & path, const std::string & prompt, int limit) {
+std::string generate(Session & s, const std::string & path, const std::string & prompt, int limit, int timeout_millis) {
     if (s.used.exchange(true)) throw std::runtime_error("Runtime session already used");
-    s.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(90);
+    std::unique_lock<std::mutex> generation_lock(generation_mutex, std::try_to_lock);
+    if (!generation_lock.owns_lock()) throw std::runtime_error("Another native generation is still active");
+    s.deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_millis);
     check(s);
     std::call_once(backend_once, [] {
         // Suppress upstream diagnostic paths/content; errors below remain fixed messages.
@@ -115,11 +118,12 @@ extern "C" JNIEXPORT void JNICALL Java_ai_lastcore_android_LocalRuntime_nativeCl
     if (it != sessions.end()) { it->second->cancelled.store(true); sessions.erase(it); }
 }
 extern "C" JNIEXPORT jbyteArray JNICALL Java_ai_lastcore_android_LocalRuntime_nativeGenerate(
-    JNIEnv * env, jclass, jlong id, jbyteArray path, jbyteArray prompt, jint limit) {
+    JNIEnv * env, jclass, jlong id, jbyteArray path, jbyteArray prompt, jint limit, jint timeout_millis) {
     try {
+        if (timeout_millis < 1 || timeout_millis > 90000) throw std::runtime_error("Execution deadline limit exceeded");
         if (limit < 1 || limit > 64) throw std::runtime_error("Token limit exceeded");
         auto session = get(id); // Shared ownership prevents close/cancel from freeing active native state.
-        std::string output = generate(*session, bytes(env, path, 4096), bytes(env, prompt, 2048), limit);
+        std::string output = generate(*session, bytes(env, path, 4096), bytes(env, prompt, 4192), limit, timeout_millis);
         jbyteArray value = env->NewByteArray(output.size());
         if (value) env->SetByteArrayRegion(value, 0, output.size(), reinterpret_cast<const jbyte *>(output.data()));
         return value;

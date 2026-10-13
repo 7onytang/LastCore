@@ -18,20 +18,20 @@ import static org.junit.Assert.*;
 public class CredentialSecurityTest {
     private Context context() { return InstrumentationRegistry.getInstrumentation().getTargetContext(); }
     @Test public void encryptedRoundTripAndClear() throws Exception {
-        Context context = context(); CredentialVault vault = new CredentialVault(context);
+        Context context = context(); CredentialVault vault = new CredentialVault(context, "lastcore-security-test", "test-node-credentials.enc");
         byte[] secret = "fixture-secret-never-a-real-token".getBytes(StandardCharsets.UTF_8);
-        File file = new File(context.getNoBackupFilesDir(), "node-credentials.enc");
+        File file = new File(context.getNoBackupFilesDir(), "test-node-credentials.enc");
         try {
             vault.clear(); vault.save(secret); assertArrayEquals(secret, vault.load());
             assertFalse(new String(Files.readAllBytes(file.toPath()), StandardCharsets.ISO_8859_1).contains(new String(secret, StandardCharsets.UTF_8)));
             KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
-            assertNull(keys.getKey("lastcore-node-v1", null).getEncoded());
-            vault.clear(); assertFalse(file.exists()); assertFalse(keys.containsAlias("lastcore-node-v1"));
+            assertNull(keys.getKey("lastcore-security-test", null).getEncoded());
+            vault.clear(); assertFalse(file.exists()); assertFalse(keys.containsAlias("lastcore-security-test"));
         } finally { vault.clear(); }
     }
     @Test public void ciphertextTamperFailsClosed() throws Exception {
-        Context context = context(); CredentialVault vault = new CredentialVault(context);
-        File file = new File(context.getNoBackupFilesDir(), "node-credentials.enc");
+        Context context = context(); CredentialVault vault = new CredentialVault(context, "lastcore-security-test", "test-node-credentials.enc");
+        File file = new File(context.getNoBackupFilesDir(), "test-node-credentials.enc");
         try {
             vault.save("synthetic-test-value".getBytes(StandardCharsets.UTF_8));
             byte[] encrypted = Files.readAllBytes(file.toPath()); encrypted[encrypted.length - 1] ^= 1;

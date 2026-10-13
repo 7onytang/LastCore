@@ -14,21 +14,26 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /** Stores encrypted bytes in app-private no-backup storage; never logs secrets. */
 final class CredentialVault {
-    private static final String ALIAS = "lastcore-node-v1";
+    private final String alias;
     private final AtomicFile file;
-    CredentialVault(Context context) { file = new AtomicFile(new File(context.getNoBackupFilesDir(), "node-credentials.enc")); }
-    private SecretKey key() throws Exception {
+    CredentialVault(Context context) { this(context, "lastcore-node-v1", "node-credentials.enc"); }
+    CredentialVault(Context context, String alias, String filename) {
+        this.alias=alias; file=new AtomicFile(new File(context.getNoBackupFilesDir(), filename));
+    }
+    private SecretKey key(boolean create) throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
-        if (!store.containsAlias(ALIAS)) {
+        if (!store.containsAlias(alias)) {
+            if (!create) throw new java.security.GeneralSecurityException("Credential key is unavailable");
             KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            generator.init(new KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+            generator.init(new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
             generator.generateKey();
         }
-        return (SecretKey) store.getKey(ALIAS, null);
+        return (SecretKey) store.getKey(alias, null);
     }
     synchronized void save(byte[] credentials) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
+        if (credentials.length > 131072) throw new IllegalArgumentException("Credential state exceeds budget");
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key(true));
         byte[] iv = cipher.getIV(); byte[] encrypted = cipher.doFinal(credentials);
         FileOutputStream output = null;
         try {
@@ -38,13 +43,13 @@ final class CredentialVault {
     synchronized void clear() throws Exception {
         file.delete();
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
-        if (store.containsAlias(ALIAS)) store.deleteEntry(ALIAS);
+        if (store.containsAlias(alias)) store.deleteEntry(alias);
     }
     synchronized byte[] load() throws Exception {
         byte[] bytes = file.readFully();
         if (bytes.length < 1 || (bytes[0] & 255) != 12 || bytes.length < 29) throw new IllegalStateException("Invalid credential envelope");
         byte[] iv = java.util.Arrays.copyOfRange(bytes, 1, 13);
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, iv));
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE, key(false), new GCMParameterSpec(128, iv));
         return cipher.doFinal(bytes, 13, bytes.length - 13);
     }
 }

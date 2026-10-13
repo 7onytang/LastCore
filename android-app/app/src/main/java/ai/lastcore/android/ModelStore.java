@@ -20,6 +20,7 @@ final class ModelStore {
         for (byte b : bytes) value.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
         return value.toString();
     }
+    File path() { return model; }
     File verified(AtomicBoolean cancelled) throws Exception {
         if (model.length() != BYTES) throw new IllegalStateException("Import the pinned 105 MB SmolLM2 GGUF first");
         MessageDigest digest = MessageDigest.getInstance("SHA-256");

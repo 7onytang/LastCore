@@ -11,3 +11,4 @@ __pycache__/
 verification-build.log
 **/.cxx/
 .native-host-check/
+.host-tests/
