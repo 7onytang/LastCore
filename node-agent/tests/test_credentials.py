@@ -1,5 +1,9 @@
 import os
 import stat
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +20,30 @@ from lastcore_node_agent.credentials import (
     settle_journal,
 )
 
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+_CHILD_LOCK_PROBE = textwrap.dedent(
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, sys.argv[2])
+    from lastcore_node_agent.credentials import acquire_state_lock
+
+    handle = acquire_state_lock(Path(sys.argv[1]))
+    print("LOCKED" if handle is not None else "BLOCKED")
+    """
+)
+
+
+def _probe_lock_in_subprocess(state_dir: Path) -> str:
+    result = subprocess.run(
+        [sys.executable, "-c", _CHILD_LOCK_PROBE, str(state_dir), str(_PACKAGE_ROOT)],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
 
 def test_state_lock_is_exclusive(tmp_path):
     first = acquire_state_lock(tmp_path)
@@ -29,18 +57,32 @@ def test_state_lock_is_exclusive(tmp_path):
     second.close()
 
 
+def test_state_lock_excludes_other_process(tmp_path):
+    held = acquire_state_lock(tmp_path)
+    assert held is not None
+    try:
+        assert _probe_lock_in_subprocess(tmp_path) == "BLOCKED"
+    finally:
+        held.close()
+    assert _probe_lock_in_subprocess(tmp_path) == "LOCKED"
+
+
 def test_credentials_roundtrip(tmp_path):
     creds = NodeCredentials("node-1", "tok", 30)
     save_credentials(tmp_path, creds)
     assert load_credentials(tmp_path) == creds
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX mode bits are not enforced by os.chmod on Windows")
 def test_credentials_file_permissions(tmp_path):
     save_credentials(tmp_path, NodeCredentials("n", "t", 30))
     mode = stat.S_IMODE(os.stat(tmp_path / "node-credentials.json").st_mode)
     assert mode == 0o600
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX mode bits are not enforced by os.chmod on Windows")
 def test_state_dir_permissions(tmp_path):
     save_credentials(tmp_path, NodeCredentials("n", "t", 30))
     mode = stat.S_IMODE(os.stat(tmp_path).st_mode)
