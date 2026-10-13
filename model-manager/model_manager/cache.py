@@ -37,6 +37,9 @@ DEFAULT_LOCK_TIMEOUT = 30.0
 DEFAULT_POLL_INTERVAL = 0.05
 DEFAULT_STALE_AFTER = 120.0
 _HASH_BUFFER = 1 << 20
+# Windows 下 os.open 缺省为文本模式，会把写入的 0x0A 翻译为 0x0D 0x0A 导致
+# 二进制缓存膨胀；POSIX 无 O_BINARY，用 getattr 回退为 0（无操作）。
+_O_BINARY = getattr(os, "O_BINARY", 0)
 
 
 def safe_component(value: object, where: str) -> str:
@@ -303,7 +306,7 @@ class ModelCache:
         digest = hashlib.sha256()
         written = 0
         try:
-            fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, 0o644)
             try:
                 while True:
                     try:
@@ -345,7 +348,7 @@ class ModelCache:
     def write_atomic(self, path: Path, data: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         part = path.with_name(f"{path.name}{PART_PREFIX}{os.getpid()}-{uuid.uuid4().hex[:8]}")
-        fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY, 0o644)
         try:
             _write_all(fd, data)
             os.fsync(fd)
