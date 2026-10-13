@@ -133,6 +133,12 @@ Controller 测试覆盖连续分层、算力与内存限制、鉴权、节点隔
 
 Controller 测试中的节点状态为模拟数据。`inference-engine/` 的验证覆盖两个或三个独立进程的 tiny 模型链路与单机结果逐字节一致；这与控制平面验证分开，也不代表生产规模模型或物理设备矩阵已验收。
 
+SQLite 初始化和每次事务在退出时显式关闭连接，包括初始化、事务准备和请求执行失败的路径；事务提交、请求失败回滚及已提交的过期清理语义保持一致。实现复用 Python 标准库 [`contextlib.closing`](https://github.com/python/cpython/blob/main/Doc/library/sqlite3.rst)，无需新增依赖。连接生命周期回归测试保留真实连接引用，验证退出后连接已经关闭，并确认数据提交、回滚和过期清理的持久化结果：
+
+```bash
+pytest -q tests/test_store_lifecycle.py
+```
+
 ## 后续集成
 
 - 接入真实大模型：替换 `inference-engine/model.py` 的算子与权重映射，在两节点验证真实模型的加载、分片、tensor 传输与输出（协议见 `node-agent/PROTOCOL.md`）。
