@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-import fcntl
 import json
 import os
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 CREDENTIALS_FILE = "node-credentials.json"
 JOURNAL_FILE = "journal.json"
@@ -135,12 +140,29 @@ def clear_pending_report(state_dir: Path, assignment_id: str) -> None:
     _atomic_write_json(path, data)
 
 
+def _lock_exclusive_nonblocking(handle) -> None:
+    """Take a non-blocking exclusive lock on an open file handle.
+
+    Mirrors ``fcntl.flock(fd, LOCK_EX | LOCK_NB)`` on POSIX and
+    ``msvcrt.locking(fd, LK_NBLCK, 1)`` on Windows: it raises ``OSError`` when the
+    lock is already held by another process (or another handle in this process) and
+    otherwise holds byte 0 until the handle is closed. Closing the handle - or the
+    owning process exiting - releases the lock, matching the POSIX semantics the
+    node-agent relies on.
+    """
+    if sys.platform == "win32":
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def acquire_state_lock(state_dir: Path):
     path = Path(state_dir)
     path.mkdir(parents=True, exist_ok=True)
     handle = (path / LOCK_FILE).open("a+")
     try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_exclusive_nonblocking(handle)
     except OSError:
         handle.close()
         return None
