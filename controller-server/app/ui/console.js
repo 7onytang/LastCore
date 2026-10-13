@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let admin = '', loading = false, generation = 0, connected = false;
-const desktop = new URLSearchParams(location.search).has('desktop');
+const desktop = document.documentElement.dataset.surface === 'desktop';
 const localKey = desktop ? location.hash.slice(1) : '';
 if (desktop) history.replaceState(null, '', location.pathname + location.search);
 const date = value => {
@@ -76,6 +76,7 @@ async function refresh() {
     }
   } finally { loading = false; accessControls(); }
 }
+if (!desktop) {
 $('connect-form').addEventListener('submit', event => {
   event.preventDefault(); if (loading || connected) return;
   if (location.protocol !== 'https:' && !['127.0.0.1','localhost','[::1]'].includes(location.hostname)) {
@@ -85,6 +86,7 @@ $('connect-form').addEventListener('submit', event => {
   generation++; clearData(); refresh();
 });
 $('refresh').addEventListener('click',refresh); $('disconnect').addEventListener('click',disconnect);
+}
 window.addEventListener('pagehide', () => { if (!desktop) disconnect(); });
 for (const a of document.querySelectorAll('nav a')) a.addEventListener('click', () => { for (const b of document.querySelectorAll('nav a')) b.removeAttribute('aria-current'); a.setAttribute('aria-current','page'); });
 async function localRequest(path, method = 'GET') {
@@ -93,6 +95,35 @@ async function localRequest(path, method = 'GET') {
   return response.json();
 }
 let localLoading = false;
+const taskStates = {'preparing':'准备中','running':'执行中','completed':'本机完成','failed':'执行失败',
+  'stopping':'正在停止','stopped-local':'本机已停止','stop-unconfirmed':'停止未确认'};
+const ownErrors = {'shutdown':'用户停止本机执行','deadline':'任务超时','heartbeat-stall':'心跳中断',
+  'task-terminal':'Controller 任务已结束','local-cancel':'本机取消','execution_failed':'本机执行失败',
+  'executor_unavailable':'执行器不可用','cleanup_timeout':'清理尚未确认'};
+const ownConnection = {'connected':'心跳已确认','unreachable':'连接不可达','heartbeat-failed':'心跳失败',
+  'heartbeat-stale':'心跳已过期','starting':'正在连接','stopped':'进程未运行','rejected':'凭据被拒绝','unavailable':'Unavailable'};
+function renderOwnState(state) {
+  const observation = state.observation || {}, task = observation.task, device = state.device || {};
+  $('own-node-id').textContent = observation.node_id || '—';
+  $('own-connection').textContent = ownConnection[observation.connection] || 'Unavailable';
+  $('own-heartbeat').textContent = observation.last_heartbeat ? date(observation.last_heartbeat) : '—';
+  $('own-cpu').textContent = Number.isFinite(device.cpu_percent) ? `${device.cpu_percent}% · ${device.cpu_logical ?? '—'} 逻辑核心` : 'Unavailable · 尚无有效采样';
+  const gib = bytes => (bytes / 1073741824).toFixed(1) + ' GiB';
+  $('own-memory').textContent = Number.isFinite(device.memory_available_bytes) && Number.isFinite(device.memory_total_bytes) ? `${gib(device.memory_available_bytes)} / ${gib(device.memory_total_bytes)}` : 'Unavailable';
+  $('own-accelerator').textContent = state.mode === 'stage' ? 'CPU 执行 · GPU/NPU 信息 Unavailable' : 'Demo 无模型计算 · GPU/NPU 信息 Unavailable';
+  $('own-sampled').textContent = device.sampled_at ? `本机 OS 采样 ${date(device.sampled_at)}（北京）` : '资源指标 Unavailable';
+  $('own-task-id').textContent = task?.task_id || '—';
+  $('own-task-type').textContent = task ? `${task.executor === 'stage' ? 'tiny 分层前向' : 'Demo 模拟'} · ${task.model_id || '—'}` : '—';
+  $('own-task-stage').textContent = task && Number.isInteger(task.layer_start) && Number.isInteger(task.layer_end) ? `层 [${task.layer_start}, ${task.layer_end})` : '—';
+  const stale = task && !state.running && ['preparing','running','stopping'].includes(task.status);
+  $('task-status').textContent = stale ? '最后状态未确认' : task ? taskStates[task.status] || '状态未确认' : observation.poll_status === 'ok' ? '等待任务' : '尚未获取';
+  $('task-status').className = task && task.status === 'completed' ? 'badge good' : 'badge';
+  const result = task?.result;
+  $('own-task-result').textContent = result?.output_shape ? `输出形状 ${result.output_shape.join(' × ')}${Array.isArray(result.output_preview) && result.output_preview.length ? ` · 数值摘要 [${result.output_preview.map(n => Number(n).toPrecision(5)).join(', ')}]` : ''}${Number.isFinite(result.local_seconds) ? ` · 本机计算 ${result.local_seconds.toFixed(4)}s` : ''}` : task?.error_code ? `状态原因：${ownErrors[task.error_code] || 'Unavailable'}` : task?.executor === 'demo' && task.status === 'completed' ? '模拟执行已结束，未产生模型结果' : task ? '暂无模型结果' : '尚未执行任务';
+  const report = {'acknowledged':'本机终态已由 Controller 接收','pending':'本机结果已保存，等待重新上报',
+    'terminal-conflict':'Controller 已返回终态冲突，不能据此证明结果已接收','not-sent':'只确认本机执行状态；云端任务由 Controller 收敛','running-reported':'本机已上报开始执行'};
+  $('own-task-report').textContent = stale ? '进程已退出，此任务的清理与云端结果尚未确认。' : task ? report[task.report_status] || '云端接收状态未确认' : '只展示本机分配与执行状态，不查询其他节点。';
+}
 async function localState(action) {
   if (localLoading) return; localLoading = true;
   $('start-agent').disabled = true; $('stop-agent').disabled = true; $('refresh-local').disabled = true;
@@ -100,29 +131,28 @@ async function localState(action) {
   try {
     if (!localKey) throw new Error('本地会话已失效，请从启动终端重新打开原始面板链接。');
     const state = await localRequest(action ? `/desktop/${action}` : '/desktop/state', action ? 'POST' : 'GET');
+    renderOwnState(state);
     $('process-status').textContent = state.stopping ? '正在停止 · 等待确认' : state.running ? '进程运行中' : state.exit_code !== null && state.exit_code !== 0 ? '进程已退出' : '已停止';
     $('process-status').className = state.running && !state.stopping ? 'badge good' : 'badge';
     const mode = state.mode === 'demo' ? 'Demo 模拟' : 'tiny 分层节点';
-    $('desktop-result').textContent = `${mode} · ${state.stopping ? '停止已请求，原进程退出后才可重新启动。' : state.running ? '请在 Controller 查看注册、心跳与任务状态。' : state.exit_code === null ? '点击启动节点。' : state.exit_code === 0 ? '已正常停止，恢复状态已保留。' : `退出码 ${state.exit_code}，检查私有配置后重试。`}`;
+    $('desktop-result').textContent = `${mode} · ${state.stopping ? '停止已请求，原进程退出后才可重新启动。' : state.running ? '本机任务与连接状态显示在上方。' : state.exit_code === null ? '点击启动节点。' : state.exit_code === 0 ? '已正常停止，恢复状态已保留。' : `退出码 ${state.exit_code}，检查私有配置后重试。`}`;
     $('start-agent').hidden = state.running; $('stop-agent').hidden = !state.running;
-    $('start-agent').textContent = state.exit_code !== null && state.exit_code !== 0 ? '重试启动' : '启动节点';
-    $('stop-agent').textContent = state.stopping ? '正在停止…' : '停止节点';
+    $('start-agent').textContent = state.exit_code !== null && state.exit_code !== 0 ? '重试启动' : '连接并启动';
+    $('stop-agent').textContent = state.stopping ? '正在停止…' : '停止本机执行';
     $('start-agent').disabled = state.running; $('stop-agent').disabled = !state.running || state.stopping;
     $('refresh-local').hidden = true;
   } catch (error) {
     $('desktop-result').textContent = error.message; $('process-status').textContent = '状态未确认';
+    $('own-connection').textContent = '状态未确认';
+    $('own-sampled').textContent = '查询失败，先前资源指标可能已过期';
     // A failed request can have taken effect: re-read state before allowing another action.
     $('refresh-local').hidden = !localKey; $('refresh-local').disabled = false;
   } finally { localLoading = false; }
 }
 if (desktop) {
-  $('desktop-panel').hidden = false;
-  for (const selector of ['.connect-card','#feedback','.metrics-title','.metrics','#nodes','#tasks','#api-docs','nav a[href="#nodes"]','nav a[href="#tasks"]']) document.querySelector(selector).hidden = true;
-  $('connection').textContent = '本地节点面板';
-  document.querySelector('.workspace-heading h1').textContent = '设备控制';
-  document.querySelector('.workspace-heading .muted').textContent = '启动、停止，查看当前进程状态。';
   $('refresh-local').addEventListener('click',() => localState());
-  $('start-agent').addEventListener('click',() => localState('start')); $('stop-agent').addEventListener('click',() => localState('stop')); localState();
-  // Poll only the local process while the page is visible; never infer cloud health.
+  $('start-agent').addEventListener('click',() => localState('start'));
+  $('stop-agent').addEventListener('click',() => localState('stop'));
+  localState();
   setInterval(() => {if (!document.hidden) localState();},5000);
 }

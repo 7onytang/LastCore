@@ -361,3 +361,5 @@ python demo/export-standalone.py
 ```
 
 Android 仍按 `android-app/README.md` 使用固定 SDK/NDK 构建；资源/Java 编译、完整 APK 构建与真机推理是独立的验证层次。
+
+桌面源码节点面板已进一步限定为“当前任务 / 设备状态”两卡，独立页面没有管理员凭据、全节点列表、派活或全局取消。安装其项目级依赖：`python -m pip install -r node-agent/desktop/requirements-ui.txt`。它显示本机接受的任务、分片与实际数值摘要，确认心跳按北京时间展示，CPU/内存来自本机 OS 采样，缺失时显示 `Unavailable`。该面板不是用户已有的 SwiftUI `LastCoreClient`；不能依据 App 名称或在线注册字段推断 live executor 兼容。legacy 停止只确认本机清理，Controller 后续收敛与停止确认协议的范围见桌面 README，未修改服务器协议。

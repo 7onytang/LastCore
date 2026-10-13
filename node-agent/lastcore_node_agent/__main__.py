@@ -54,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-accept", action="store_true",
                         help="start in drain mode (accepting_tasks=false)")
     parser.add_argument("--request-timeout", type=float, default=10.0)
+    parser.add_argument("--ui-status-file",help=argparse.SUPPRESS)
     parser.add_argument("--verbose", action="store_true")
     return parser
 
@@ -100,9 +101,13 @@ def main(argv: list[str] | None = None) -> int:
     except (RuntimeError, StateError) as exc:
         print(f"executor {config.executor!r} cannot be loaded: {exc}", file=sys.stderr)
         return 4
+    observer = None
+    if args.ui_status_file:
+        from .local_status import LocalStatusWriter
+        observer = LocalStatusWriter(args.ui_status_file)
     agent = NodeAgent(config, ControllerClient(config.controller_url,
                                                timeout=config.request_timeout),
-                      executor_factory=executor_factory)
+                      executor_factory=executor_factory,observer=observer)
 
     def handle_signal(signum, frame):
         agent.shutdown()

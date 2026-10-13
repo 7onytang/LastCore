@@ -16,3 +16,10 @@
 #stop-agent{border-color:#8b605e;color:var(--danger)}#desktop-result{min-height:24px;overflow-wrap:anywhere}
 @media(max-width:1100px){.connect-card{grid-template-columns:1fr}}
 @media(max-width:760px){.workspace-heading{padding-top:24px}.workspace-heading h1{font-size:26px}.connected-actions{justify-content:space-between}.sidebar{padding:16px 20px}nav{margin-top:14px}.card{padding:18px}.actions{flex-wrap:wrap}}
+/* Edge client has its own two-card document; no administrator or fleet markup. */
+.edge-main{margin:0 auto;max-width:1120px;padding:0 32px}.edge-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.edge-grid .card{margin:0 0 28px;align-self:start;min-width:0}.edge-details{margin:0}
+.edge-details>div{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid #303c42}
+.edge-details dt{font-size:13px;color:var(--muted)}.edge-details dd{margin:0;font-size:14px;overflow-wrap:anywhere}
+.edge-note{font-size:12px;margin-top:20px}.edge-actions{margin-top:22px}.edge-main footer{margin-top:10px}
+@media(max-width:760px){.edge-main{padding:0 20px}.edge-grid{grid-template-columns:1fr;gap:0}.edge-details>div{grid-template-columns:110px minmax(0,1fr)}.edge-grid .card{margin-bottom:18px}}

@@ -10,9 +10,15 @@ import signal
 import subprocess
 import sys
 import threading
+import tempfile
+import math
+import time
 from urllib.parse import urlsplit
 import webbrowser
 from env_file import read_env_file
+from resource_snapshot import ResourceSampler
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+from lastcore_node_agent.local_status import safe_task
 
 UI = Path(__file__).resolve().parents[2] / 'controller-server' / 'app' / 'ui'
 
@@ -26,19 +32,36 @@ class NodeProcess:
         self.process = None
         self.stop_requested = False
         self.lock = threading.Lock()
+        self.private_status = tempfile.TemporaryDirectory(prefix="lastcore-node-ui-")
+        self.status_path = Path(self.private_status.name) / "status.json"
+        self.sampler = ResourceSampler()
 
     def state(self):
         code = None if self.process is None else self.process.poll()
         running = self.process is not None and code is None
-        return {'running': running, 'stopping': running and self.stop_requested, 'exit_code': code, 'mode': self.mode}
+        observation={'connection':'unavailable','last_heartbeat':None,'task':None}
+        try:
+            if self.status_path.stat().st_size <= 32768:
+                raw=json.loads(self.status_path.read_text())
+                if isinstance(raw,dict):
+                    for key in ['node_id','connection','poll_status','last_heartbeat','heartbeat_ttl','observed_at']:
+                        if key in raw: observation[key]=raw[key]
+                    observation['task']=safe_task(raw.get('task'))
+        except (OSError,ValueError): pass
+        if not running: observation['connection']='stopped'
+        elif isinstance(observation.get('last_heartbeat'),(int,float)) and isinstance(observation.get('heartbeat_ttl'),(int,float)) and time.time()-observation['last_heartbeat']>observation['heartbeat_ttl']:
+            observation['connection']='heartbeat-stale'
+        return {'running':running,'stopping':running and self.stop_requested,'exit_code':code,
+                'mode':self.mode,'observation':observation,'device':self.sampler.sample()}
 
     def start(self):
         with self.lock:
             if not self.state()['running']:
                 self.stop_requested = False
+                self.status_path.unlink(missing_ok=True)
                 # Never send child logs (which may contain private data) to the browser.
                 options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == 'win32' else {'start_new_session': True}
-                self.process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('run_agent.py')), '--env-file', str(self.env_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
+                self.process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('run_agent.py')), '--env-file', str(self.env_file), '--ui-status-file', str(self.status_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
             return self.state()
 
     def stop(self):
@@ -90,11 +113,11 @@ def make_server(node: NodeProcess, port: int = 0):
                 except (OSError, ValueError):
                     self.send(500,b'{}')
                 return
-            files = {'/':'index.html','/ui/styles.css':'styles.css','/ui/console.js':'console.js'}
+            files = {'/':'desktop.html','/ui/styles.css':'styles.css','/ui/console.js':'console.js'}
             if self.command != 'GET' or path not in files:
                 self.send(404,b'{}'); return
             name = files[path]
-            mime = {'index.html':'text/html; charset=utf-8','styles.css':'text/css; charset=utf-8','console.js':'application/javascript; charset=utf-8'}[name]
+            mime = {'desktop.html':'text/html; charset=utf-8','styles.css':'text/css; charset=utf-8','console.js':'application/javascript; charset=utf-8'}[name]
             self.send(200,(UI/name).read_bytes(),mime)
 
         do_GET = dispatch

@@ -23,7 +23,10 @@ def test_local_controls_require_session_and_reject_foreign_host_origin():
             with urllib.request.urlopen(urllib.request.Request(origin+path,headers=headers or {},method=method)) as r: return r.status,r.read()
         except urllib.error.HTTPError as e: return e.code,e.read()
     try:
-        assert request('/')[0] == 200
+        status,body = request('/')
+        assert status == 200
+        assert b'data-surface="desktop"' in body
+        assert b'admin-token' not in body and b'node-list' not in body and b'task-list' not in body
         assert request('/desktop/state')[0] == 403
         assert request('/desktop/start',method='POST')[0] == 403
         assert request('/desktop/state',{'X-LastCore-Session':key})[0] == 200
@@ -50,4 +53,6 @@ def test_stopping_is_not_reported_as_stopped_or_restarted(tmp_path, monkeypatch)
     monkeypatch.setattr(ui.subprocess,'Popen',lambda *a,**kw: (_ for _ in ()).throw(AssertionError('must not restart a live process')))
     assert node.start()['stopping']
     process.exit_code = 0
-    assert node.state() == {'running':False,'stopping':False,'exit_code':0,'mode':'demo'}
+    state = node.state()
+    assert not state['running'] and not state['stopping'] and state['exit_code'] == 0
+    assert state['observation']['connection'] == 'stopped'
