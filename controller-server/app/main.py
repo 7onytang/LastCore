@@ -1,5 +1,10 @@
+import asyncio
+import logging
+import math
 import os
 import secrets
+import sqlite3
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -10,19 +15,24 @@ from .models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
 from .store import Store
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class Settings:
     admin_token: str
     registration_token: str
     database_path: str = "data/controller.sqlite3"
     heartbeat_ttl_seconds: int = 30
+    expiry_interval_seconds: float = 1.0
 
     @classmethod
     def from_env(cls):
         return cls(os.environ.get("CONTROLLER_ADMIN_TOKEN", ""),
                    os.environ.get("CONTROLLER_REGISTRATION_TOKEN", ""),
                    os.environ.get("CONTROLLER_DATABASE_PATH", "data/controller.sqlite3"),
-                   int(os.environ.get("CONTROLLER_HEARTBEAT_TTL_SECONDS", "30")))
+                   int(os.environ.get("CONTROLLER_HEARTBEAT_TTL_SECONDS", "30")),
+                   float(os.environ.get("CONTROLLER_EXPIRY_INTERVAL_SECONDS", "1")))
 
 
 def create_app(settings: Settings | None = None, store: Store | None = None):
@@ -33,8 +43,38 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
         raise ValueError("Admin and registration credentials must be different")
     if not 5 <= settings.heartbeat_ttl_seconds <= 3600:
         raise ValueError("Heartbeat TTL must be between 5 and 3600 seconds")
+    if not math.isfinite(settings.expiry_interval_seconds) or not 0.1 <= settings.expiry_interval_seconds <= 60:
+        raise ValueError("Expiry interval must be between 0.1 and 60 seconds")
     store = store or Store(settings.database_path, settings.heartbeat_ttl_seconds)
-    app = FastAPI(title="LastCore Controller", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app):
+        # Reject startup if persisted state cannot be reconciled. SQLite work
+        # runs off the event loop and uses the same locking as API transactions.
+        await asyncio.to_thread(store.expire)
+        stop = asyncio.Event()
+
+        async def sweep():
+            while True:
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=settings.expiry_interval_seconds)
+                    return
+                except TimeoutError:
+                    try:
+                        await asyncio.to_thread(store.expire)
+                    except sqlite3.Error:
+                        logger.exception("Controller expiry sweep failed; retrying on next interval")
+
+        worker = asyncio.create_task(sweep(), name="controller-expiry")
+        try:
+            yield
+        finally:
+            stop.set()
+            # Do not cancel a SQLite thread mid-transaction or leave it writing
+            # after shutdown. An idle worker wakes immediately on this event.
+            await worker
+
+    app = FastAPI(title="LastCore Controller", version="0.1.0", lifespan=lifespan)
     bearer = HTTPBearer(auto_error=False)
 
     def credential(auth: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):

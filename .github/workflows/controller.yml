@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
+      - name: Idle expiry HTTP smoke test
+        run: python scripts/smoke_idle_expiry.py
       - name: Validate Compose configuration
         env:
           CONTROLLER_ADMIN_TOKEN: ci-admin-token-with-at-least-32-characters

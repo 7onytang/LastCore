@@ -80,6 +80,11 @@ class Store:
             error = "task deadline exceeded" if row["deadline"] <= now else "assigned node heartbeat expired"
             self._end_task(db, row["id"], "failed", error)
 
+    def expire(self):
+        """Persist overdue task and node expiry without requiring API traffic."""
+        with self.transaction():
+            pass
+
     @staticmethod
     def _hash(token):
         return hashlib.sha256(token.encode()).hexdigest()
