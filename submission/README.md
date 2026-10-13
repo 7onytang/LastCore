@@ -4,7 +4,7 @@
 
 本文件是提交材料索引，不是赛事官方 README 模板。赛题全称、官方开赛时间、官方模板和评分等级描述尚待提供；不得据此自行宣称满足全部赛事要求。
 
-用户要求的顺序已执行：最小核心完成并冻结后，再制作最终展示。Demo 源码已由 PR #62 合入；本批补入 5 张原始实际截图、采集元数据和三分钟讲稿。公开静态部署仍待主线验收，统一 ZIP 等全部材料与部署记录进入最后云端 main 后生成一次；邮件未发送。
+用户要求的顺序已执行：最小核心完成并冻结后，再制作最终展示。Demo 源码已由 PR #62 合入；本批补入 5 张原始实际截图、采集元数据和三分钟讲稿。统一 ZIP 等全部材料与最小部署脚本进入最后云端 main 后生成一次；随后静态部署与同字节镜像通过实际检查，结果随最终交付验收收据提供。邮件未发送。
 
 Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc22c5db9f351d304604e65743ca02ccda3`，核心合并提交 `7a9cd4910ee41d3b27fdc8c1d02c08f8487bc331`。23 项相关测试（8 项新增回归）、真实本地 Controller 的三个恢复场景和一次真实固定 GGUF 任务通过；证据见 `submission/evidence/mac-worker-30b9efc-review.md` 与 `submission/evidence/mac-worker-30b9efc-local.json`。这是本地修复验收，不是新云部署或 Android 真机证明；最终参赛提交和展示材料仍待统一固定。
 
@@ -17,7 +17,7 @@ Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc
 | AI 使用说明 | 已有并对照两条主线节选更新；完整历史不作推断 | `AI_USAGE.md` |
 | AI 对话记录 | 三个聊天相关节选已记录；完整开发覆盖仍待补充 | `ai-logs/`；优化主线 41 条原文已逐条核对 |
 | 3–8 张实际运行截图 | 已有 5 张原始 PNG，摘要与尺寸核对通过 | `screenshots/README.md`、`screenshots/capture-manifest.json`；3 张网页、2 张实际 HTTPS 服务截图 |
-| Demo 链接或不超过 3 分钟视频 | 页面与离线展示已合入；公开部署待验收 | `demo/index.html`、`demo/offline.html`、`demo/DEMO-SCRIPT-3MIN.txt`；讲稿不冒充已录制视频 |
+| Demo 链接或不超过 3 分钟视频 | 页面与离线展示已合入；上线检查随交付验收提供 | `demo/index.html`、`demo/offline.html`、`demo/DEMO-SCRIPT-3MIN.txt`；讲稿不冒充已录制视频 |
 | 同一 ZIP 压缩包 | 等截图、Demo、最终提交齐备后生成 | 应包含上述材料；排除凭据、缓存和私有数据库 |
 | 开发时间证明 | 本地历史已检查；赛事时间与平台创建时间未核验 | `submission/git-history.txt` |
 | 邮件提交 | 未发送 | `seproject@yeah.net`，主题为队伍名 + 赛题 |
