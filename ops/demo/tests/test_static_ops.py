@@ -26,7 +26,7 @@ class StaticOps(unittest.TestCase):
    with self.assertRaises(ValueError):p.files(self.site)
  def test_exact_caddy_route(self):
   base=(ROOT.parent/'public-ip-https/Caddyfile').read_bytes();self.assertEqual(hashlib.sha256(base).hexdigest(),p.BASE_CADDY_SHA);new=p.render_caddy(base)
-  self.assertIn(b'handle_path /demo/*',new);self.assertIn(b'admin off',new);self.assertIn(b'reverse_proxy 127.0.0.1:8000',new);self.assertEqual(new.replace(p.ROUTE.encode(),p.PROXY.encode()),base)
+  self.assertIn(b'https://8.134.161.123{uri} 308',new);self.assertIn(b'not path /.well-known/acme-challenge/*',new);self.assertNotIn(b'https://{host}',new);self.assertIn(b'handle_path /demo/*',new);self.assertIn(b'admin off',new);self.assertIn(b'reverse_proxy 127.0.0.1:8000',new);self.assertEqual(new.replace(p.ROUTE.encode(),p.PROXY.encode()).replace(p.HTTP_NEW.encode(),p.HTTP_OLD.encode()),base)
   with self.assertRaises(ValueError):p.render_caddy(base+b'\n')
  def test_accept_failure_rolls_config_back(self):
   old=self.root/'old';old.write_text('old');new=self.root/'new';new.write_text('new');alias=self.root/'Caddyfile';alias.symlink_to(old);current=self.root/'current';release=self.root/'release';release.mkdir();calls=[]
