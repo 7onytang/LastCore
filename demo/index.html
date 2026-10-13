@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f6f7f2"><meta name="description" content="LastCore 最小核心预发布：云端 Controller，连接 macOS 与 Android 本地推理。查看真实 GGUF 任务历史回放、验收范围和下载。"><link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><title>LastCore — 把 AI 计算，交给你的设备。</title><link rel="stylesheet" href="styles.css"><script src="evidence.js" defer></script><script src="app.js" defer></script></head>
+<body><a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header wrap"><a class="brand" href="#overview" aria-label="LastCore 首页"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 23V9l7-4v14l-7 4Zm10 5V8l7-4v20l-7 4Zm10-5V9l6-3v14l-6 3Z" fill="currentColor"/></svg><strong>LastCore</strong><span class="brand-caption">LOCAL COMPUTE. REAL RESULTS.</span></a><nav aria-label="主导航"><a href="#flow">工作方式</a><a href="#replay">实测回放</a><a href="#download">开始体验</a></nav><a class="nav-release" href="https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1" target="_blank" rel="noopener">v0.1.0-alpha.1 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></header>
+<main id="main">
+<section class="hero wrap" id="overview"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> 最小核心预发布 <span class="eyebrow-slash">/</span> OPEN SOURCE</div><h1>把 AI 计算，<br>交给<span class="word-accent">你的设备<span class="accent-line"></span></span>。</h1><p class="hero-intro">面向多类型边缘设备的计算网络。macOS 与 Android 是当前实现路径，其他边缘设备适配正在开发；任务流转与停止确认都有据可查。</p><div class="hero-actions"><a class="button primary" href="#replay"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+</svg>
+ 查看实测</a><a class="button text-button" href="#download">获取客户端 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></div><div class="hero-note"><span class="tiny-line"></span> 固定 SmolLM2 GGUF · 设备侧 CPU 整模型执行</div></div>
+<div class="compute-visual" role="img" aria-label="架构示意：云端Controller面向多类型边缘设备。Mac与Android是当前实现路径，其他边缘节点适配正在开发。Android画面是示意，真机验收暂跳过。"><div class="visual-grid"></div><div class="visual-topline"><span>COMPUTE TOPOLOGY</span><span>CORE → EDGE</span></div><svg class="routes" viewBox="0 0 600 510" aria-hidden="true"><path d="M304 139V216H169V287M304 216H520V286" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="4 5"/><path class="edge-route-wide" d="M304 139H485" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="3 5"/><path class="edge-route-mobile" d="M304 202H420" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="3 5"/><path class="route-highlight" d="M304 139V216H169V287" fill="none" stroke="#5a8852" stroke-width="1.8"/><circle cx="304" cy="216" r="5" fill="#e8ecd9" stroke="#5a8852"/><circle cx="169" cy="284" r="4" fill="#5a8852"/><circle cx="520" cy="284" r="4" fill="#a7b8a6"/></svg>
+<div class="controller-device"><div class="controller-icon"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+</div><div><span class="device-overline">CLOUD / COORDINATOR</span><strong>Controller</strong><span class="controller-address">8.134.161.123 · HTTPS</span></div><span class="device-chip">调度与租约</span></div>
+<div class="edge-development"><strong>其他边缘节点</strong><span>开发中</span></div><div class="route-label route-first">领取 → 执行 → 回传</div><div class="route-label route-second">同一任务协议</div>
+<div class="mac-device"><div class="mac-screen"><div class="window-bar"><span class="window-dots"><b></b><b></b><b></b></span><span>lastcore / whole-model</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 19h8" />
+  <path d="m4 17 6-6-6-6" />
+</svg>
+</div><div class="terminal-body"><div class="terminal-comment"># 历史结果摘要 · macOS CLI</div><div class="terminal-prompt">What is the capital of France?</div><div class="terminal-result">Paris</div><div class="terminal-success"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>
+ succeeded <span>· stop acknowledged</span></div></div></div><div class="mac-base"><div></div></div><div class="device-caption">macOS <span>真实整模型 CLI</span></div></div>
+<div class="phone-device"><div class="phone-notch"></div><div class="phone-screen"><span class="phone-mini-brand">LastCore</span><div class="phone-art"><span></span><span></span><span></span></div><strong>设备上的<br>原生推理</strong><div class="phone-model">SmolLM2 135M</div><div class="phone-model-line"></div><div class="phone-action">前台 Worker</div><span class="phone-footnote">界面示意</span></div><div class="device-caption">Android <span>真机验收暂跳过</span></div></div>
+<div class="visual-caption"><span class="caption-cross">+</span> 设备与轨迹为架构示意 <span>并非实时状态</span></div></div></section>
+<section class="proof-strip wrap" aria-label="核心能力"><div><span class="proof-number">01</span><div><strong>真实模型，真实结果</strong><p>固定 GGUF 与原生 CPU 后端</p></div></div><div><span class="proof-number">02</span><div><strong>可信连接，明确边界</strong><p>公网 HTTPS 与节点专属任务</p></div></div><div><span class="proof-number">03</span><div><strong>停止之后，再确认</strong><p>原生清理完成后回传停止确认</p></div></div></section>
+<section class="flow-section wrap section-space" id="flow"><div class="section-heading"><div><span class="eyebrow muted">HOW IT WORKS / 工作方式</span><h2>云端协调。<br>设备完成计算。</h2></div><p>任务明确交给一个设备运行完整模型。<br>这次预发布，让最小链路先真实跑通。</p></div><div class="flow-path"><article><div class="step-top"><span>01 / CONTROLLER</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+</div><h3>发出一个任务</h3><p>云端保存请求，分配给指定节点。<br>任务身份、预算与租约都可追溯。</p><span class="flow-tag">显式分配</span></article><span class="flow-arrow"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" />
+</svg>
+</span><article><div class="step-top"><span>02 / YOUR DEVICE</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 20v2" />
+  <path d="M12 2v2" />
+  <path d="M17 20v2" />
+  <path d="M17 2v2" />
+  <path d="M2 12h2" />
+  <path d="M2 17h2" />
+  <path d="M2 7h2" />
+  <path d="M20 12h2" />
+  <path d="M20 17h2" />
+  <path d="M20 7h2" />
+  <path d="M7 20v2" />
+  <path d="M7 2v2" />
+  <rect x="4" y="4" width="16" height="16" rx="2" />
+  <rect x="8" y="8" width="8" height="8" rx="1" />
+</svg>
+</div><h3>在设备侧生成</h3><p>当前实现 macOS CLI / Android 前台 Worker，<br>其他边缘设备适配正在开发。</p><span class="flow-tag">整模型执行</span></article><span class="flow-arrow"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" />
+</svg>
+</span><article><div class="step-top"><span>03 / RECEIPT</span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" />
+</svg>
+</div><h3>带着证据回来</h3><p>生成结果与终态保存到 Controller。<br>取消和超时，也等待真实清理。</p><span class="flow-tag">停止确认</span></article></div><p class="scope-note">LastCore 面向多类型边缘设备；当前实证为单设备整模型与本地 tiny 链路，其他边缘设备适配正在开发。预训练模型跨设备分层推理不在已证明范围。</p></section>
+<section class="replay-section section-space" id="replay"><div class="wrap"><div class="section-heading"><div><span class="eyebrow muted">RECORDED & VERIFIED / 实测回放</span><h2>从一个问题，<br>到一个真实的答案。</h2></div><p>下面重放已完成的真实任务记录。<br>点击步骤或播放，查看生成与停止如何收敛。</p></div><div class="replay-shell"><div class="replay-top"><div class="history-label"><span class="status-dot"></span> 历史实测回放 <span>非实时推理</span></div><div class="replay-tabs" role="tablist" aria-label="实测场景"><button id="tab-generation" role="tab" aria-selected="true" aria-controls="replay-panel" data-case="generation">生成结果</button><button id="tab-timeout" role="tab" aria-selected="false" aria-controls="replay-panel" data-case="timeout">超时停止</button><button id="tab-cancel" role="tab" aria-selected="false" aria-controls="replay-panel" data-case="cancel">取消清理</button></div></div><div class="replay-layout" id="replay-panel" role="tabpanel" aria-labelledby="tab-generation"><div class="replay-sidebar"><span class="small-label">说明性步骤 / 非逐帧日志</span><ol class="replay-steps" id="replay-steps"></ol><div class="play-controls"><button id="play-replay" class="play-button"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+</svg>
+<span>播放回放</span></button><button id="reset-replay" class="reset-button" aria-label="重置回放"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+  <path d="M3 3v5h5" />
+</svg>
+<span>重置</span></button></div><span class="play-note">可暂停、逐步查看；不发起新任务</span></div><div class="replay-output"><div class="output-top"><span id="replay-platform">MACOS / WHOLE-MODEL CLI</span><span id="replay-state" class="result-state">succeeded</span></div><div class="prompt-label">公开验收摘要</div><p id="replay-prompt" class="replay-prompt"></p><div class="result-label" id="result-label">结果已保存</div><div class="result-word" id="replay-result">Paris.</div><p class="result-quote" id="replay-quote"></p><div class="receipt-line"><span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 6 9 17l-5-5" />
+</svg>
+ <b id="replay-receipt">stop acknowledged = true</b></span><span id="replay-elapsed"></span></div><div class="replay-stage-note" id="replay-stage-note" aria-live="polite"></div></div></div><div class="replay-footer"><span id="replay-time"></span><a id="evidence-link" href="evidence.json" target="_blank" rel="noopener">查看脱敏证据 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><span id="replay-source"></span></div></div><div class="evidence-footnote"><span><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+  <path d="m9 12 2 2 4-4" />
+</svg>
+ 使用固定 SmolLM2-135M-Instruct-Q4_K_M</span><p>Android 同源码的主机 JNI 实测，与 Android 手机实测是两种证据。手机推理、Keystore、生命周期与设备 TLS 验收暂跳过。</p></div><div class="verification-matrix" aria-label="不同来源的验证范围"><article><div class="verification-title"><span>HISTORICAL CLOUD</span><strong>原云端整模型链路</strong></div><p>生成、原生超时、运行中取消与停止确认。<br>沿用已公开的历史实测，不发起新任务。</p><a href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/ACCEPTANCE.txt" target="_blank" rel="noopener">Controller 21c5d4b ↗</a></article><article><div class="verification-title"><span>REPAIRED MAC / LOCAL</span><strong>最新 Mac 恢复修复</strong></div><p>23 项回归、3 个本地恢复场景、1 次真实本地 GGUF 验证。<br>本地修复验收与原云端实测分别记录。</p><a href="https://github.com/7onytang/LastCore/blob/09a02efa3569057d7a5ed0b2df5b817c13e77bb5/submission/evidence/mac-worker-30b9efc-local.json" target="_blank" rel="noopener">Worker 30b9efc ↗</a></article></div></div></section>
+<section class="download-section wrap section-space" id="download"><div class="section-heading"><div><span class="eyebrow muted">GET THE PREVIEW / 开始体验</span><h2>把下一步，<br>交给你的设备。</h2></div><p>v0.1.0-alpha.1 · 开源预发布<br>当前提供以下实现路径；其他边缘适配开发中。</p></div><div class="download-grid"><article class="download-card"><div class="download-platform"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+  <path d="M12 18h.01" />
+</svg>
+<span>ANDROID / ARM64</span><span class="preview-tag">开发签名</span></div><h3>原生客户端</h3><p>导入固定 GGUF，本地生成；或启动前台 Worker，接收指定的云任务。</p><a class="button primary download-cta" href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/lastcore-android-arm64-debug-64af2e2.apk"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+ 下载开发签名 APK <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><div class="download-detail">Android 10+ · arm64 · APK 不含模型权重 <a class="model-link" href="https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b/SmolLM2-135M-Instruct-Q4_K_M.gguf">下载固定 GGUF ↗</a></div><div class="boundary-note">真机验收暂跳过。Release APK 尚未签名，不能直接安装。</div></article><article class="download-card"><div class="download-platform"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z" />
+  <path d="M20.054 15.987H3.946" />
+</svg>
+<span>MACOS / ARM64</span><span class="preview-tag">源码 CLI</span></div><h3>真实整模型 Worker</h3><p>使用固定模型与原生 CPU 后端，以源码 CLI 连接可信 HTTPS Controller。</p><a class="button outline download-cta" href="https://github.com/7onytang/LastCore/archive/09a02efa3569057d7a5ed0b2df5b817c13e77bb5.tar.gz"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+ 下载源码 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><div class="download-detail">Python 3.12+ · Apple Command Line Tools · 核心源 09a02ef</div><div class="boundary-note">整模型 Mac 路径为源码 CLI。另附 tiny bundle 只支持随机小模型 stage/demo，没有开发者签名或公证。</div></article></div><div class="resource-row"><a href="https://8.134.161.123/demo/lastcore-demo-kit.zip"><svg aria-hidden="true" focusable="false" class="icon"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+ 下载展示包 <svg aria-hidden="true" focusable="false" class="icon"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><a href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/QUICKSTART.txt" target="_blank" rel="noopener"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 19h8" />
+  <path d="m4 17 6-6-6-6" />
+</svg>
+ 最小安装指南 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><a href="https://8.134.161.123/docs" target="_blank" rel="noopener"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+ Controller API 文档 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a><a href="https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1" target="_blank" rel="noopener"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+</svg>
+ 全部附件与校验 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></div></section>
+<section class="closing wrap"><div class="closing-brand">LastCore<span>从可解释的任务，到可验证的计算。</span></div><div class="service-check"><button id="check-health"><svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+  <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+  <line x1="6" x2="6.01" y1="6" y2="6" />
+  <line x1="6" x2="6.01" y1="18" y2="18" />
+</svg>
+ 检查公共 API</button><span id="health-state" aria-live="polite">尚未检查 · 不代表 Worker 在线</span></div></section>
+</main><footer class="wrap site-footer"><span>LastCore · MIT · v0.1.0-alpha.1</span><span>原创设备示意 / 实测记录回放 / 时间：北京时间</span><a href="https://github.com/7onytang/LastCore/tree/09a02efa3569057d7a5ed0b2df5b817c13e77bb5" target="_blank" rel="noopener">查看固定核心源码 <svg aria-hidden="true" focusable="false" class="icon "
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M7 7h10v10" />
+  <path d="M7 17 17 7" />
+</svg>
+</a></footer>
+</body></html>

@@ -1,0 +1,17 @@
+LastCore v0.1.0-alpha.1 最小核心预发布
+
+固定整合源码：85ddad92758d072097de87857f7ed1a229c8f76e。
+源码归档 SHA256：4229e8daea0f282e48c0b7bfa06a4b98e876d465801a3610b2945831436d9e82。
+部署状态：固定85dd最终CI 18项SUCCESS，手动real-model-smoke为SKIPPED；唯一最终云迁移已实际完成。默认信任HTTPS https://8.134.161.123 上，85dd运行中的8个应用文件与Git对象哈希一致，冻结后的SQLite五表精确迁移，四个已知真实模型任务的结果/停止确认和幂等同ID保留；原凭据可用，资源限制及仅loopback8000监听已核。旧b0b/21/88卷与凭据保留。验收时间（北京时间）：2026-10-13T14:03:23.159854+08:00。
+
+已经实际完成的验证：
+- 整合 Controller 105 项测试通过，覆盖鉴权、执行所有权、legacy/whole-model 互斥、分批过期、回滚及 SQLite 备份。PR56 后运行时代码逐字不变，新增 9 项归档测试通过；独立审查另跑 9 项通过。
+- Android 实际构建 122 tasks、Lint 零错误，APK 的源码、原生库闭包、模型锁和完整许可证绑定通过。交付 APK 的实际 build commit 为 64af2e2f55697f9927dc4603135e5468752bd811，组件源码与最终85dd逐字一致。Debug 为开发签名；release APK 未签名，不能冒称 production-signed。
+- 现有 macOS frozen 客户端在整合 Controller 上完成真实 tiny 张量字节一致、取消和原凭据重启验证；所有启动进程已退出。该 bundle 实际 build commit 为88a80e3b98b47b345487be913b96c663e662360a，组件源码保留，它服务 legacy/tiny 层路径。whole-model Mac 客户端是源码包中独立 Python CLI，不能把该 bundle 标成 whole-model GUI。
+- 公网受信任 HTTPS Controller 到 macOS CLI 的固定 SmolLM2 实际生成、原生超时、运行中取消及进程回收，已在 Controller21c5d4b7eeca8f418ab81570e7453395a2161f01证明。
+- 新的公网 HTTPS → portable Android worker → 实际 host JVM/JNI 任务，已在客户端1ffc0bd3cc8098ffaf4ac723014adff9c86ea8d8、Controller b0b494b5c2b6d5340e7aa5ec226ffc0cf9aa0f2d上完成。服务器返回Paris结果、固定模型SHA及stop acknowledgment，worker无活动任务；独立审查核对实际JNI/class源码和结果。这是host JVM/JNI证明，Android真机、framework/Keystore执行仍延期。
+- 上述真实模型 API、worker、guardian、Android Java/JNI组件在最终源码中的等价关系有单独来源记录；没有为归档修复重复创建模型任务。
+
+模型不随附件上传：使用固定上游revision/URL下载105454144字节GGUF并校验SHA256 bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169。APK、bundle和源码保留完整MIT/Apache/NDK许可材料。
+
+附件采用白名单，仅包含客户端、源码、许可证、哈希、来源映射和使用说明；不含私钥、签名密钥、node/admin/registration token、私密配置或模型/构建缓存。

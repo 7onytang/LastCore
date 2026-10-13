@@ -1,0 +1,26 @@
+{
+  "candidate_source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+  "reused_validation_candidate": "64af2e2f55697f9927dc4603135e5468752bd811",
+  "unchanged_component_paths": [
+    "android-app",
+    ".github/workflows/android-native.yml",
+    ".github/workflows/desktop-bundle.yml",
+    "tools/client-ci/verify_desktop_binding.py",
+    "controller-server",
+    "real-model-runtime",
+    "node-agent",
+    "inference-engine",
+    "communication",
+    "LICENSE",
+    "ops/staging/requirements-linux-lock.txt",
+    "ops/staging/Dockerfile",
+    "ops/staging/compose.yaml"
+  ],
+  "reused_android_apk_build_commit": "64af2e2f55697f9927dc4603135e5468752bd811",
+  "reused_macos_bundle_build_commit": "88a80e3b98b47b345487be913b96c663e662360a",
+  "all_component_source_bytes_unchanged": true,
+  "pr56_four_files_exact_original_source": "d8e647693e5b24b2fddb4eb057d613cd42a9d9e8",
+  "archive_lock_digest_matches_exported_bytes": true,
+  "archive_sha256": "4229e8daea0f282e48c0b7bfa06a4b98e876d465801a3610b2945831436d9e82",
+  "passed": true
+}

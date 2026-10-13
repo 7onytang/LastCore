@@ -48,6 +48,9 @@ class Store:
                 CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at DESC);
                 CREATE INDEX IF NOT EXISTS nodes_accepting_heartbeat ON nodes(last_seen)
                     WHERE accepting_tasks != 0;
+                CREATE TABLE IF NOT EXISTS assignment_results (
+                    assignment_id TEXT PRIMARY KEY REFERENCES assignments(id), result TEXT NOT NULL
+                );
             """)
             self._result_storage_ready = db.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='assignment_results'"
@@ -222,13 +225,17 @@ class Store:
             # Retain historical nodes in the registry without materializing
             # offline/draining entries on the scheduling path. node_id is NOT
             # NULL, so NOT IN safely excludes all active pipeline reservations.
+            target_clause = " AND n.id=?" if request.target_node_id is not None else ""
+            parameters = [self.clock() - self.ttl]
+            if request.target_node_id is not None:
+                parameters.append(str(request.target_node_id))
             nodes = [dict(node) for node in db.execute("""
                 SELECT n.id, n.endpoint, n.available_memory_mb, n.compute_weight FROM nodes n
                 WHERE n.accepting_tasks != 0 AND n.last_seen > ? AND n.id NOT IN (
                     SELECT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
                     WHERE t.status IN ('queued','running')
                 )
-            """, (self.clock() - self.ttl,)).fetchall()]
+            """ + target_clause, parameters).fetchall()]
             try:
                 plan = allocate(nodes, request.num_layers,
                                 request.layer_memory_mb, request.max_nodes)
@@ -278,7 +285,10 @@ class Store:
                 request = task["request"]
                 workload = request.get("workload", "linear")
                 valid = report.status == "completed"
-                if workload == "pi":
+                if request.get("model_id") == "lastcore/linear-demo-v1":
+                    expected = assignment["layer_end"] - assignment["layer_start"]
+                    valid = (valid and isinstance(report.result, list) and len(report.result) == expected)
+                elif workload == "pi":
                     expected_samples = (request["total_samples"] * assignment["layer_end"] // request["num_layers"]
                                         - request["total_samples"] * assignment["layer_start"] // request["num_layers"])
                     valid = (valid and isinstance(report.result, dict)
@@ -299,6 +309,9 @@ class Store:
                 if not valid:
                     raise HTTPException(422, "completed result does not match the assigned workload")
             if assignment["status"] == report.status:
+                previous = next(a["result"] for a in task["assignments"] if a["id"] == assignment_id)
+                if report.result != previous:
+                    raise HTTPException(409, "assignment retry conflicts with the saved result")
                 return task  # Retries are idempotent, including terminal acknowledgements.
             if task["status"] not in ACTIVE or assignment["status"] not in ("pending", "running"):
                 raise HTTPException(409, "assignment is terminal")
@@ -313,7 +326,7 @@ class Store:
                     self._result_storage_ready = True
                 db.execute("INSERT INTO assignment_results (assignment_id, result) VALUES (?, ?) "
                            "ON CONFLICT(assignment_id) DO UPDATE SET result=excluded.result",
-                           (assignment_id, json.dumps(report.result)))
+                           (assignment_id, json.dumps(report.result, allow_nan=False)))
             if report.status == "failed":
                 self._end_task(db, task["id"], "failed", report.error or "node reported failure")
             elif not db.execute("SELECT 1 FROM assignments WHERE task_id=? AND status!='completed'",

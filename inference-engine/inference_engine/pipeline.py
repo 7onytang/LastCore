@@ -145,6 +145,7 @@ class StageServer:
         return {"layers": [self.runtime.layer_start, self.runtime.layer_end],
                 "local_seconds": local_seconds,
                 "output_shape": list(np.asarray(result).shape),
+                "output_preview": np.asarray(result).reshape(-1)[:8].tolist(),
                 "parameter_bytes": self.runtime.parameter_bytes}
 
     def serve_once(self) -> dict:

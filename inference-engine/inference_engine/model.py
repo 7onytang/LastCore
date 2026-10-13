@@ -16,6 +16,13 @@ from .errors import ShardError
 
 GELU_C = 0.7978845608028654
 GELU_COEF = 0.044715
+MAX_BATCH_SIZE = 64
+
+
+def check_batch(batch: int) -> None:
+    """Reject oversized batches before embedding/attention allocations."""
+    if batch > MAX_BATCH_SIZE:
+        raise ShardError(f"batch size {batch} exceeds MAX_BATCH_SIZE {MAX_BATCH_SIZE}")
 
 
 def layer_norm(x: np.ndarray, gain: np.ndarray, bias: np.ndarray, eps: float) -> np.ndarray:
@@ -31,6 +38,7 @@ def gelu(x: np.ndarray) -> np.ndarray:
 def embed(tokens: np.ndarray, weights, config: ModelConfig) -> np.ndarray:
     if tokens.ndim != 2:
         raise ShardError(f"token ids must be 2-D [batch, seq], got shape {tokens.shape}")
+    check_batch(tokens.shape[0])
     if tokens.size and (tokens.min() < 0 or tokens.max() >= config.vocab_size):
         raise ShardError(f"token ids must be within [0, {config.vocab_size})")
     sequence = tokens.shape[1]

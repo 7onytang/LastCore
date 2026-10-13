@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "time_zone": "Asia/Shanghai",
+  "capture_tool": "ego-browser actual rendered PNG; no composition or mock",
+  "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
+  "release_source_note": "The console.js page differs by one 401-handling line between deployed cc7 and release bf5; the overall source also has other changes. Screenshots attest deployed cc7, not the full release bf5.",
+  "anonymous": true,
+  "credential_input": false,
+  "task_posts": 0,
+  "new_model_runs": 0,
+  "screenshots": [
+    {
+      "file": "01-formal-console-desktop.png",
+      "url": "https://8.134.161.123/console",
+      "captured_at_beijing": "2026-10-13T18:08:34.072+08:00",
+      "width": 1440,
+      "height": 1100,
+      "sha256": "e6f388cdc07d2c05b19cd9e8d88cbabaaaeda04180fddd481c5d5039d346d72c",
+      "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
+      "source_attribution": "Actual deployed source supplied by verified deployment owner; public page/health alone does not attest source version.",
+      "scope": "Actual anonymous formal console desktop; no authentication or task action, metrics remain unknown dash; not proof of logged-in operation."
+    },
+    {
+      "file": "02-formal-console-mobile.png",
+      "url": "https://8.134.161.123/console",
+      "captured_at_beijing": "2026-10-13T18:08:34.323+08:00",
+      "width": 390,
+      "height": 1100,
+      "sha256": "93f9c03ead3756d12ef02cc5993c85c81242112a9d916a3b6a8becc8537b8535",
+      "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
+      "source_attribution": "Actual deployed source supplied by verified deployment owner; public page/health alone does not attest source version.",
+      "scope": "Actual390px anonymous responsive browser console; not Android device execution; no token input or live private fleet data."
+    },
+    {
+      "file": "03-public-health-response.png",
+      "url": "https://8.134.161.123/healthz",
+      "captured_at_beijing": "2026-10-13T18:08:34.465+08:00",
+      "width": 1024,
+      "height": 420,
+      "sha256": "dabe6aaa758b751e80dc471a1495d17ca5b88e3d318038f27f0a51191bc5b446",
+      "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
+      "source_attribution": "Actual deployed source supplied by verified deployment owner; public page/health alone does not attest source version.",
+      "scope": "Actual anonymous HTTPS health response status ok; service reachability only, not model/task/worker execution."
+    }
+  ]
+}

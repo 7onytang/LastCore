@@ -8,10 +8,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
 from .store import Store
@@ -90,6 +93,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
             await worker
 
     app = FastAPI(title="LastCore Controller", version="0.1.0", lifespan=lifespan)
+    ui = Path(__file__).parent / "ui"
+    app.mount("/ui", StaticFiles(directory=ui), name="ui")
+
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/console", methods=["GET", "HEAD"], include_in_schema=False)
+    def console():
+        return FileResponse(ui / "index.html", headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        })
     bearer = HTTPBearer(auto_error=False)
 
     @app.get("/", include_in_schema=False)

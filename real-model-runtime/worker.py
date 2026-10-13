@@ -2,6 +2,7 @@
 import argparse
 import fcntl
 import json
+import ipaddress
 import os
 from pathlib import Path
 import signal
@@ -24,19 +25,31 @@ MODEL_ID = 'SmolLM2-135M-Instruct-Q4_K_M'
 
 
 class WorkerFailure(RuntimeError):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status  # Confirmed HTTP status; None means transport/outcome unknown.
 
 
 def validate_url(value, allow_loopback_http=False):
+    """Canonical scheme/host/port identity; an origin, never a credential-bearing URL."""
     try:
         p = urlsplit(value)
         allowed = p.scheme == 'https' or (allow_loopback_http and p.scheme == 'http' and p.hostname in ('127.0.0.1','localhost','::1'))
-        if not allowed or not p.hostname or p.username is not None or p.password is not None or p.query or p.fragment or '?' in value or '#' in value or any(c.isspace() or ord(c)<32 for c in value):
+        if not allowed or not p.hostname or p.username is not None or p.password is not None or p.path not in ('', '/') or p.query or p.fragment or '?' in value or '#' in value or any(c.isspace() or ord(c)<32 for c in value):
             raise ValueError()
-        p.port
-    except (ValueError, TypeError):
-        raise WorkerFailure('Controller requires an absolute HTTPS URL without userinfo/query/fragment') from None
-    return value.rstrip('/')
+        if p.port is not None and not 1 <= p.port <= 65535:
+            raise ValueError()
+        url = httpx.URL(value)
+        host = url.raw_host.decode('ascii').lower()
+        if '%' in host:
+            raise ValueError()
+        if ':' in host:
+            host = '[' + str(ipaddress.IPv6Address(host)) + ']'
+        port = url.port
+        suffix = ':' + str(port) if port and port != (443 if p.scheme == 'https' else 80) else ''
+        return p.scheme + '://' + host + suffix
+    except (ValueError, TypeError, httpx.InvalidURL):
+        raise WorkerFailure('Controller requires an HTTPS origin without path/userinfo/query/fragment') from None
 
 
 def private_json(path):
@@ -56,41 +69,124 @@ def save(path, value):
         Path(temporary).unlink(missing_ok=True)
 
 
+def registration_credential(config):
+    value = config.get('registration_token')
+    if not isinstance(value, str) or not value or any(ord(c) < 33 or ord(c) > 126 for c in value):
+        raise WorkerFailure('first enrollment requires a non-empty valid registration credential')
+    return value
+
+
+def open_state(config):
+    state = Path(config['state_dir']).expanduser()
+    state.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if state.is_symlink() or state.stat().st_mode & 0o077:
+        raise WorkerFailure('worker state directory must be private')
+    lock = (state / 'worker.lock').open('a+')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        raise WorkerFailure('this worker state is already running') from None
+    return state, lock
+
+
+def bind_legacy_origin(config, original_origin, allow_loopback_http=False):
+    """Explicit operator migration of a verified legacy identity, entirely offline."""
+    origin = validate_url(config['controller_url'], allow_loopback_http)
+    if validate_url(original_origin, allow_loopback_http) != origin:
+        raise WorkerFailure('verified original origin must match the configuration origin')
+    state, lock = open_state(config)
+    try:
+        path = state / 'node-credentials.json'
+        node = private_json(path)
+        if not node.get('node_id') or not node.get('node_token'):
+            raise WorkerFailure('legacy node credentials are invalid; no registration attempted')
+        if 'controller_origin' in node:
+            if validate_url(node['controller_origin'], allow_loopback_http) != origin:
+                raise WorkerFailure('saved credentials belong to another Controller')
+            return
+        # The caller supplies the original origin independently, after checking old
+        # registration records. Neither current config nor successful token use proves it.
+        node['controller_origin'] = origin
+        save(path, node)
+    finally:
+        lock.close()
+
+
 class Worker:
     def __init__(self, config, stop=None, allow_loopback_http=False):
         self.url = validate_url(config['controller_url'], allow_loopback_http)
         self.stop = stop or threading.Event()
         self.root = Path(config['runtime_root']).resolve()
-        self.state = Path(config['state_dir']).expanduser()
-        self.state.mkdir(mode=0o700,parents=True,exist_ok=True)
-        if self.state.is_symlink() or self.state.stat().st_mode & 0o077:
-            raise WorkerFailure('worker state directory must be private')
-        self.lock = (self.state/'worker.lock').open('a+')
-        try: fcntl.flock(self.lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        except BlockingIOError: raise WorkerFailure('this worker state is already running') from None
-        self.http = httpx.Client(base_url=self.url, timeout=3, trust_env=False, follow_redirects=False)
-        installed=json.loads((self.root/'.cache/installed.json').read_text())
-        if installed['backend_commit'] != BACKEND_COMMIT or installed['source_sha256'] != SOURCE_SHA256 or installed['model_sha256'] != runtime.MODEL_SHA256 or runtime.sha256(self.root/'.cache/backend.tar.gz') != SOURCE_SHA256:
+        self.state, self.lock = open_state(config)
+        self.http = None
+        self.credential_path = self.state / 'node-credentials.json'
+        self.ledger = self.state / 'current-job.json'
+        try:
+            if self.credential_path.exists():
+                self.node = private_json(self.credential_path)
+                if 'controller_origin' not in self.node:
+                    raise WorkerFailure('legacy credentials lack Controller origin; explicitly bind the verified original origin with --bind-legacy-origin')
+                if validate_url(self.node['controller_origin'], allow_loopback_http) != self.url:
+                    raise WorkerFailure('saved credentials belong to another Controller')
+            else:
+                if self.ledger.exists():
+                    raise WorkerFailure('execution ledger has no credentials; operator recovery required, no registration attempted')
+                marker = self.state / 'registration.pending'
+                if marker.exists():
+                    raise WorkerFailure('registration outcome is unknown; do not register again blindly')
+                registration_token = registration_credential(config)  # Local validation cannot create an unknown-outcome marker.
+                self.verify_installation()  # First enrollment still requires usable local artifacts.
+                payload = {
+                    'name': config.get('name', 'macos-real-model-worker'),
+                    'platform': 'macOS-whole-model-worker', 'endpoint': 'http://127.0.0.1:19199',
+                    'available_memory_mb': int(config.get('available_memory_mb', 512)),
+                    'compute_weight': 1, 'accepting_tasks': False}
+                json.dumps(payload)  # Pure local input/serialization failures precede the marker.
+                self.http = httpx.Client(base_url=self.url, timeout=3, trust_env=False, follow_redirects=False)
+                save(marker, {'controller_origin': self.url})
+                try:
+                    self.node = self.call('/v1/nodes/register', registration_token, payload, expected=201)
+                except WorkerFailure as error:
+                    if error.status in (401, 403, 422):
+                        marker.unlink()  # A definitive non-creation rejection is safe to correct/retry.
+                    raise
+                if not isinstance(self.node, dict) or not isinstance(self.node.get('node_id'), str) or not self.node['node_id']:
+                    raise WorkerFailure('registration response is incomplete; outcome requires operator recovery')
+                try:
+                    registration_credential({'registration_token': self.node.get('node_token')})
+                except WorkerFailure:
+                    raise WorkerFailure('registration response is incomplete; outcome requires operator recovery') from None
+                self.node['controller_origin'] = self.url
+                save(self.credential_path, self.node)
+                marker.unlink()
+            self.token = self.node['node_token']
+            self.node_id = self.node['node_id']
+            if self.http is None:
+                self.http = httpx.Client(base_url=self.url, timeout=3, trust_env=False, follow_redirects=False)
+            self.recover()  # Durable stopped outcomes/positive guardian proofs precede current model checks.
+            installed = self.verify_installation()
+            self.capability = {'model_id': MODEL_ID, 'model_sha256': runtime.MODEL_SHA256,
+                               'backend_commit': BACKEND_COMMIT, 'backend_sha256': installed['backend_sha256']}
+            self.call('/v1/inference/workers/' + self.node_id + '/capability', self.token, self.capability)
+        except BaseException:
+            if self.http is not None:
+                self.http.close()
+            self.lock.close()
+            raise
+
+    def verify_installation(self):
+        installed = json.loads((self.root / '.cache/installed.json').read_text())
+        if installed['backend_commit'] != BACKEND_COMMIT or installed['source_sha256'] != SOURCE_SHA256 or installed['model_sha256'] != runtime.MODEL_SHA256 or runtime.sha256(self.root / '.cache/backend.tar.gz') != SOURCE_SHA256:
             raise WorkerFailure('installed model/backend provenance mismatch')
-        runtime.LocalRuntime(self.root/'.cache/backend/build/bin/llama-completion',self.root/'.cache/model.gguf',installed['backend_sha256'])
-        self.credential_path=self.state/'node-credentials.json'
-        if self.credential_path.exists(): self.node=private_json(self.credential_path)
-        else:
-            marker=self.state/'registration.pending'
-            if marker.exists(): raise WorkerFailure('registration outcome is unknown; do not register again blindly')
-            marker.touch(mode=0o600,exist_ok=False)
-            self.node=self.call('/v1/nodes/register',config['registration_token'],{'name':config.get('name','macos-real-model-worker'),'platform':'macOS-whole-model-worker','endpoint':'http://127.0.0.1:19199','available_memory_mb':int(config.get('available_memory_mb',512)),'compute_weight':1,'accepting_tasks':False}, expected=201)
-            save(self.credential_path,self.node);marker.unlink()
-        self.token=self.node['node_token'];self.node_id=self.node['node_id']
-        self.capability={'model_id':MODEL_ID,'model_sha256':runtime.MODEL_SHA256,'backend_commit':BACKEND_COMMIT,'backend_sha256':installed['backend_sha256']}
-        self.call('/v1/inference/workers/'+self.node_id+'/capability',self.token,self.capability)
-        self.ledger=self.state/'current-job.json'
+        runtime.LocalRuntime(self.root / '.cache/backend/build/bin/llama-completion', self.root / '.cache/model.gguf', installed['backend_sha256'])
+        return installed
 
     def call(self,path,token,body=None,expected=200):
         try:
             response=self.http.post(path,headers={'Authorization':'Bearer '+token},json=body or {})
             if response.status_code != expected:
-                raise WorkerFailure('Controller returned HTTP '+str(response.status_code))
+                raise WorkerFailure('Controller returned HTTP '+str(response.status_code), status=response.status_code)
             return response.json()
         except httpx.HTTPError:
             raise WorkerFailure('Controller connection failed') from None
@@ -103,8 +199,10 @@ class Worker:
     def deliver(self,job,outcome):
         try:
             self.call('/v1/inference/jobs/'+job['id']+'/report',self.token,{**self.lease_body(job),**outcome})
-        except WorkerFailure:
-            # A terminal lease or a racing cancellation must never accept a late result.
+        except WorkerFailure as error:
+            if error.status != 409:
+                raise  # Unknown report outcomes keep the exact durable stopped outcome for retry.
+            # A terminal lease or racing cancellation rejects a late result; physical stop is already proven.
             self.ack(job)
 
     def execute(self,job):
@@ -209,11 +307,17 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,required=True)
     parser.add_argument('--max-jobs',type=int,default=0)
+    parser.add_argument('--bind-legacy-origin', help='Offline only: explicitly bind existing credentials to their independently verified original origin')
     parser.add_argument('--allow-loopback-http',action='store_true',help='Only for bounded local verification; public HTTP is always rejected')
     args=parser.parse_args();stop=threading.Event()
     for sig in (signal.SIGINT,signal.SIGTERM):signal.signal(sig,lambda *_:stop.set())
     try:
-        Worker(private_json(args.config),stop,args.allow_loopback_http).run(args.max_jobs)
+        config = private_json(args.config)
+        if args.bind_legacy_origin is not None:
+            bind_legacy_origin(config, args.bind_legacy_origin, args.allow_loopback_http)
+            print(json.dumps({'event': 'legacy_origin_bound', 'scope': 'offline; no request or registration performed'}), flush=True)
+        else:
+            Worker(config,stop,args.allow_loopback_http).run(args.max_jobs)
     except Exception as error:
         print(json.dumps({'event':'worker_stopped','reason':str(error) if isinstance(error,WorkerFailure) else type(error).__name__}),flush=True)
         return 1

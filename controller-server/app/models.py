@@ -1,6 +1,10 @@
-from typing import Literal
+from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
+
+LinearValue = Annotated[float, Field(allow_inf_nan=False, ge=-1_000_000, le=1_000_000)]
+LinearResult = Annotated[float, Field(allow_inf_nan=False, ge=-1, le=1)]
 
 
 class StrictModel(BaseModel):
@@ -28,8 +32,9 @@ class TaskRequest(StrictModel):
     layer_memory_mb: int = Field(gt=0, le=10_000_000)
     max_nodes: int = Field(default=8, gt=0, le=128)
     timeout_seconds: int = Field(default=600, ge=10, le=86400)
-    input_vector: list[float] | None = Field(default=None, min_length=1, max_length=256)
-    weight_seed: int = Field(default=42, ge=0, le=2_147_483_647)
+    input_vector: list[LinearValue] | None = Field(default=None, min_length=1, max_length=256)
+    weight_seed: int | None = Field(default=None, ge=0, le=2_147_483_647)
+    target_node_id: UUID | None = None
     total_samples: int | None = Field(default=None, ge=1_000, le=100_000_000)
     log_lines: list[str] | None = Field(default=None, min_length=1, max_length=10_000)
 
@@ -51,10 +56,17 @@ class TaskRequest(StrictModel):
             raise ValueError("log_stats requires log_lines and num_layers equal to its line count")
         if self.workload != "linear" and self.input_vector is not None:
             raise ValueError("input_vector is only supported by the linear workload")
+        if self.model_id == "lastcore/linear-demo-v1":
+            if self.input_vector is None or self.weight_seed is None or self.target_node_id is None:
+                raise ValueError("linear-demo-v1 requires input_vector, weight_seed and target_node_id")
+            if self.num_layers > 4096 or self.max_nodes != 1:
+                raise ValueError("targeted linear-demo-v1 supports at most 4096 rows on exactly one node")
+        elif self.target_node_id is not None:
+            raise ValueError("linear input and target fields are only supported by linear-demo-v1")
         return self
 
 
 class AssignmentReport(StrictModel):
     status: Literal["running", "completed", "failed"]
     error: str | None = Field(default=None, max_length=2048)
-    result: list[float] | dict[str, int] | None = Field(default=None, max_length=100_000)
+    result: list[LinearResult] | dict[str, int] | None = Field(default=None, max_length=100_000)

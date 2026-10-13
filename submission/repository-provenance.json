@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/7onytang/LastCore",
+  "source": "GitHub public repository API",
+  "created_at_utc": "2026-10-11T11:47:03Z",
+  "created_at_beijing": "2026-10-11T19:47:03+08:00",
+  "default_branch": "main",
+  "visibility": "public",
+  "checked_at_beijing": "2026-10-13T15:36:37.246258+08:00",
+  "git_history_snapshot_head": "31349c7dfa033e2f8e455ca6ab8709f269f18276",
+  "official_competition_start_time": null,
+  "competition_time_eligibility_verified": false,
+  "note": "Hosting creation time and original Git timestamps are recorded; official start time has not been supplied. No commit date is rewritten."
+}

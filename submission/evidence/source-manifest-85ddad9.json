@@ -1,0 +1,11 @@
+{
+  "source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+  "source_tracked_clean": true,
+  "packaged_at": "2026-10-13T13:49:23.079983+08:00",
+  "archive": "lastcore-85ddad92758d072097de87857f7ed1a229c8f76e.tar.gz",
+  "archive_bytes": 253073,
+  "archive_sha256": "4229e8daea0f282e48c0b7bfa06a4b98e876d465801a3610b2945831436d9e82",
+  "scope": "prepared-source-only; no deployment",
+  "python_base_image": "python:3.12-slim@sha256:2b4f19dae3a777dfc3b76730bda1e82e1f66ab2a2686fa93ca78edbfb4f04ffe",
+  "runtime_lock_sha256": "80ebf838f9c9743a870af64291d8cc0f9daaa1dd26ec74b52b984e2ecfafbc5a"
+}

@@ -1,0 +1,10 @@
+{
+  "file": "optimization-conversation.json",
+  "sha256": "0472d889b32640872d8eec799e5e6ff1d57e75f26282375816584785ae288f88",
+  "size_bytes": 22018,
+  "source_thread_id": "01a13398-bfa5-7ac3-9c88-fb227871da28",
+  "actual_visible_message_count": 41,
+  "credential_pattern_screen": "no listed high-risk pattern found; tool outputs and automatic/imported messages excluded",
+  "not_full_raw_export": true,
+  "individual_message_times_and_models_not_available": true
+}
