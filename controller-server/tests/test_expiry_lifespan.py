@@ -3,6 +3,7 @@
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +29,7 @@ def app(store):
 
 
 def persisted(store, task):
-    with sqlite3.connect(store.path) as db:
+    with closing(sqlite3.connect(store.path)) as db:
         return db.execute("SELECT status, error FROM tasks WHERE id=?", (task["id"],)).fetchone()
 
 
@@ -41,7 +42,7 @@ def test_startup_reconciles_expired_state_without_requests(state, elapsed, error
     reopened = Store(store.path, 30, clock=lambda: now[0])
     with TestClient(app(reopened)):
         assert persisted(reopened, task) == ("failed", error)
-        with sqlite3.connect(store.path) as db:
+        with closing(sqlite3.connect(store.path)) as db:
             assert db.execute("SELECT status FROM assignments").fetchone()[0] == "failed"
 
 
@@ -70,7 +71,7 @@ def test_idle_sweep_persists_expiry_and_stops_on_shutdown(state, monkeypatch, el
     closed.set()
     assert not unexpected_call.wait(0.3), "expiry worker survived application shutdown"
     # Expired reservations can be reused once a node reconnects.
-    with sqlite3.connect(store.path) as db:
+    with closing(sqlite3.connect(store.path)) as db, db:
         db.execute("UPDATE nodes SET last_seen=?", (now[0],))
     replacement = store.create_task(TaskRequest(model_id="test", num_layers=4, layer_memory_mb=512))
     assert replacement["status"] == "queued"

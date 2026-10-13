@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import closing
 from pathlib import Path
 
 import httpx
@@ -53,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix="lastcore-expiry-") as directory:
                 # No further HTTP requests: directly inspect persisted state.
                 end = time.monotonic() + 10
                 while True:
-                    with sqlite3.connect(database) as db:
+                    with closing(sqlite3.connect(database)) as db:
                         row = db.execute("SELECT status,error FROM tasks WHERE id=?", (task["id"],)).fetchone()
                         assignment = db.execute("SELECT status FROM assignments WHERE task_id=?", (task["id"],)).fetchone()
                     if row[0] == "failed":
