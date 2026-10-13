@@ -23,3 +23,5 @@
 .edge-details dt{font-size:13px;color:var(--muted)}.edge-details dd{margin:0;font-size:14px;overflow-wrap:anywhere}
 .edge-note{font-size:12px;margin-top:20px}.edge-actions{margin-top:22px}.edge-main footer{margin-top:10px}
 @media(max-width:760px){.edge-main{padding:0 20px}.edge-grid{grid-template-columns:1fr;gap:0}.edge-details>div{grid-template-columns:110px minmax(0,1fr)}.edge-grid .card{margin-bottom:18px}}
+
+.client-download{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border-radius:10px;font-size:13px}
