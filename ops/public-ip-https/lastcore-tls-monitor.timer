@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly LastCore TLS expiry and health check
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+Unit=lastcore-tls-monitor.service
+
+[Install]
+WantedBy=timers.target
