@@ -101,8 +101,13 @@ def main():
             found=re.search(r'package require\s+-exact\s+'+component.capitalize()+r'\s+([0-9.]+)',script.read_text())
             declared=found.group(1) if found else None
             print(json.dumps({'component':component,'numeric_file_version':version,'script_exact_requirement':declared}))
-            if declared!='8.6.15':raise RuntimeError('Installed Tk script version does not match pinned full vendor terms')
-            tk_versions[component]={'numeric_file_version':version,'script_exact_requirement':declared,'license_source_version':'8.6.15'}
+            # Official core-8-6-15 win/tcl.rc and win/rc/tk.rc encode
+            # MAJOR, MINOR, RELEASE_LEVEL (FINAL=2), RELEASE_SERIAL (15).
+            if declared!='8.6.15' or version!=(8,6,2,15):
+                raise RuntimeError('DLL resource and script exact version do not match pinned full vendor terms')
+            tk_versions[component]={'numeric_file_version':version,'script_exact_requirement':declared,
+                                   'resource_encoding':'major,minor,release_level,release_serial',
+                                   'license_source_version':'8.6.15'}
             pe.close()
     maximum=max(glibc,key=lambda v:tuple(map(int,v.split('.')))) if glibc else None
     manifest={'schema_version':1,'source_commit':commit,'target':target,'python_version':platform.python_version(),
