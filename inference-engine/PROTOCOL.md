@@ -13,8 +13,8 @@
 
 | 位置 | 名称 | dtype | shape | 说明 |
 | --- | --- | --- | --- | --- |
-| 首段输入 | `tokens` | `int64` | `[batch, seq]` | token id，取值 `[0, vocab_size)`，`seq <= max_seq_len` |
-| 段间 | `hidden` | `float32` | `[batch, seq, d_model]` | 上游 activation |
+| 首段输入 | `tokens` | `int64` | `[batch, seq]` | token id，取值 `[0, vocab_size)`，`batch <= 64`（`MAX_BATCH_SIZE`），`seq <= max_seq_len` |
+| 段间 | `hidden` | `float32` | `[batch, seq, d_model]` | 上游 activation，`batch <= 64` |
 | 末段输出 | `logits` | `float32` | `[batch, seq, vocab_size]` | 未做 softmax |
 
 线格式（帧、校验、超时、取消）由 `communication/` 定义，见 `communication/PROTOCOL.md`。因为单机参考实现与分布式实现执行**同一份算子序列**，同一 checkpoint + 同一 prompt 下分布式 logits 与单机 logits **逐字节相同**（测试断言 `np.array_equal` 与 payload 摘要一致，不是 `allclose`）。

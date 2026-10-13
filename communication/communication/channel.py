@@ -26,6 +26,8 @@ def _recv_exactly(sock: socket.socket, size: int, deadline: float | None, cancel
     chunks: list[bytes] = []
     remaining = size
     while remaining:
+        if cancel is not None and cancel.is_set():
+            raise TaskCancelled("cancelled while receiving")
         limit = CANCEL_POLL_SECONDS if deadline is None else min(CANCEL_POLL_SECONDS, max(deadline - time.monotonic(), 0.0))
         if limit <= 0:
             raise ChannelTimeout("task deadline exceeded while receiving")
