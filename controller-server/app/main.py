@@ -94,7 +94,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     ui = Path(__file__).parent / "ui"
     app.mount("/ui", StaticFiles(directory=ui), name="ui")
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/console", methods=["GET", "HEAD"], include_in_schema=False)
     def console():
         return FileResponse(ui / "index.html", headers={
             "Cache-Control": "no-store",
