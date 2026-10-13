@@ -5,7 +5,8 @@
       python integration/pipeline_client.py --endpoint 127.0.0.1:9000 \
         --config run/tiny.json --weights run/tiny.npz --prompt "1 2 3 4" --out run/result.json
 
-输出 JSON：logits 摘要、单机对照结果（逐字节）、TTFT/总耗时、tokens/s 与传输字节估算。
+输出 JSON：logits 摘要、单机对照结果（逐字节）、非流式 round-trip 耗时（prefill proxy，
+不是首 token 时间 TTFT）、tokens/s 与传输字节估算。
 """
 
 from __future__ import annotations
@@ -77,7 +78,11 @@ def main() -> int:
         "next_token": int(np.argmax(logits[0, -1])),
         "bit_identical_to_single_machine": bool(np.array_equal(logits, expected)),
         "max_abs_diff": float(np.max(np.abs(np.asarray(logits) - expected))),
-        "ttft_seconds": elapsed,
+        "prefill_roundtrip_seconds": elapsed,
+        "prefill_roundtrip_seconds_semantics": (
+            "整段 prompt 一次非流式前向的端到端往返耗时；这是 prefill/round-trip proxy，"
+            "不是首 token 时间（TTFT），不能当作 TTFT 验收证据"
+        ),
         "total_seconds": elapsed,
         "tokens_per_second": float(tokens.shape[1] / elapsed) if elapsed > 0 else None,
         "payload_bytes": payload_bytes,

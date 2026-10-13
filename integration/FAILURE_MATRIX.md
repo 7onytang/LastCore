@@ -9,12 +9,12 @@
 
 | # | 场景 | 状态 | 证据 / 命令 | 缺口或说明 |
 | --- | --- | --- | --- | --- |
-| 1 | 正常路径：Controller + 两个真实 Node 完成一次分层推理并与单机一致 | **阻塞（D1）** | `bash integration/run_two_node_local.sh`：controller healthy → 两节点注册 → 建任务 → 两节点各自领取 assignment → 执行失败。节点日志：`ShardError: assignment endpoint 'http://127.0.0.1:59250/' is not a host:port URL` | 见 D1。启动/编排/任务下发/assignment 领取均已实测通过，tensor 闭环未到达 |
-| 2 | 启动与资源回收（进程/端口） | **已实测** | 同一条命令的 `summary.json`：`still_alive: []`、`ports_still_bound: []`；`rss.txt` 记录各 PID 的 RSS（controller≈1.2 MB，node≈43 MB） | 只清理本脚本记录的 PID，未按名称匹配 |
-| 3 | 指标采集（TTFT / tokens/s / 传输字节 / 峰值内存） | 部分（缺输入） | `integration/pipeline_client.py` 输出 `ttft_seconds/total_seconds/tokens_per_second/payload_bytes`；RSS 由脚本用 `ps -o rss=` 采样 | 场景 1 未跑通前没有真实 TTFT/tokens/s；传输字节目前是 hidden/logits 的解析估算，不是线缆计数（communication 未暴露计数器） |
+| 1 | 正常路径：Controller + 两个真实 Node 完成一次分层推理并与单机一致 | **已实测（LC-253 重跑）** | `bash integration/run_two_node_local.sh` 退出 0：controller healthy → 两节点注册 → 建任务 → 每个 assignment endpoint 监听就绪 → prompt 送首段 → `result.json` `bit_identical_to_single_machine: true` / `max_abs_diff: 0.0` → Controller 状态 `task=completed assignments=[completed,completed]` → `summary.json` `still_alive: []`、`ports_still_bound: []` | D1（parse_endpoint 尾斜杠）已由 `67e6da1` 修复并经本脚本实测闭环；仍是本机双进程，不是两物理设备/真实 LLM 验收 |
+| 2 | 启动与资源回收（进程/端口） | **已实测** | 同一条命令的 `summary.json`：`still_alive: []`、`ports_still_bound: []`；`rss.txt` 记录各 PID 的 `max_rss_kb`（持续采样+终态采样） | 只清理本脚本记录的 PID，未按名称匹配；已退出 PID 保留最后观测的峰值而不是被丢弃 |
+| 3 | 指标采集（耗时 / tokens/s / 传输字节 / 峰值内存） | 部分（缺输入） | `integration/pipeline_client.py` 输出 `prefill_roundtrip_seconds/total_seconds/tokens_per_second/payload_bytes`；RSS 由脚本后台持续采样并取历史最大 `max_rss_kb` | 该耗时是整段 prompt 一次非流式往返的 **prefill/round-trip proxy，不是 TTFT**；无流式首 token 采集。传输字节目前是 hidden/logits 的解析估算，不是线缆计数（communication 未暴露计数器） |
 | 4 | 多步生成（逐 token / KV cache） | 缺输入 | — | 引擎当前一次前向返回整段 logits；无 KV cache / 生成循环（LC-8 结果闭环、LC-10 KV 预算未完成） |
 | 5 | 重复 / 迟到消息 | 模块级已覆盖 | Controller：`controller-server/tests/test_controller.py`（同状态 report 幂等，终态 409）；node-agent：`tests/test_agent.py`（按 assignment id 去重） | 系统级（真实双节点 + 重复 prompt/迟到帧）未跑；需场景 1 先通 |
-| 6 | 取消（管理员 cancel → 节点停止并回收） | 模块级已覆盖 | Controller 取消后 assignment 变 cancelled；引擎 `CANCEL` 帧 → `TaskCancelled`（`inference-engine/tests/test_cancellation_and_timeout.py`）；node-agent 取消停止 | 系统级未跑；LC-7 的"终态窗口/迟到命令"测试尚未固定提交 |
+| 6 | 取消（管理员 cancel → 节点停止并回收） | 模块级已覆盖 + LC-253 有界场景 | Controller 取消后 assignment 变 cancelled；引擎 `CANCEL` 帧 → `TaskCancelled`（`inference-engine/tests/test_cancellation_and_timeout.py`）；node-agent 取消停止。LC-253 有界场景：真实 Controller+双节点建任务后 cancel → `task=cancelled assignments=[cancelled,cancelled]`，teardown 后 `still_alive: []` | 该有界场景为本机双进程、未提交为新脚本；系统级断网/重启注入仍未跑 |
 | 7 | 断网 / 心跳过期 | 模块级已覆盖 | node-agent `tests/test_agent.py`（心跳失败计数、TTL 停止）；Controller（心跳过期 → 任务 failed） | 系统级（真杀网络/杀节点）未跑；LC-7 的断网/重启回归未固定 |
 | 8 | 超时（deadline） | 模块级已覆盖 | `inference-engine/tests/test_cancellation_and_timeout.py::test_deadline_expiry_stops_the_stage`、`test_serve_forever_stops_instead_of_polling_an_expired_deadline` | 系统级未跑；注意本基线树（`ba52895`）尚未含 deadline 到期停服修复（在 PR #2 的 `fd6a9cf`） |
 | 9 | 重启（Controller / 节点重启后恢复） | 模块级已覆盖 | Controller SQLite 持久化与重启测试；node-agent 凭据持久化 + 状态目录锁测试 | 系统的"重启后继续同一任务"语义未定义（PR #1 明确不做自动重试/迁移），需要 LC-5/LC-10 决定 |
@@ -40,6 +40,7 @@ endpoint 交给它，于是**任何真实 Controller + 真实节点的链路都�
   `parse_endpoint` 改为 `urlparse` + `hostname/port`，接受尾斜杠并保持既有拒绝用例（无端口、非数字端口、
   空串仍拒绝），并在 `communication`/`inference-engine` 测试里补一条带尾斜杠的正例。
 - 我不修改该业务代码；本轮只提供真实失败证据与最小复现，供 Mika 决定归属与复核。
+- **状态更新（LC-253）**：`parse_endpoint` 已在 `67e6da1` 改为 `urlparse` 并接受 Controller 尾斜杠形式，本脚本重跑已闭环（见场景 1）。同轮五项 REWORK 后，解析器显式拒绝 IPv6 字面量（transport 固定 `AF_INET`），脚本会等待**每个** assignment endpoint 监听就绪并核对 Controller 收到全部 completed。
 
 **D2（观察）**：两个节点 compute_weight/内存相同，Controller 按 node id 兜底排序，首段可能落在任一节点
 （本例落在 node-b）。集成脚本因此从任务响应里解析首段 endpoint，不假设节点顺序。

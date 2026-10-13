@@ -63,12 +63,22 @@ def test_unusable_endpoints_are_rejected(endpoint):
     "https://10.0.0.12:9000/",
     "http://10.0.0.12:9000",
     "10.0.0.12:9000",
-    "http://[::1]:9000/",              # IPv6 字面量
 ])
 def test_controller_serialized_endpoints_are_accepted(endpoint):
     host, port = parse_endpoint(endpoint)
     assert port == 9000
-    assert host in ("10.0.0.12", "::1")
+    assert host == "10.0.0.12"
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://[::1]:9000/",              # IPv6 字面量
+    "[::1]:9000",
+    "http://[fe80::1]:9000/",
+])
+def test_ipv6_endpoints_are_rejected_by_the_ipv4_transport(endpoint):
+    # communication.ChannelListener 固定 AF_INET；解析器必须与真实传输层一致地拒绝 IPv6。
+    with pytest.raises(ShardError, match="IPv6"):
+        parse_endpoint(endpoint)
 
 
 @pytest.mark.parametrize("endpoint", [

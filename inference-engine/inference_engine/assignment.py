@@ -54,6 +54,11 @@ def parse_endpoint(value: str) -> tuple[str, int]:
     Accepts ``host:port`` and ``scheme://host:port`` — the Controller serialises pydantic
     ``HttpUrl`` with a trailing slash (``http://10.0.0.12:9000/``) — and rejects anything
     without a usable host and a numeric port.
+
+    IPv6 literals are rejected on purpose: ``communication.ChannelListener`` binds
+    ``AF_INET`` only, so accepting ``http://[::1]:9000/`` here would only move the failure
+    to a bind error inside ``StageExecutor``. Rejecting at parse time keeps the parser
+    honest about the transport that actually exists.
     """
     text = (value or "").strip()
     if not text:
@@ -65,6 +70,9 @@ def parse_endpoint(value: str) -> tuple[str, int]:
         raise ShardError(f"assignment endpoint {value!r} is not a host:port URL") from exc
     if not host or port is None:
         raise ShardError(f"assignment endpoint {value!r} is not a host:port URL")
+    if ":" in host:
+        raise ShardError(f"assignment endpoint {value!r} uses an IPv6 address, but the "
+                         f"transport is IPv4-only (AF_INET)")
     return host, int(port)
 
 

@@ -22,6 +22,9 @@ MODEL_LAYERS="${LC11_LAYERS:-4}"
 LOG_DIR="$RUN_DIR/logs"
 PID_FILE="$RUN_DIR/pids"
 SUMMARY="$RUN_DIR/summary.json"
+RSS_MAX="$RUN_DIR/rss_max.json"
+RSS_STOP="$RUN_DIR/rss.stop"
+RSS_SAMPLER_PID=""
 PORTS=""
 ALL_OK=false
 
@@ -120,14 +123,111 @@ print(json.dumps(summary, indent=2, ensure_ascii=False))
 PY
 }
 
-write_rss() { # 峰值 RSS：只采样本脚本启动的 PID；失败路径也要留下内存证据
-  {
-    echo "peak_rss_kb:"
-    while read -r name pid; do
-      kill -0 "$pid" 2>/dev/null && printf '  %s: %s\n' "$name" "$(ps -o rss= -p "$pid" | tr -d ' ')"
-    done < "$PID_FILE"
-  } > "$RUN_DIR/rss.txt"
+write_rss() { # 真实峰值 RSS：持续采样 + 终止前终态采样，保留已退出 PID 的最后观测值
+  stop_rss_sampler
+  "$ENGINE_PY" - "$PID_FILE" "$RSS_MAX" "$RUN_DIR/rss.txt" <<'PY'
+import json, os, subprocess, sys
+from pathlib import Path
+
+pid_file, maxima_path, out_path = sys.argv[1:4]
+try:
+    maxima = {str(k): int(v) for k, v in json.loads(Path(maxima_path).read_text()).items()}
+except Exception:
+    maxima = {}
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+def rss_kb(pid):
+    try:
+        proc = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)],
+                              capture_output=True, text=True, timeout=5)
+    except Exception:
+        return None
+    text = proc.stdout.strip()
+    return int(text) if text.isdigit() else None
+
+lines = ["max_rss_kb:"]
+for line in Path(pid_file).read_text().splitlines():
+    parts = line.split()
+    if len(parts) != 2:
+        continue
+    name, pid_text = parts
+    try:
+        pid = int(pid_text)
+    except ValueError:
+        continue
+    value = maxima.get(name)
+    # 进程仍存活时补一次终态采样；已退出的 PID 保留持续采样期间的峰值而不是丢弃。
+    if alive(pid):
+        sample = rss_kb(pid)
+        if sample is not None:
+            value = max(value or 0, sample)
+    if value is None:
+        lines.append(f"  {name}: null (pid={pid}, never sampled)")
+    else:
+        lines.append(f"  {name}: {value} (pid={pid}, alive={str(alive(pid)).lower()}, "
+                     f"source=max-of-continuous-and-terminal)")
+Path(out_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+print("\n".join(lines))
+PY
   cat "$RUN_DIR/rss.txt" >&2
+}
+
+start_rss_sampler() { # 后台持续采样本脚本自己启动的 PID，记录各自历史最大 RSS
+  rm -f "$RSS_STOP"
+  "$ENGINE_PY" - "$PID_FILE" "$RSS_MAX" "$RSS_STOP" > "$LOG_DIR/rss_sampler.log" 2>&1 <<'PY' &
+import json, os, subprocess, sys, time
+from pathlib import Path
+
+pid_file, out_path, stop_path = sys.argv[1:4]
+maxima: dict[str, int] = {}
+
+def rss_kb(pid):
+    try:
+        proc = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)],
+                              capture_output=True, text=True, timeout=5)
+    except Exception:
+        return None
+    text = proc.stdout.strip()
+    return int(text) if text.isdigit() else None
+
+while not os.path.exists(stop_path):
+    try:
+        lines = Path(pid_file).read_text().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        name, pid_text = parts
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            continue
+        value = rss_kb(pid)
+        if value is not None:
+            maxima[name] = max(maxima.get(name, 0), value)
+    Path(out_path).write_text(json.dumps(maxima, sort_keys=True), encoding="utf-8")
+    time.sleep(0.2)
+PY
+  RSS_SAMPLER_PID=$!
+}
+
+stop_rss_sampler() {
+  [ -n "$RSS_SAMPLER_PID" ] || return 0
+  touch "$RSS_STOP"
+  for _ in $(seq 1 20); do
+    kill -0 "$RSS_SAMPLER_PID" 2>/dev/null || { RSS_SAMPLER_PID=""; return 0; }
+    sleep 0.1
+  done
+  kill -TERM "$RSS_SAMPLER_PID" 2>/dev/null || true
+  RSS_SAMPLER_PID=""
 }
 
 cleanup() {
@@ -140,6 +240,8 @@ cleanup() {
 }
 
 trap cleanup EXIT INT TERM
+
+start_rss_sampler
 
 ADMIN_TOKEN="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)"
 REGISTRATION_TOKEN="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)"
@@ -207,28 +309,60 @@ done
 [ "$count" = "2" ] || { log "nodes did not register (count=$count)"; exit 1; }
 log "two nodes registered"
 
-# 4) 建任务 → 等首段 StageServer 就绪 → 送 prompt
+# 4) 建任务 → 等每个 assignment endpoint 监听就绪 → 送 prompt → 核对 Controller 闭环
 task="$(curl -fsS -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d "{\"model_id\":\"lastcore/tiny-cpu\",\"num_layers\":$MODEL_LAYERS,\"layer_memory_mb\":64,\"max_nodes\":2,\"timeout_seconds\":120}" \
   "$BASE_URL/v1/tasks")" || { log "task creation failed"; exit 1; }
 printf '%s\n' "$task" > "$RUN_DIR/task.json"
-first_endpoint="$(printf '%s' "$task" | "$ENGINE_PY" -c 'import json,sys
-task = json.load(sys.stdin)
-first = [a for a in task["assignments"] if a["layer_start"] == 0]
-print(first[0]["endpoint"] if first else "")')"
-[ -n "$first_endpoint" ] || { log "no first-stage assignment"; exit 1; }
-first_port="$("$ENGINE_PY" -c 'import sys
+
+"$ENGINE_PY" - "$RUN_DIR/task.json" "$RUN_DIR/endpoints.txt" "$RUN_DIR/first_endpoint.txt" <<'PY'
+import json, sys
 from urllib.parse import urlparse
-value = sys.argv[1] if "://" in sys.argv[1] else "//" + sys.argv[1]
-parsed = urlparse(value)
-print(parsed.port or "")' "$first_endpoint")"
-[ -n "$first_port" ] || { log "cannot parse first-stage endpoint: $first_endpoint"; exit 1; }
-for _ in $(seq 1 120); do
-  port_open "$first_port" && break
-  sleep 0.25
-done
-port_open "$first_port" || { log "first stage listener never opened on $first_port"; exit 1; }
-log "first stage listener ready: $first_endpoint"
+
+task = json.load(open(sys.argv[1], encoding="utf-8"))
+assignments = sorted(task.get("assignments") or [], key=lambda item: item["position"])
+if not assignments:
+    raise SystemExit("task has no assignments")
+
+def split(endpoint):
+    parsed = urlparse(endpoint if "://" in endpoint else f"//{endpoint}")
+    if not parsed.hostname or not parsed.port:
+        raise SystemExit(f"cannot parse assignment endpoint: {endpoint!r}")
+    if ":" in parsed.hostname:
+        raise SystemExit(f"IPv6 assignment endpoint unsupported by the IPv4 transport: {endpoint!r}")
+    return parsed.hostname, parsed.port
+
+rows, first = [], None
+for assignment in assignments:
+    host, port = split(assignment["endpoint"])
+    rows.append(f"{assignment['position']} {host} {port} {assignment['endpoint']}")
+    if first is None and int(assignment.get("layer_start") or 0) == 0:
+        first = assignment["endpoint"]
+if first is None:
+    raise SystemExit("task has no first-stage (layer_start=0) assignment")
+open(sys.argv[2], "w", encoding="utf-8").write("\n".join(rows) + "\n")
+open(sys.argv[3], "w", encoding="utf-8").write(first + "\n")
+PY
+[ -s "$RUN_DIR/endpoints.txt" ] || { log "could not enumerate assignment endpoints"; exit 1; }
+first_endpoint="$(<"$RUN_DIR/first_endpoint.txt")"
+[ -n "$first_endpoint" ] || { log "no first-stage assignment"; exit 1; }
+
+# 必须等每个 assignment endpoint 的监听器都就绪：只看首段会在后段尚未 bind 时误发，
+# 首段对 downstream 的一次性 connect 失败会让脚本间歇性失败。
+while read -r position host port endpoint; do
+  [ -n "$port" ] || continue
+  for _ in $(seq 1 120); do
+    port_open "$port" && break
+    sleep 0.25
+  done
+  port_open "$port" || { log "assignment listener (position=$position) never opened on $host:$port"; exit 1; }
+  log "assignment listener ready: position=$position $host:$port"
+done < "$RUN_DIR/endpoints.txt"
+log "all assignment listeners ready; first stage: $first_endpoint"
+
+task_id="$(printf '%s' "$task" | "$ENGINE_PY" -c 'import json,sys
+print(json.load(sys.stdin)["id"])')"
+[ -n "$task_id" ] || { log "task id missing from Controller response"; exit 1; }
 
 PYTHONPATH="$ROOT/node-agent:$ROOT/inference-engine:$ROOT/communication" "$ENGINE_PY" \
   integration/pipeline_client.py --endpoint "$first_endpoint" \
@@ -236,6 +370,38 @@ PYTHONPATH="$ROOT/node-agent:$ROOT/inference-engine:$ROOT/communication" "$ENGIN
   --out "$RUN_DIR/result.json" > "$LOG_DIR/client.log" 2>&1 || true
 cat "$LOG_DIR/client.log" >&2
 grep -q '"bit_identical_to_single_machine": true' "$RUN_DIR/result.json" || { log "client comparison failed"; exit 1; }
+
+# 结果 JSON 相等还不够：必须确认 Controller 已收到任务里每个 assignment 的 completed
+# 报告，脚本不能在 Node Agent 上报前就宣布 ALL_OK。
+controller_closed=false
+verdict="no snapshot"
+for _ in $(seq 1 120); do
+  curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/v1/tasks/$task_id" \
+    -o "$RUN_DIR/task_state.json" 2>/dev/null || true
+  if verdict="$("$ENGINE_PY" - "$RUN_DIR/task_state.json" <<'PY'
+import json, sys
+from pathlib import Path
+
+try:
+    view = json.loads(Path(sys.argv[1]).read_text())
+except Exception:
+    raise SystemExit(1)
+assignments = view.get("assignments") or []
+statuses = [str(a.get("status")) for a in assignments]
+complete = bool(assignments) and view.get("status") == "completed" and all(
+    status == "completed" for status in statuses)
+print(f"task={view.get('status')} assignments=[{','.join(statuses)}]")
+raise SystemExit(0 if complete else 1)
+PY
+)"; then
+    controller_closed=true
+    log "controller closed the task: $verdict"
+    break
+  fi
+  sleep 0.5
+done
+$controller_closed || { log "controller never reported all assignments completed (last: $verdict)"; exit 1; }
+
 ALL_OK=true
 
 write_rss
