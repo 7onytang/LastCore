@@ -67,9 +67,12 @@ class ControllerClient:
 
     def report(self, node_id: str, node_token: str, assignment_id: str, status: str,
                error: str | None = None, result=None) -> dict:
+        payload = {"status": status, "error": error}
+        if result is not None:
+            payload["result"] = result
         response = self._client.post(
             f"/v1/nodes/{node_id}/assignments/{assignment_id}/report",
-            json={"status": status, "error": error, "result": result},
+            json=payload,
             headers=self._headers(node_token),
         )
         self._check(response)

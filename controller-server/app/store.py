@@ -39,8 +39,12 @@ class Store:
                     id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
                     node_id TEXT NOT NULL REFERENCES nodes(id), position INTEGER NOT NULL,
                     layer_start INTEGER NOT NULL, layer_end INTEGER NOT NULL,
-                    status TEXT NOT NULL, error TEXT, result TEXT,
+                    status TEXT NOT NULL, error TEXT,
                     UNIQUE(task_id, position)
+                );
+                CREATE TABLE IF NOT EXISTS assignment_results (
+                    assignment_id TEXT PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
+                    result TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS assignments_node ON assignments(node_id);
                 CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
@@ -48,9 +52,6 @@ class Store:
                 CREATE INDEX IF NOT EXISTS nodes_accepting_heartbeat ON nodes(last_seen)
                     WHERE accepting_tasks != 0;
             """)
-            columns = {row[1] for row in db.execute("PRAGMA table_info(assignments)")}
-            if "result" not in columns:
-                db.execute("ALTER TABLE assignments ADD COLUMN result TEXT")
 
     @contextmanager
     def transaction(self):
@@ -172,7 +173,9 @@ class Store:
         placeholders = ",".join("?" for _ in task_ids)
         by_task = {task_id: [] for task_id in task_ids}
         for row in db.execute(f"""
-            SELECT a.*, n.endpoint FROM assignments a JOIN nodes n ON n.id=a.node_id
+            SELECT a.*, n.endpoint, ar.result AS stored_result
+            FROM assignments a JOIN nodes n ON n.id=a.node_id
+            LEFT JOIN assignment_results ar ON ar.assignment_id=a.id
             WHERE a.task_id IN ({placeholders}) ORDER BY a.task_id, a.position
         """, task_ids):
             by_task[row["task_id"]].append(dict(row))
@@ -182,7 +185,8 @@ class Store:
             result["request"] = json.loads(result["request"])
             assignments = by_task[task["id"]]
             for assignment in assignments:
-                assignment["result"] = json.loads(assignment["result"]) if assignment.get("result") else None
+                raw_result = assignment.pop("stored_result", None)
+                assignment["result"] = json.loads(raw_result) if raw_result else None
             for i, assignment in enumerate(assignments):
                 assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
                 assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
@@ -232,7 +236,7 @@ class Store:
             db.execute("INSERT INTO tasks VALUES (?,?,?,?,?,NULL)",
                        (task_id, request.model_dump_json(), "queued", now, now + request.timeout_seconds))
             for position, shard in enumerate(plan):
-                db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL,NULL)",
+                db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL)",
                            (str(uuid4()), task_id, shard["node_id"], position,
                             shard["layer_start"], shard["layer_end"], "pending"))
             return self._task_view(db, task_id)
@@ -296,9 +300,12 @@ class Store:
                 return task  # Retries are idempotent, including terminal acknowledgements.
             if task["status"] not in ACTIVE or assignment["status"] not in ("pending", "running"):
                 raise HTTPException(409, "assignment is terminal")
-            db.execute("UPDATE assignments SET status=?, error=?, result=? WHERE id=?",
-                       (report.status, report.error if report.status == "failed" else None,
-                        json.dumps(report.result) if report.result is not None else None, assignment_id))
+            db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
+                       (report.status, report.error if report.status == "failed" else None, assignment_id))
+            if report.result is not None:
+                db.execute("INSERT INTO assignment_results (assignment_id, result) VALUES (?, ?) "
+                           "ON CONFLICT(assignment_id) DO UPDATE SET result=excluded.result",
+                           (assignment_id, json.dumps(report.result)))
             if report.status == "failed":
                 self._end_task(db, task["id"], "failed", report.error or "node reported failure")
             elif not db.execute("SELECT 1 FROM assignments WHERE task_id=? AND status!='completed'",
