@@ -51,6 +51,7 @@ def test_concurrent_idempotency_and_conflict(setup):
         responses=list(pool.map(lambda _:create(c,n),range(5)))
     assert all(r.status_code==201 for r in responses)
     assert len({r.json()['id'] for r in responses})==1
+    assert create(c,n,execution_timeout_seconds=60.0).json()['id']==responses[0].json()['id']
     assert create(c,n,prompt='A different request').status_code==409
 
 def test_claim_one_job_retry_no_duplicate_and_success_retry(setup):

@@ -31,7 +31,7 @@ class JobRequest(StrictModel):
     prompt: str = Field(min_length=1, max_length=4096)
     max_tokens: int = Field(default=64, ge=1, le=64)
     timeout_seconds: int = Field(default=90, ge=10, le=90)
-    execution_timeout_seconds: float = Field(default=60, ge=0.01, le=90, allow_inf_nan=False)
+    execution_timeout_seconds: float = Field(default=60.0, ge=0.01, le=90, allow_inf_nan=False)
     idempotency_key: str = Field(min_length=16, max_length=128, pattern=r'^[a-zA-Z0-9_-]+$')
 
     @field_validator('prompt')
