@@ -13,11 +13,13 @@ LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI �
 
 ## 工作台、演示与实际截图
 
-公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。部署负责人已在北京时间 18:04:30 核验默认入口转至工作台，实际部署源码 `cc7c7ba`，其中 `console.js` 页面代码与正式发布源码有一行 401 处理差异；整体源码另有其他改动，不声称发布源整体已部署，见[部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
+公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。当前公开部署回执记录：北京时间 18:41:15，Controller 已对齐正式源 `bf5b82e`，默认入口及 `/console` 返回 200、页面 JS 与发布源字节一致，原数据库与认证保留；见[当前部署说明](submission/evidence/public-deployment-current.md)。18:04:30 的 `cc7c7ba` 部署及 18:08 截图保留为历史采样，见[历史部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
 
 保留的历史展示地址：[LastCore Demo](https://8.134.161.123/demo/)。该地址与统一 ZIP 镜像的可达性、内容和摘要由最后交付验收核对。也可直接打开 [离线展示页面](demo/offline.html)，按[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt)展示；页面提供历史结果回放、下载和公开证据入口，不创建新的模型任务。
 
 [3 张正式工作台实际截图](screenshots/formal-v0.1.1/README.md)于北京时间 18:08:34 匿名采集，包含桌面、移动浏览器及 HTTPS 健康响应；来源为实际部署 `cc7c7ba`，未登录指标显示“—”。另保留[5 张历史截图及范围](screenshots/README.md)，共 8 张，历史回放与设备示意不冒称当前推理或真机画面。移动网页不等于 Android 真机。
+
+Android 开发预览附件：[arm64 APK](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-Android-0.1.0-draft-arm64-dev-1760373.apk)、[SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-Android-0.1.0-draft-arm64-dev-1760373.apk.sha256)、[来源与许可记录](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-Android-dev-1760373-provenance.json)。应用版本为 `0.1.0-draft`，最低 Android API 29、`arm64-v8a`、Android Debug 开发签名；作为 v0.1.1 核心版本的预览附件，未完成真机验收，不代表正式生产签名或 Android App 0.1.1。
 
 ## 当前功能与验证范围
 
