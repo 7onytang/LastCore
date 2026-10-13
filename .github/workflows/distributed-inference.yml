@@ -102,6 +102,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify source archive and manifest binding
+        run: python -m unittest discover -s ops/staging/tests -v
       - name: Validate and build fixed staging image
         env:
           CONTROLLER_ADMIN_TOKEN: ci-placeholder-admin-credentials-00000000
