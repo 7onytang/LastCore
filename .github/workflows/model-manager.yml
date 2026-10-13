@@ -1,0 +1,27 @@
+name: Model manager
+on:
+  push:
+    paths:
+      - "model-manager/**"
+      - "inference-engine/**"
+      - ".github/workflows/model-manager.yml"
+  pull_request:
+    paths:
+      - "model-manager/**"
+      - "inference-engine/**"
+      - ".github/workflows/model-manager.yml"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: model-manager
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
