@@ -229,6 +229,25 @@ def test_connect_cancelled_before_socket_creation(monkeypatch):
     assert not called
 
 
+def test_connect_deadline_is_checked_after_synchronous_name_resolution(monkeypatch):
+    socket_created = False
+
+    def slow_resolve(*_args, **_kwargs):
+        time.sleep(0.05)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 1))]
+
+    def unexpected_socket(*_args, **_kwargs):
+        nonlocal socket_created
+        socket_created = True
+        raise AssertionError("expired deadline must stop before TCP socket creation")
+
+    monkeypatch.setattr(channel_module.socket, "getaddrinfo", slow_resolve)
+    monkeypatch.setattr(channel_module.socket, "socket", unexpected_socket)
+    with pytest.raises(ChannelTimeout, match="deadline exceeded while connecting"):
+        Channel.connect(("example.test", 1), deadline=time.time() + 0.01)
+    assert not socket_created
+
+
 class _PendingSocket:
     def __init__(self):
         self.closed = False

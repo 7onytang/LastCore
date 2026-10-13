@@ -1,5 +1,6 @@
 import os
 import stat
+import sys
 
 import pytest
 
@@ -35,12 +36,16 @@ def test_credentials_roundtrip(tmp_path):
     assert load_credentials(tmp_path) == creds
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX mode bits are not enforced by os.chmod on Windows")
 def test_credentials_file_permissions(tmp_path):
     save_credentials(tmp_path, NodeCredentials("n", "t", 30))
     mode = stat.S_IMODE(os.stat(tmp_path / "node-credentials.json").st_mode)
     assert mode == 0o600
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX mode bits are not enforced by os.chmod on Windows")
 def test_state_dir_permissions(tmp_path):
     save_credentials(tmp_path, NodeCredentials("n", "t", 30))
     mode = stat.S_IMODE(os.stat(tmp_path).st_mode)

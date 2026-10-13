@@ -67,6 +67,8 @@ cancel 事件与 deadline 在**每次收/发迭代**都会重新检查（发送�
 
 等待时每 0.25 s 轮询一次 cancel 事件，所以在阻塞读/写中也能在亚秒级响应取消，不会出现“取消后仍占着连接和缓存”的情况。`Channel` 只按连接持有缓冲，关闭即释放；`StageServer` 一次只处理一个任务，符合 Controller 文档中“节点本地禁止并行执行两个任务”的要求。
 
+连接阶段会在解析地址前、解析返回后以及 TCP 连接等待期间检查 cancel 与 deadline。标准库 `socket.getaddrinfo()` 是同步调用，无法被这些机制中断；因此 DNS/名称解析耗时不受 `connect_timeout`、任务 deadline 或 cancel 保证约束。需要严格限制连接建立耗时时，请传入数字 IP 地址。
+
 ## 对外接口
 
 ```python

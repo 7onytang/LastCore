@@ -10,6 +10,12 @@ base the Controller uses for ``assignment["deadline"]`` and node-agent uses for
 ``ExecutionContext.deadline``. Both the cancel event and the deadline are re-checked
 on every send and receive iteration (writes are sliced rather than one blocking
 ``sendall``), so a peer that keeps streaming or stops reading cannot postpone them.
+
+Connection setup checks cancellation and the absolute deadline before and after address
+resolution, and while establishing TCP. The standard-library ``getaddrinfo`` call is
+synchronous and cannot be interrupted, so resolver latency is outside the connect timeout,
+deadline, and cancel guarantees. Use a numeric IP address when connection setup must stay
+within a strict time bound.
 """
 
 from __future__ import annotations
