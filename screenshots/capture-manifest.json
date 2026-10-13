@@ -5,12 +5,12 @@
     {
       "file": "01-demo-desktop.png",
       "url": "http://127.0.0.1:8766/",
-      "captured_at_beijing": "2026-10-13T15:10:51.722+08:00",
-      "source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
-      "scope": "Actual local Demo UI; device art is architectural illustration; Paris is public historical summary, not a new model run or Android device proof.",
-      "sha256": "c6e0945d9eb1a1af442ae33d2bdbc204230cacc74771c57703ce9ceb29ad97f5",
+      "captured_at_beijing": "2026-10-13T15:29:45.861+08:00",
+      "source_commit": "63a5c9f0c7e2afa995a23211ef25bcb81e0b4f16",
+      "scope": "Actual local Demo UI; Mac/Android are current implementation paths and other edge adaptations are explicitly in development. Device art is architecture illustration; historical Paris summary is not a new model run or Android device proof.",
+      "sha256": "f6a6186018a857d728cde60ba2e689a06e23aba426a2265794321bf1cc229a26",
       "width": 1440,
-      "height": 1000
+      "height": 1100
     },
     {
       "file": "02-demo-history-replay.png",
@@ -25,12 +25,12 @@
     {
       "file": "03-demo-mobile-browser.png",
       "url": "http://127.0.0.1:8766/",
-      "captured_at_beijing": "2026-10-13T15:11:03.765+08:00",
-      "source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
-      "scope": "Actual mobile-size browser rendering at390px; this is responsive web UI with illustrative devices, not an Android hardware screenshot.",
-      "sha256": "5a04c1d0f45215c9422c8c74e5051478a90e95adfd5d73898e82f98b8675da92",
+      "captured_at_beijing": "2026-10-13T15:29:46.154+08:00",
+      "source_commit": "63a5c9f0c7e2afa995a23211ef25bcb81e0b4f16",
+      "scope": "Actual390px responsive browser Demo; additional edge devices are labeled development in progress, not supported or verified hardware. Illustrative Android screen is not an Android device screenshot.",
+      "sha256": "052c776e54e061f3a98cc6f99b2e26e5b0818657c3c945c4ca8f76fc300d7b0b",
       "width": 390,
-      "height": 920
+      "height": 1000
     },
     {
       "file": "04-live-swagger-health.png",
@@ -55,9 +55,10 @@
       "height": 420
     }
   ],
-  "demo_source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
+  "demo_source_commit": "63a5c9f0c7e2afa995a23211ef25bcb81e0b4f16",
   "core_source_commit": "09a02efa3569057d7a5ed0b2df5b817c13e77bb5",
   "capture_tool": "ego-browser, existing TaskSpace13/p1, actual rendered page PNG, no image composition",
   "public_demo_deployed_at_capture": false,
-  "qa": "Desktop1440, mobile390 and375 overflow0; generation/timeout/cancel tabs, playback/reset/reduced-motion verified; live public Swagger Execute GET health returned200 statusok without Authorization; no model/task created."
+  "qa": "Desktop1440, mobile390 and375 overflow0; generation/timeout/cancel tabs, playback/reset/reduced-motion verified; live public Swagger Execute GET health returned200 statusok without Authorization; no model/task created.",
+  "capture_revision_note": "Only affected01/03 recaptured after explicit edge-scope copy change.02 retains027 original capture;04/05 retain actual service captures and85 source attribution. No model or new device execution."
 }

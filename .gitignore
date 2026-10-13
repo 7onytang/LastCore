@@ -26,3 +26,6 @@ data/
 /node-agent/build/
 /node-agent/dist/
 /node-agent/.venv-build/
+
+# Generated unified competition archive; publish as a release asset, not source.
+/submission-output/
