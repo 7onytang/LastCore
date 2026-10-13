@@ -34,7 +34,7 @@ links below refer to the published development preview attachments on the existi
 
 Unpack the portable folder without dropping its `_internal` or license files. These are unsigned development previews for bounded linear math only: no GGUF/LLM or tiny Stage execution. Native builds and static checks passed; native GUI launch, networking, user-device execution and Mac-to-Windows relay remain unverified. New runtime/device checks are paused at the user’s request. Publishing these attachments does not change the formal core tag, historical screenshots or fixed r2 submission archive.
 
-tive build-only portable previews
+## Native build-only portable previews
 
 `Edge portable build only` runs on Windows x64 with Python 3.13.16 and Ubuntu
 22.04 x64 with Python 3.12.14 (both are available in GitHub's official toolchain
