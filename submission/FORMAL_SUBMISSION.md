@@ -8,7 +8,7 @@
 
 | 路径 | 当前已确认范围 | 可引用文件 |
 | --- | --- | --- |
-| 原生 Mac 客户端 | LastCoreClient 0.1.1 在用户真实 MacBook Pro 上完成单节点线性任务；服务端结果核验与用户 GUI 数值确认通过 | PR #73 的 `submission/evidence/mac-client-0.1.1-linear-acceptance.md`（待合入）；修复源 `f9139762` 的 `controller-server/app/models.py` 与 Mac 客户端源码 |
+| 原生 Mac 客户端 | LastCoreClient 0.1.1 在用户真实 MacBook Pro 上完成单节点线性任务；服务端结果核验与用户 GUI 数值确认通过 | [公开 Mac 验收](evidence/mac-client-0.1.1-linear-acceptance.md)；修复源 `f9139762` 的 `controller-server/app/models.py` 与 Mac 客户端源码 |
 | 真实小模型 | 本轮公网 HTTPS Controller 到 Mac mini CPU 整模型 worker，生成 Paris 摘要并确认停止和原生进程清理 | [本轮公开摘要](evidence/public-gguf-f913-generation-summary.json)、[真实模型运行入口](../real-model-runtime/README.md)、[worker](../real-model-runtime/worker.py) |
 | tiny 分层原型 | 既有本机多进程 tiny 链路及单机参考对照；不得归并为预训练大模型跨物理设备执行 | [双节点脚本](../integration/run_two_node_local.sh)、[引擎协议](../inference-engine/PROTOCOL.md)、[原 Alpha 验收](evidence/ACCEPTANCE.txt) |
 | Android | JNI/主机与 APK 构建有证据，真机验收仍延期 | [Android 说明](../android-app/README.md)、[原验收范围](evidence/ACCEPTANCE.txt) |
