@@ -15,14 +15,16 @@ jobs:
         include:
           - os: windows-latest
             target: windows-x86_64
+            python: '3.13.16'
           - os: ubuntu-22.04
             target: linux-x86_64
+            python: '3.12.14'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12.14'
+          python-version: ${{ matrix.python }}
           architecture: x64
       - name: Linux build-time Tcl/Tk dependencies
         if: runner.os == 'Linux'

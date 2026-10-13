@@ -1,6 +1,7 @@
 """Build-time license collection only; never imports or launches edge client code."""
 import hashlib
 import importlib.util
+from importlib import metadata
 import json
 from pathlib import Path
 import shutil
@@ -29,9 +30,8 @@ def main():
     shutil.copyfile(python_license, out / "CPython-LICENSE.txt")
     if module.PSF_LICENSE_HEADING not in (out / "CPython-LICENSE.txt").read_bytes():
         raise RuntimeError("Incomplete CPython license")
-    import importlib.metadata
     for name in ("pyinstaller", "pyinstaller-hooks-contrib"):
-        distribution=importlib.metadata.distribution(name)
+        distribution=metadata.distribution(name)
         files=module.license_files(distribution)
         if not files:raise RuntimeError("Missing build/runtime-hook terms: " + name)
         for relative in files:

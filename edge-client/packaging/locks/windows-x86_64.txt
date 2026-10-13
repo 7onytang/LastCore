@@ -1,4 +1,4 @@
-# Native windows-x86_64 / CPython 3.12; full dependency closure.
+# Native windows-x86_64 / CPython 3.13.16; pinned dependency closure (pure/py3 wheels).
 # Official PyPI wheel digests; regenerate separately per OS/ABI.
 altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
 anyio==4.15.1 --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101

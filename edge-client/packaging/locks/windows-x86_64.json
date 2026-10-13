@@ -1,5 +1,5 @@
 {
-  "python_abi": "cp312",
+  "python_abi": "cp313",
   "target": "windows-x86_64",
   "wheels": [
     {

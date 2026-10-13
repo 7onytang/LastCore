@@ -15,8 +15,9 @@ platform-specific hash lock. Do not use the macOS dependency lock for Windows.
 
 ## Native build-only portable previews
 
-`Edge portable build only` runs on Windows x64 and Ubuntu 22.04 x64 with Python
-3.12.14. It installs the separate full wheel SHA256 locks from
+`Edge portable build only` runs on Windows x64 with Python 3.13.16 and Ubuntu
+22.04 x64 with Python 3.12.14 (both are available in GitHub's official toolchain
+manifest). It installs the separate pinned wheel SHA256 locks from
 `packaging/locks/`, reuses maintained PyInstaller Tk/certifi hooks, and builds
 two entry points in one portable folder. Its steps collect full installed
 Python/Tcl/Tk/dependency terms plus the actual OpenSSL version's upstream terms
