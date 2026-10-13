@@ -16,6 +16,8 @@ ROUTE='''\t@demo_entry {
 \t}
 \thandle {
 '''+PROXY+'\n\t}'
+HTTP_OLD='\trespond "HTTPS required." 400'
+HTTP_NEW='\t@http_browser {\n\t\tmethod GET HEAD\n\t\tnot path /.well-known/acme-challenge/*\n\t}\n\tredir @http_browser https://8.134.161.123{uri} 308\n\trespond "HTTPS required." 400'
 ALLOWED={'.html','.css','.js','.json','.svg','.png','.jpg','.jpeg','.webp','.woff2','.txt','.md'}
 DENY={'owner-access.txt','node-credentials.json','current-job.json','worker.json','.env','.git','registration.pending'}
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -58,8 +60,8 @@ def files(root):
 def render_caddy(base):
  if hashlib.sha256(base).hexdigest()!=BASE_CADDY_SHA:raise ValueError('Caddy baseline changed; do not overwrite')
  text=base.decode()
- if text.count(PROXY)!=1:raise ValueError('unexpected original proxy')
- return text.replace(PROXY,ROUTE).encode()
+ if text.count(PROXY)!=1 or text.count(HTTP_OLD)!=1:raise ValueError('unexpected original proxy')
+ return text.replace(PROXY,ROUTE).replace(HTTP_OLD,HTTP_NEW).encode()
 def main():
  p=argparse.ArgumentParser();p.add_argument('--site-dir',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--source-commit',required=True);p.add_argument('--frontend-commit',required=True);p.add_argument('--canonical-zip-name',required=True);a=p.parse_args()
  if any(len(v)!=40 or any(c not in '0123456789abcdef' for c in v) for v in [a.source_commit,a.frontend_commit]):raise ValueError('fixed full SHA required')
