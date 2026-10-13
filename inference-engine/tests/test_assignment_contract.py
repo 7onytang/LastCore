@@ -58,6 +58,50 @@ def test_unusable_endpoints_are_rejected(endpoint):
         parse_endpoint(endpoint)
 
 
+@pytest.mark.parametrize("endpoint", [
+    "http://10.0.0.12:9000/",          # pydantic HttpUrl 的序列化形式（Controller 实际返回）
+    "https://10.0.0.12:9000/",
+    "http://10.0.0.12:9000",
+    "10.0.0.12:9000",
+])
+def test_controller_serialized_endpoints_are_accepted(endpoint):
+    host, port = parse_endpoint(endpoint)
+    assert port == 9000
+    assert host == "10.0.0.12"
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://[::1]:9000/",              # IPv6 字面量
+    "[::1]:9000",
+    "http://[fe80::1]:9000/",
+])
+def test_ipv6_endpoints_are_rejected_by_the_ipv4_transport(endpoint):
+    # communication.ChannelListener 固定 AF_INET；解析器必须与真实传输层一致地拒绝 IPv6。
+    with pytest.raises(ShardError, match="IPv6"):
+        parse_endpoint(endpoint)
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://10.0.0.1:abc/",            # 端口非数字
+    "http://:9000/",                   # 无主机
+    "http://10.0.0.1:99999/",          # 端口越界
+    "http://10.0.0.1:",                # 端口为空
+])
+def test_malformed_url_endpoints_are_rejected(endpoint):
+    with pytest.raises(ShardError, match="host:port"):
+        parse_endpoint(endpoint)
+
+
+def test_assignment_with_controller_serialized_endpoints_parses():
+    first = assignment(next_node={"node_id": "node-2", "endpoint": "http://10.0.0.12:9000/",
+                                  "id": "assignment-2"})
+    assert assignment_plan(first).next_endpoint == ("10.0.0.12", 9000)
+    last = assignment(id="assignment-2", position=1, layer_start=2, layer_end=4,
+                      previous_node={"node_id": "node-1", "endpoint": "http://10.0.0.11:9000/",
+                                     "id": "assignment-1"}, next_node=None)
+    assert assignment_plan(last).previous_endpoint == ("10.0.0.11", 9000)
+
+
 def test_segment_longer_than_the_task_is_rejected():
     with pytest.raises(ShardError, match="layers"):
         assignment_plan(assignment(layer_end=6))
