@@ -70,3 +70,25 @@ python integration/verify_real_jobs_local.py --runtime-root /absolute/path/to/re
 ```
 
 This starts a temporary real HTTP Controller, runs actual model generation and backend timeout, verifies cancellation acknowledgment and idempotency, then checks process/token cleanup. It is local evidence; a public-cloud job-to-worker loop requires separate deployment verification.
+
+## Worker credential and recovery corrections
+
+New `node-credentials.json` includes `controller_origin`, the canonical scheme/ASCII host/port identity of the issuing Controller. Controller URLs must be origins (empty path or `/`); default ports and host case are normalized, non-default ports remain distinct. Existing credentials are checked before constructing the authenticated client. A different configured origin is refused without sending the old token or re-registering.
+
+Legacy credential files without this field are deliberately refused. Do not delete the state directory or supply a new registration token to bypass the old identity/lease. An operator must first verify the **original issuing origin independently** from the prior private registration/configuration records or the deployment operator, retain a private backup, then explicitly migrate offline:
+
+```sh
+real-model-runtime/.venv/bin/python real-model-runtime/worker.py \
+  --config /absolute/private/worker.json \
+  --bind-legacy-origin https://8.134.161.123
+```
+
+Use that example only if it is the verified original origin. The explicit argument and configured canonical origin must match. Migration holds the same process lock, adds only the origin to the existing mode-0600 credential file, leaves tokens and execution/cleanup files untouched, sends no HTTP request and never registers. It will not overwrite an already bound different origin. If the original origin cannot be verified, keep the files and ask the operator to reconcile the identity; do not blindly bind the current URL. Restart normally after migration; recovered stopped outcomes are reconciled before model verification.
+
+A confirmed registration rejection with HTTP401/403/422 clears `registration.pending`, permitting a corrected credential to retry. Missing, empty or invalid local registration input is rejected before writing a marker. Transport failure, HTTP5xx or unusable success response retains the unknown-outcome marker; no blind retry occurs. Provider response bodies, URLs with credentials and token values are absent from error output.
+
+Under the state lock and validated credential origin, startup first delivers a durable stopped outcome or positive guardian cleanup proof (or reports a never-launched claimed phase as `worker_restart`). Missing/damaged model cache therefore cannot prevent prior physical-stop reconciliation. Without positive native cleanup, startup remains blocked. Current model/backend provenance and integrity are still required before capability advertisement, readiness or new claims; the native guardian continues to verify artifacts before each actual generation. This is not protection against concurrent tampering by a trusted local installation owner.
+
+A transport/auth/server failure while reporting a stopped outcome keeps its exact ledger for an idempotent retry; only a confirmed409 may fall back to stop acknowledgment after positive stop. Constructor failures deterministically close the HTTP client and release the process lock. The correction uses the existing [HTTPX error/status separation](https://www.python-httpx.org/exceptions/), [RFC6454 origin identity](https://www.rfc-editor.org/rfc/rfc6454.html), atomic private journal and guardian cleanup protocol. No broker, new dependency, Controller/Android change or model algorithm change is introduced.
+
+`tests/test_worker_recovery.py` adds HTTPX MockTransport/private-state regressions for these enrollment, origin, migration and stopped-outcome boundaries. They are protocol fixtures, not real-model evidence. The separate local actual-Controller recovery check uses synthetic stopped state and no native/model execution; normal real-GGUF execution remains a separate acceptance scope.
