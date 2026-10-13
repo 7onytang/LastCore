@@ -1,0 +1,4 @@
+.venv/
+.cache/
+backend.tar.gz
+__pycache__/
