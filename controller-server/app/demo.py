@@ -44,9 +44,9 @@ def main():
         else:
             raise RuntimeError("Controller did not become ready")
 
-        for index, weight in enumerate((1.0, 1.5, 2.0), start=1):
+        for index in range(1, 4):
             agent = NodeAgent(base_url, f"Demo Node {index}", base_url, registration_token,
-                               Path(temporary.name) / f"node-{index}.json", 4096, weight, 0.15)
+                               Path(temporary.name) / f"node-{index}.json", None, None, 0.15)
             agents.append(agent)
             thread = threading.Thread(target=agent.run, args=(stop,), daemon=True)
             thread.start()
@@ -73,6 +73,9 @@ def main():
 
         print(f"Task: {task['id']}")
         print(f"Nodes: {len(agents)} | output units: 12 | model: {MODEL_ID}")
+        for agent in agents:
+            print(f"  {agent.name}: CPU score {agent.compute_weight:.3f}, "
+                  f"available memory {agent._current_memory_mb()} MB")
         deadline = time.time() + 30
         while time.time() < deadline:
             current = request_json(base_url, f"/v1/tasks/{task['id']}", admin_token)

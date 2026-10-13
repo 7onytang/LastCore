@@ -18,6 +18,7 @@ class NodeRegistration(StrictModel):
 
 class Heartbeat(StrictModel):
     available_memory_mb: int = Field(ge=0, le=10_000_000)
+    compute_weight: float | None = Field(default=None, gt=0, le=1_000_000)
     accepting_tasks: bool = True
 
 

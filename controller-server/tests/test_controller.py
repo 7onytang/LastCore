@@ -142,6 +142,20 @@ def test_deadline_and_cancellation(setup):
     assert any(a["task_status"] == "cancelled" for a in commands["assignments"])
 
 
+def test_expiry_sweep_releases_reservation_without_request(setup):
+    client, store, now = setup
+    node = register(client)
+    plan = task(client, layers=4, timeout_seconds=10).json()
+
+    now[0] += 10
+    store.expire_stale()
+
+    expired = client.get(f"/v1/tasks/{plan['id']}", headers=auth(ADMIN)).json()
+    assert expired["status"] == "failed"
+    assert expired["error"] == "task deadline exceeded"
+    assert task(client, layers=4).status_code == 201
+
+
 def test_failure_releases_all_reservations(setup):
     client, _, _ = setup
     nodes = [register(client), register(client)]

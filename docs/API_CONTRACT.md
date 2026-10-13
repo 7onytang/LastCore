@@ -55,12 +55,14 @@ Missing or invalid credentials return HTTP `401`. A node credential cannot opera
 `POST /v1/nodes/{node_id}/heartbeat` (that node's token, success `200`)
 
 ```json
-{"available_memory_mb": 8192, "accepting_tasks": true}
+{"available_memory_mb": 8192, "compute_weight": 12.5, "accepting_tasks": true}
 ```
 
-Memory may be 0-10,000,000 MB. `accepting_tasks` defaults to `true`. Setting it to `false` prevents new scheduling but does not stop an active assignment. Successful response is the node record, with `id`, `name`, `platform`, `endpoint`, `available_memory_mb`, `compute_weight`, `accepting_tasks`, `last_seen` (Unix timestamp in seconds), and computed `status` (`available`, `draining`, `busy`, or `offline`).
+Memory may be 0-10,000,000 MB. `compute_weight` is optional, finite, greater than 0, and at most 1,000,000; when supplied it replaces the node's previous weight. `accepting_tasks` defaults to `true`. Setting it to `false` prevents new scheduling but does not stop an active assignment. Successful response is the node record, with `id`, `name`, `platform`, `endpoint`, `available_memory_mb`, `compute_weight`, `accepting_tasks`, `last_seen` (Unix timestamp in seconds), and computed `status` (`available`, `draining`, `busy`, or `offline`).
 
-The heartbeat TTL defaults to 30 seconds and is configurable from 5 to 3,600 seconds. When a request triggers expiry processing, a task is failed if its deadline has passed or any assigned node has missed its heartbeat TTL. A node reconnecting later does not restore that task.
+The bundled Agent samples system available memory every five seconds. At startup it runs a short deterministic CPU workload and reports its throughput as `compute_weight`; this is a relative Python CPU score, not a hardware-independent benchmark. Set `--memory-mb` or `--compute-weight` to override these values. No GPU, network throughput, or live CPU load measurement is implemented yet.
+
+The heartbeat TTL defaults to 30 seconds and is configurable from 5 to 3,600 seconds. Requests and a background sweep trigger expiry processing; a task is failed if its deadline has passed or any assigned node has missed its heartbeat TTL. The background sweep runs at most every half TTL (capped at 30 seconds), so stale reservations are released even when the Controller receives no requests. A node reconnecting later does not restore that task.
 
 ### Poll assignments
 

@@ -1,13 +1,21 @@
+import AppKit
 import SwiftUI
 
 @main
 struct LastCoreClientApp: App {
     @StateObject private var model = ClientModel()
 
+    init() {
+        NSApplication.shared.setActivationPolicy(.regular)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
                 .frame(minWidth: 620, minHeight: 560)
+                .onAppear {
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
         }
         .windowResizability(.contentSize)
     }
