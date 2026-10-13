@@ -189,6 +189,25 @@ pytest -q tests/test_store_lifecycle.py
 
 备份回归覆盖活动 WAL、未提交事务隔离、完整性失败、有限锁等待、不覆盖已有目标，以及恢复真实 Store 后的原节点凭据、任务终态和活动预留。恢复测试注入受控时间以避免测试数据自然过期；生产恢复仍使用真实时间，并按原 TTL/deadline 清理过期任务。CI 还检查数据卷在线备份、独立副本完整性、拒覆盖及容器内诊断，最后删除本次临时容器和数据卷。
 
+### 调度与查询性能
+
+调度器精确复用 [Multica PR #8](https://github.com/7onytang/LastCore/pull/8) 的 `a878d638` 提交，保留作者与来源，只引入调度器及其测试。它使用 Python 标准库 [heapq](https://github.com/python/cpython/blob/main/Lib/heapq.py)，将逐层选择从 O(层数 × 候选节点数) 降为 O(层数 × log 候选节点数)，保留内存限制、权重及相同权重时的次序。随机对照原算法验证输出一致，无新增安装依赖。
+
+节点列表与创建任务批量读取活跃预留；任务列表及节点轮询一次加载所选任务的全部分片，再组装上下游信息。一次非空节点列表、任务列表、节点轮询分别执行 3、3、4 次 SELECT（包含请求前的过期清理、轮询鉴权），不再为每个结果重复读取。最近 100 个任务限制、返回顺序、凭据隔离、整个任务结束前保留已完成分片节点、`BEGIN IMMEDIATE` 和过期落盘语义保持不变。
+
+启动时幂等创建 `tasks(status)` 和 `tasks(created_at DESC)` 索引，使过期检查、批量预留查询及最新任务列表不再随已终止任务数量进行全表扫描。已有数据库无需导出或重建；首次创建索引会消耗磁盘及启动时间，历史库较大时应预留维护窗口并先备份。旧版本仍能读取这些额外索引，回退应用代码无需删除业务数据。节点轮询的历史筛选仍可能随该节点的历史记录增长，固定查询次数不代表所有请求恒定耗时。
+
+方案先核对 CPython 的标准库实现、[SQLAlchemy 的批量关系加载](https://docs.sqlalchemy.org/en/20/orm/queryguide/relationships.html#select-in-loading)和 [SQLite 查询规划](https://www.sqlite.org/queryplanner.html)：前者是持续维护的 PSF 许可标准库，SQLite 为公有领域实现，均已在运行依赖中；ORM 改造会扩大此次变更，因此只在现有参数化 SQL 上应用批量查询，不复制第三方源码或新增依赖。
+
+```bash
+cd controller-server
+source .venv/bin/activate
+pytest -q tests/test_store_batch_views.py tests/test_store_query_scaling.py
+pytest -q tests/test_controller.py -k scheduler
+```
+
+回归使用真实临时 SQLite 库：验证 105 个多节点任务的限量、顺序、完整上下游信息与鉴权；比较 1,000/20,000 条历史记录下的 SQLite 指令量；重新打开旧库两次验证索引幂等、数据和节点凭据保留。查询扩展性使用指令量而非墙钟阈值判断，不能据此宣称生产延迟或真实设备吞吐。完整 Controller、双节点 tiny HTTP/TCP 链路和备份恢复仍按上述命令独立验证。
+
 ## 后续集成
 
 - 接入真实大模型：替换 `inference-engine/model.py` 的算子与权重映射，在两节点验证真实模型的加载、分片、tensor 传输与输出（协议见 `node-agent/PROTOCOL.md`）。
