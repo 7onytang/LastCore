@@ -1,0 +1,23 @@
+name: Terminal client
+on:
+  push:
+    paths: ["terminal-client/**", ".github/workflows/terminal-client.yml"]
+  pull_request:
+    paths: ["terminal-client/**", ".github/workflows/terminal-client.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terminal-client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Adapter contract unit tests
+        run: node --test tests/adapter.test.mjs
+      - name: Browser prototype E2E (headless Chrome, skips if unavailable)
+        run: node tests/e2e_browser.mjs

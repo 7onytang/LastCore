@@ -51,7 +51,7 @@ function findChrome() {
 function launchChrome() {
   const chromePath = findChrome();
   if (!chromePath) {
-    return null;
+    return Promise.resolve(null);
   }
   const userDir = mkdtempSync(join(tmpdir(), "lc14-chrome-"));
   const child = spawn(chromePath, [
