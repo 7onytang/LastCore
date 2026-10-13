@@ -1,0 +1,8 @@
+.toolchain/
+.toolchain-downloads/
+.gradle/
+.gradle-cache/
+local.properties
+**/build/
+verification/
+.android-user/
