@@ -2,3 +2,4 @@
 .cache/
 backend.tar.gz
 __pycache__/
+.worker-state/

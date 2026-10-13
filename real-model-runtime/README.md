@@ -1,6 +1,6 @@
 # Real local model runtime
 
-This isolated Python 3.12+ adapter runs an actual open-weight 135M parameter LLM on a local CPU through llama.cpp `llama-completion`. It proves prompt-to-generated-text inference; it does not connect to the Controller, distribute layers, or demonstrate Android/cloud deployment. The small model is an integration baseline, not a quality benchmark or production assistant.
+This Python 3.12+ adapter runs an actual open-weight 135M parameter LLM on a local CPU through llama.cpp `llama-completion`. The local adapter proves prompt-to-generated-text inference. The optional whole-model worker described below connects it to a separate Controller jobs API; neither path distributes pretrained layers. The small model is an integration baseline, not a quality benchmark or production assistant.
 
 ## Reused upstream implementation
 
@@ -40,4 +40,33 @@ On macOS 15.8.1 arm64, the real backend generated `The capital of France is Pari
 
 The output limits and lifecycle guard reuse CPython's standard `TemporaryFile`, `fstat` and subprocess process-group APIs. No additional server/RPC target, dynamic model code, or runtime dependency is introduced.
 
-CI runs the eleven synthetic lifecycle tests and verifies the full license text hashes and saved source-bound evidence metadata. The optional `workflow_dispatch` real-model job builds the pinned backend, downloads the hash-verified GGUF and executes `verify_real.py` on macOS. A passing synthetic job does not mean that the optional real-model job has run.
+CI runs the eleven original synthetic lifecycle tests plus four guardian/URL tests and verifies the full license text hashes and saved source-bound evidence metadata. The optional `workflow_dispatch` real-model job builds the pinned backend, downloads the hash-verified GGUF, executes `verify_real.py` and the real local Controller/worker jobs loop on macOS. A passing synthetic job does not mean that the optional real-model job has run.
+
+## Minimal whole-model macOS worker
+
+`worker.py` actively polls validated HTTPS, executes one complete fixed GGUF per job and returns bounded generated text. It opens no network listener and does not use the tiny layer-assignment executor. The Controller feature defaults to disabled; enable `CONTROLLER_REAL_JOBS_ENABLED=true` only for a reviewed compatible release. Protocol and limits are in [REAL_JOBS.md](../controller-server/REAL_JOBS.md).
+
+Install the already used HTTP client in an isolated environment with `pip install -r node-agent/requirements.txt`. After the model/backend setup above, save a private mode-0600 JSON configuration (replace placeholders; never commit it):
+
+```json
+{
+  "controller_url": "https://8.134.161.123",
+  "registration_token": "REPLACE_WITH_SERVER_REGISTRATION_TOKEN",
+  "state_dir": "~/Library/Application Support/LastCore/real-worker",
+  "runtime_root": "/absolute/path/to/real-model-runtime",
+  "name": "macos-real-model-worker"
+}
+```
+
+Run `python real-model-runtime/worker.py --config /private/path/worker.json`. Credentials and the current execution ledger use private files; an exclusive state-directory lock prevents two copies. Registration with an unknown network outcome leaves a marker and refuses blind re-registration. The worker advertises the fixed model/source hashes and is ineligible for legacy layer tasks. Public plaintext HTTP, URL credentials/query/fragment and redirects are rejected. The optional loopback-HTTP switch is restricted to local acceptance.
+
+Each claimed job is persisted before launch. An independent child guardian stops and reaps the native process group on cancellation, local lease deadline or parent pipe EOF, and writes a private positive cleanup record before reporting a result. Restart never regenerates an already claimed job; without positive cleanup evidence it refuses a new launch. A stopped outcome can be retried idempotently. The Controller holds a worker's reservation after lease loss until an authenticated stop acknowledgment; it never equates lease expiry with physical process termination. Untrusted/malicious devices are not attested or forcibly controlled by the server. This is a CLI worker, with no Developer ID signing/notarization claim.
+
+Bounded actual model acceptance (requires separate Controller and worker environments):
+
+```sh
+python integration/verify_real_jobs_local.py --runtime-root /absolute/path/to/real-model-runtime \
+  --controller-python /path/to/controller/bin/python --worker-python /path/to/worker/bin/python
+```
+
+This starts a temporary real HTTP Controller, runs actual model generation and backend timeout, verifies cancellation acknowledgment and idempotency, then checks process/token cleanup. It is local evidence; a public-cloud job-to-worker loop requires separate deployment verification.

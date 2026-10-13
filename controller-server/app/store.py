@@ -109,7 +109,7 @@ class Store:
         with self.transaction() as db:
             db.execute("INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?,?)",
                        (node_id, self._hash(token), request.name, request.platform, str(request.endpoint),
-                        request.available_memory_mb, request.compute_weight, 1, self.clock()))
+                        request.available_memory_mb, request.compute_weight, request.accepting_tasks, self.clock()))
         return {"node_id": node_id, "node_token": token, "heartbeat_ttl_seconds": self.ttl}
 
     def nodes(self):
@@ -119,8 +119,12 @@ class Store:
     def heartbeat(self, node_id, token, request):
         with self.transaction() as db:
             self._node_auth(db, node_id, token)
+            # Whole-model workers are explicitly ineligible for legacy layers,
+            # even if a client sends accepting_tasks=true on an old heartbeat.
+            real_workers = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='inference_workers'").fetchone()
+            whole_model = real_workers and db.execute('SELECT 1 FROM inference_workers WHERE node_id=?', (node_id,)).fetchone()
             db.execute("UPDATE nodes SET available_memory_mb=?, accepting_tasks=?, last_seen=? WHERE id=?",
-                       (request.available_memory_mb, request.accepting_tasks, self.clock(), node_id))
+                       (request.available_memory_mb, False if whole_model else request.accepting_tasks, self.clock(), node_id))
             return self._node_view(db, db.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone())
 
     def _task_view(self, db, task_id):

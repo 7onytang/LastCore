@@ -25,14 +25,18 @@ class Settings:
     database_path: str = "data/controller.sqlite3"
     heartbeat_ttl_seconds: int = 30
     expiry_interval_seconds: float = 1.0
+    real_jobs_enabled: bool = False
 
     @classmethod
     def from_env(cls):
+        flag = os.environ.get("CONTROLLER_REAL_JOBS_ENABLED", "false").lower()
+        if flag not in ("true", "false", "1", "0"):
+            raise ValueError("CONTROLLER_REAL_JOBS_ENABLED must be true or false")
         return cls(os.environ.get("CONTROLLER_ADMIN_TOKEN", ""),
                    os.environ.get("CONTROLLER_REGISTRATION_TOKEN", ""),
                    os.environ.get("CONTROLLER_DATABASE_PATH", "data/controller.sqlite3"),
                    int(os.environ.get("CONTROLLER_HEARTBEAT_TTL_SECONDS", "30")),
-                   float(os.environ.get("CONTROLLER_EXPIRY_INTERVAL_SECONDS", "1")))
+                   float(os.environ.get("CONTROLLER_EXPIRY_INTERVAL_SECONDS", "1")), flag in ("true", "1"))
 
 
 def create_app(settings: Settings | None = None, store: Store | None = None):
@@ -46,12 +50,21 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     if not math.isfinite(settings.expiry_interval_seconds) or not 0.1 <= settings.expiry_interval_seconds <= 60:
         raise ValueError("Expiry interval must be between 0.1 and 60 seconds")
     store = store or Store(settings.database_path, settings.heartbeat_ttl_seconds)
+    jobs = None
+    if settings.real_jobs_enabled:
+        from .inference_jobs import Jobs
+        jobs = Jobs(store)
+
+    def expire_all():
+        store.expire()
+        if jobs is not None:
+            jobs.expire()
 
     @asynccontextmanager
     async def lifespan(app):
         # Reject startup if persisted state cannot be reconciled. SQLite work
         # runs off the event loop and uses the same locking as API transactions.
-        await asyncio.to_thread(store.expire)
+        await asyncio.to_thread(expire_all)
         stop = asyncio.Event()
 
         async def sweep():
@@ -61,7 +74,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
                     return
                 except TimeoutError:
                     try:
-                        await asyncio.to_thread(store.expire)
+                        await asyncio.to_thread(expire_all)
                     except sqlite3.Error:
                         logger.exception("Controller expiry sweep failed; retrying on next interval")
 
@@ -131,4 +144,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     def cancel(task_id: str):
         return store.cancel(task_id)
 
+    if jobs is not None:
+        from .inference_jobs import router
+        app.include_router(router(jobs, credential, require_admin))
     return app

@@ -19,6 +19,7 @@ services:
       CONTROLLER_DATABASE_PATH: /data/controller.sqlite3
       CONTROLLER_HEARTBEAT_TTL_SECONDS: 30
       CONTROLLER_EXPIRY_INTERVAL_SECONDS: 1
+      CONTROLLER_REAL_JOBS_ENABLED: ${CONTROLLER_REAL_JOBS_ENABLED:-false}
     volumes: ["controller-data:/data"]
     read_only: true
     cap_drop: [ALL]

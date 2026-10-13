@@ -215,6 +215,8 @@ The recovery command backs up that completed run, starts a real Controller from 
 
 For macOS bundle installation, preflight and bounded real bundle verification, see [desktop instructions](node-agent/desktop/README.md). For fixed source packaging, isolated loopback-only Linux staging, runtime acceptance and rollback, see [staging instructions](ops/staging/README.md). Public IP HTTPS and Android physical-device acceptance remain separate release gates; no domain purchase is required by these preparation files.
 
+The optional [real whole-model jobs API](controller-server/REAL_JOBS.md) connects a selected [macOS CLI worker](real-model-runtime/README.md) to the fixed local GGUF adapter. It stores bounded generated text/results under a separate `/v1/inference` namespace and defaults to disabled. Its local acceptance uses an actual Controller and native model backend, covering generated text, idempotency, backend timeout, cancellation acknowledgment and cleanup. A whole-model worker runs the complete model on one device; it does not implement multi-device pretrained layer distribution. Existing `/v1/tasks` behavior and tiny protocols remain independent. Enable/deploy the optional API only after fixed-source review and separately verify the actual public-cloud loop.
+
 ## License
 
 LastCore's own source is licensed under [MIT](LICENSE), using the [OSI MIT template](https://opensource.org/license/mit). Third-party software and model weights retain their own terms. The real model/backend license texts and manifest are in `real-model-runtime/licenses/`; desktop packaging collects and verifies the frozen runtime's license materials. The top-level license does not replace those third-party notices.
