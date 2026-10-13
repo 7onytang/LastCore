@@ -4,6 +4,7 @@ import pytest
 from inference_engine import forward_full, generate_weights, load_shard
 from inference_engine.config import tiny_config
 from inference_engine.errors import ShardError
+from inference_engine.model import MAX_BATCH_SIZE
 from inference_engine.stage import StageRuntime, load_stage
 from inference_engine.weights import all_parameter_names
 
@@ -116,6 +117,29 @@ def test_hidden_state_contract_is_enforced(checkpoint):
         (1, 2, config.vocab_size)
 
 
+def test_oversized_batch_is_rejected_before_model_computation(checkpoint):
+    config, weights, path = checkpoint
+    over = MAX_BATCH_SIZE + 1
+    first = load_stage(config, path, 0, 2)
+    with pytest.raises(ShardError, match="batch size"):
+        first.execute(np.zeros((over, 2), dtype=np.int64))
+    last = load_stage(config, path, 2, 4)
+    with pytest.raises(ShardError, match="batch size"):
+        last.execute(np.zeros((over, 2, config.d_model), dtype=np.float32))
+    with pytest.raises(ShardError, match="batch size"):
+        forward_full(np.zeros((over, 2), dtype=np.int64), weights, config)
+
+
+def test_batch_at_the_bound_is_served(checkpoint):
+    config, weights, path = checkpoint
+    tokens = np.zeros((MAX_BATCH_SIZE, 2), dtype=np.int64)
+    hidden = load_stage(config, path, 0, 2).execute(tokens)
+    assert hidden.shape == (MAX_BATCH_SIZE, 2, config.d_model)
+    result = load_stage(config, path, 2, 4).execute(hidden)
+    assert result.shape == (MAX_BATCH_SIZE, 2, config.vocab_size)
+    assert np.array_equal(result, forward_full(tokens, weights, config))
+
+
 def test_roles_and_descriptions(checkpoint):
     config, _, path = checkpoint
     assert load_stage(config, path, 0, 2).role == "first"
@@ -123,3 +147,16 @@ def test_roles_and_descriptions(checkpoint):
     single = load_stage(config, path, 0, config.n_layers)
     assert single.role == "single"
     assert single.describe()["parameter_bytes"] == single.parameter_bytes
+
+
+@pytest.mark.parametrize("first", [True, False])
+def test_oversized_stage_rejects_before_dtype_conversion(checkpoint, monkeypatch, first):
+    import inference_engine.stage as stage_module
+    config, _, path = checkpoint
+    runtime = load_stage(config, path, 0, 2) if first else load_stage(config, path, 2, 4)
+    batch = np.zeros((MAX_BATCH_SIZE + 1, 2), dtype=np.int32) if first else np.zeros((MAX_BATCH_SIZE + 1, 2, config.d_model), dtype=np.float64)
+    def conversion_must_not_run(*args, **kwargs):
+        raise AssertionError("oversized input must not allocate a dtype-conversion copy")
+    monkeypatch.setattr(stage_module.np, "asarray", conversion_must_not_run)
+    with pytest.raises(ShardError, match="batch size"):
+        runtime.execute(batch)
