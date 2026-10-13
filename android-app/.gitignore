@@ -9,3 +9,5 @@ verification/
 __pycache__/
 .native-cache/
 verification-build.log
+**/.cxx/
+.native-host-check/

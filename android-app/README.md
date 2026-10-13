@@ -26,7 +26,7 @@ Local generation checks ActivityManager memory/low-memory, PowerManager thermal 
 
 Manifest requests INTERNET only, disables backups and HTTP cleartext; launcher Activity is the only exported component. CredentialVault is an unused integration component: AndroidKeyStore AES-GCM, app-private no-backup AtomicFile, non-exportable key, no plaintext credential journal; no account enrollment is included. Device execution must verify Keystore tamper/clear, process death/sleep, lifecycle abort, listener absence and memory limits before integrating registration.
 
-`app/src/main/assets/licenses/` ships complete llama.cpp MIT, model Apache-2.0 and LastCore MIT texts, plus exact upstream license provenance. Model cards of the pinned GGUF and original model declare Apache-2.0. This preview does not bundle or redistribute weights. llama.cpp C++/GGML code implements the transformer; the project only adds a bounded JNI/lifecycle adapter. Optional KleidiAI/OpenMP/RPC/OpenSSL/dynamic backends are disabled; no extra acceleration dependencies are downloaded.
+`app/src/main/assets/licenses/` ships complete llama.cpp MIT, model Apache-2.0 and LastCore MIT texts, and the official NDK LLVM/third-party NOTICE for statically linked C++/compiler runtime, plus exact upstream license provenance. Model cards of the pinned GGUF and original model declare Apache-2.0. This preview does not bundle or redistribute weights. llama.cpp C++/GGML code implements the transformer; the project only adds a bounded JNI/lifecycle adapter. Optional KleidiAI/OpenMP/RPC/OpenSSL/dynamic backends are disabled; no extra acceleration dependencies are downloaded.
 
 ## Verification and CI
 

@@ -41,14 +41,14 @@ def verify():
         with zipfile.ZipFile(apk) as z:
             if json.loads(z.read('assets/source-binding.json')) != expected:
                 raise SystemExit('APK source binding differs')
-            for license_name in ['llama.cpp-LICENSE.txt', 'SmolLM2-APACHE-2.0.txt', 'LastCore-LICENSE.txt']:
+            for license_name in [p.name for p in (ROOT / 'app/src/main/assets/licenses').glob('*') if p.is_file()]:
                 p = ROOT / 'app/src/main/assets/licenses' / license_name
                 if p.exists() and z.read('assets/licenses/' + license_name) != p.read_bytes():
                     raise SystemExit('shipped license mismatch')
         if (ROOT / 'Model.lock.json').exists():
             with zipfile.ZipFile(apk) as z:
                 libs = [n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
-                if set(libs) != {'lib/arm64-v8a/liblastcore_local.so', 'lib/arm64-v8a/libc++_shared.so'}:
+                if set(libs) != {'lib/arm64-v8a/liblastcore_local.so'}:
                     raise SystemExit('unexpected native library closure: ' + str(libs))
                 elf_dir = ROOT / 'verification' / variant; elf_dir.mkdir(parents=True, exist_ok=True)
                 host = 'darwin-x86_64' if os.uname().sysname == 'Darwin' else 'linux-x86_64'
