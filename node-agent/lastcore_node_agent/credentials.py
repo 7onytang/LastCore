@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - only reached on Windows
+    fcntl = None  # type: ignore[assignment]
+    import msvcrt
 
 CREDENTIALS_FILE = "node-credentials.json"
 JOURNAL_FILE = "journal.json"
@@ -140,7 +145,10 @@ def acquire_state_lock(state_dir: Path):
     path.mkdir(parents=True, exist_ok=True)
     handle = (path / LOCK_FILE).open("a+")
     try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        else:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
     except OSError:
         handle.close()
         return None

@@ -178,6 +178,7 @@ class StageServer:
 
     def serve_forever(self, max_requests: int | None = None,
                       should_stop: Callable[[], bool] | None = None,
+                      on_served: Callable[[], None] | None = None,
                       poll_interval: float = 0.25) -> list[dict]:
         """Serve requests until the count is reached, the caller stops, or a cancel arrives.
 
@@ -186,6 +187,10 @@ class StageServer:
         An expired task ``deadline`` (epoch seconds, as the Controller and node-agent report it)
         raises ``ChannelTimeout`` instead of looping: the node must not keep polling work whose
         task has already been failed by the Controller.
+
+        ``on_served`` runs after each completed request so callers can persist progress
+        incrementally; a hard kill (e.g. Windows ``TerminateProcess``) never delivers SIGTERM,
+        so progress recorded here survives where a single shutdown-time write would not.
         """
         results: list[dict] = []
         while max_requests is None or len(results) < max_requests:
@@ -203,6 +208,8 @@ class StageServer:
             except TaskCancelled:
                 break
             results.append(self._serve(conn))
+            if on_served is not None:
+                on_served()
         return results
 
     def __enter__(self) -> "StageServer":

@@ -14,6 +14,8 @@ on every send and receive iteration (writes are sliced rather than one blocking
 
 from __future__ import annotations
 
+import errno
+import select
 import socket
 import time
 from typing import Any, Mapping
@@ -31,6 +33,73 @@ DEFAULT_CONNECT_TIMEOUT = 10.0
 def _remaining(deadline: float | None) -> float | None:
     """Seconds left before an epoch-seconds deadline; ``None`` when none is set."""
     return None if deadline is None else max(deadline - time.time(), 0.0)
+
+
+def _connect_with_guards(host: str, port: int, connect_timeout: float,
+                         deadline: float | None, cancel) -> socket.socket:
+    """Connect without allowing cancellation or an absolute deadline to be stranded."""
+    if cancel is not None and cancel.is_set():
+        raise TaskCancelled("cancelled before connecting")
+    left = _remaining(deadline)
+    if left is not None and left <= 0:
+        raise ChannelTimeout("task deadline exceeded while connecting")
+    budget = connect_timeout if left is None else min(connect_timeout, left)
+    deadline_bounded = left is not None and left <= connect_timeout
+    end = time.monotonic() + budget
+    addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    last_error: OSError | None = None
+    pending_errors = (errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY,
+                      getattr(errno, "WSAEINPROGRESS", errno.EINPROGRESS),
+                      getattr(errno, "WSAEWOULDBLOCK", errno.EWOULDBLOCK))
+    for family, socktype, proto, _canonname, sockaddr in addresses:
+        if cancel is not None and cancel.is_set():
+            raise TaskCancelled("cancelled while connecting")
+        left = _remaining(deadline)
+        if left is not None and left <= 0:
+            raise ChannelTimeout("task deadline exceeded while connecting")
+        if time.monotonic() >= end:
+            break
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.setblocking(False)
+            result = sock.connect_ex(sockaddr)
+            if result not in (0, *pending_errors):
+                raise OSError(result, "connect failed")
+            while result != 0:
+                if cancel is not None and cancel.is_set():
+                    raise TaskCancelled("cancelled while connecting")
+                left = _remaining(deadline)
+                if left is not None and left <= 0:
+                    raise ChannelTimeout("task deadline exceeded while connecting")
+                wait = min(CANCEL_POLL_SECONDS, max(end - time.monotonic(), 0.0))
+                if left is not None:
+                    wait = min(wait, left)
+                if wait <= 0:
+                    break
+                _readable, writable, exceptional = select.select([], [sock], [sock], wait)
+                if not writable and not exceptional:
+                    continue
+                result = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+                if result:
+                    raise OSError(result, "connect failed")
+            if result == 0:
+                sock.setblocking(True)
+                return sock
+        except (TaskCancelled, ChannelTimeout):
+            sock.close()
+            raise
+        except OSError as exc:
+            last_error = exc
+            sock.close()
+    if cancel is not None and cancel.is_set():
+        raise TaskCancelled("cancelled while connecting")
+    if _remaining(deadline) == 0:
+        raise ChannelTimeout("task deadline exceeded while connecting")
+    if deadline_bounded and time.monotonic() >= end:
+        raise ChannelTimeout("task deadline exceeded while connecting")
+    if last_error is not None:
+        raise last_error
+    raise TimeoutError("timed out while connecting")
 
 
 def _recv_exactly(sock: socket.socket, size: int, deadline: float | None, cancel,
@@ -128,7 +197,8 @@ class Channel:
                 **kwargs) -> "Channel":
         host, port = _split_address(address)
         try:
-            sock = socket.create_connection((host, port), timeout=connect_timeout)
+            sock = _connect_with_guards(host, port, connect_timeout, kwargs.get("deadline"),
+                                        kwargs.get("cancel"))
         except OSError as exc:
             raise ChannelClosed(f"cannot connect to {host}:{port}: {exc}") from exc
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)

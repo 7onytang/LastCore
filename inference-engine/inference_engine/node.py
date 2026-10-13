@@ -105,9 +105,18 @@ def command_serve(args) -> int:
     print(f"READY {server.address[0]} {server.address[1]} layers={layer_start}:{layer_end} "
           f"role={runtime.role} parameters={runtime.parameter_bytes}B", flush=True)
     exit_code = 0
+    def emit_stats() -> None:
+        payload = {"served": server.processed, "layers": [layer_start, layer_end],
+                   "parameter_bytes": runtime.parameter_bytes,
+                   "description": runtime.describe()}
+        if args.stats_out:
+            Path(args.stats_out).write_text(
+                json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+                encoding="utf-8")
     try:
         server.serve_forever(max_requests=args.max_requests,
-                             should_stop=lambda: stop["requested"])
+                             should_stop=lambda: stop["requested"],
+                             on_served=emit_stats)
     except (KeyboardInterrupt, TaskCancelled):
         pass
     except Exception as exc:  # noqa: BLE001 - report the failure instead of a traceback

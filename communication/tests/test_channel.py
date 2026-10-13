@@ -1,3 +1,4 @@
+import errno
 import socket
 import threading
 import time
@@ -6,6 +7,7 @@ import numpy as np
 import pytest
 
 from communication.channel import Channel, ChannelListener
+import communication.channel as channel_module
 from communication.errors import (ChannelClosed, ChannelTimeout, PeerError,
                                   ProtocolError, TaskCancelled)
 from communication.protocol import MAGIC, PREFIX, VERSION, FrameType
@@ -209,6 +211,72 @@ def test_connect_to_a_closed_port_fails_fast():
     probe.close()
     with pytest.raises(ChannelClosed, match="cannot connect"):
         Channel.connect((host, port), connect_timeout=2)
+
+
+def test_connect_cancelled_before_socket_creation(monkeypatch):
+    cancel = threading.Event()
+    cancel.set()
+    called = False
+
+    def resolve(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("cancelled connect must not resolve or open a socket")
+
+    monkeypatch.setattr(channel_module.socket, "getaddrinfo", resolve)
+    with pytest.raises(TaskCancelled, match="before connecting"):
+        Channel.connect(("127.0.0.1", 1), cancel=cancel)
+    assert not called
+
+
+class _PendingSocket:
+    def __init__(self):
+        self.closed = False
+        self.connect_called = False
+
+    def setblocking(self, _enabled):
+        return None
+
+    def connect_ex(self, _address):
+        self.connect_called = True
+        return errno.EINPROGRESS
+
+    def getsockopt(self, *_args):
+        return 0
+
+    def close(self):
+        self.closed = True
+
+
+def _patch_pending_connect(monkeypatch, pending):
+    monkeypatch.setattr(channel_module.socket, "getaddrinfo",
+                        lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM,
+                                                     0, "", ("127.0.0.1", 1))])
+    monkeypatch.setattr(channel_module.socket, "socket", lambda *_args: pending)
+
+
+def test_connect_cancel_interrupts_pending_socket(monkeypatch):
+    pending = _PendingSocket()
+    cancel = threading.Event()
+    _patch_pending_connect(monkeypatch, pending)
+
+    def poll(*_args, **_kwargs):
+        cancel.set()
+        return [], [], []
+
+    monkeypatch.setattr(channel_module.select, "select", poll)
+    with pytest.raises(TaskCancelled, match="while connecting"):
+        Channel.connect(("127.0.0.1", 1), cancel=cancel)
+    assert pending.connect_called and pending.closed
+
+
+def test_connect_deadline_interrupts_pending_socket(monkeypatch):
+    pending = _PendingSocket()
+    _patch_pending_connect(monkeypatch, pending)
+    monkeypatch.setattr(channel_module.select, "select", lambda *_args, **_kwargs: ([], [], []))
+    with pytest.raises(ChannelTimeout, match="while connecting"):
+        Channel.connect(("127.0.0.1", 1), deadline=time.time() + 0.05)
+    assert pending.connect_called and pending.closed
 
 
 def test_listener_exposes_an_ephemeral_port_and_completes_a_roundtrip():
