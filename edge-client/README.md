@@ -6,12 +6,24 @@ executes the same bounded `tanh(Wx+b)` calculation as LastCoreClient, persists
 the actual values before reporting completion, and displays only the local
 node's connection, task and acknowledged result. There is no admin/fleet UI.
 
-This is **source-level work in progress, not a verified Windows/Linux release**.
-No native Windows/Linux executable or installer has been produced. Windows
-GUI, Linux GUI, native-platform packaging, dependency/license closure and user
-device acceptance remain pending. `requirements-build.txt` identifies the
-existing PyInstaller tool versions for later native builds; it is not a complete
-platform-specific hash lock. Do not use the macOS dependency lock for Windows.
+This is an **unsigned development preview, not verified runtime support**.
+Native Windows/Linux portable folders have been compiled and statically checked
+at source `85a1e23295dd64380a81f263a58da2593f7e94d5`, in
+[build-only run 38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563).
+Windows GUI, Linux GUI, user-device connection/computation and installer
+acceptance remain pending. Separate native wheel hash locks are under
+`packaging/locks/`; do not use the macOS dependency lock for Windows.
+
+| Native artifact | Build/static result | Scope |
+| --- | --- | --- |
+| Windows x64, Python 3.13.16 | Passed, 17,632,491-byte ZIP, SHA256 `34ef2fbeffe95663c6ec707cde1368478bafbc3079649297170cdc3b56a7635a` | PE32+ AMD64, Tk resource/scripts and full terms verified; no program launched |
+| Linux x64, Python 3.12.14 | Passed, 28,908,043-byte ZIP, SHA256 `fa57579d209bd9277d2847445a32fb65575fe0cc2d0ae9e7931c0f3b6900c1ea` | ELF64 x86_64, required GLIBC at least 2.35; no program launched |
+
+The archive manifest binds 21 explicit runtime/build inputs to fixed Git blobs,
+and includes bundled-file hashes, full licenses, exact CA bundle, OS/ABI and
+signing scope. This documentation update follows the build source; it does not
+relabel those compiled artifacts with a later documentation commit. Download
+links must refer to the project owner's separately published preview assets.
 
 ## Native build-only portable previews
 
