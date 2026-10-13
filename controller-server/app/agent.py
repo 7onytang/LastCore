@@ -93,7 +93,8 @@ def log_stats(lines, start, end):
 
 class NodeAgent:
     def __init__(self, controller, name, endpoint, registration_token, state_path,
-                 available_memory_mb=4096, compute_weight=1.0, poll_seconds=1.0):
+                 available_memory_mb=4096, compute_weight=1.0, poll_seconds=1.0,
+                 max_retry_seconds=30.0):
         self.controller = controller.rstrip("/")
         self.name = name
         self.endpoint = endpoint
@@ -102,6 +103,11 @@ class NodeAgent:
         self.available_memory_mb = available_memory_mb
         self.compute_weight = compute_weight
         self.poll_seconds = poll_seconds
+        self.max_retry_seconds = max_retry_seconds
+        if not math.isfinite(poll_seconds) or poll_seconds <= 0:
+            raise ValueError("poll_seconds must be a finite positive number")
+        if not math.isfinite(max_retry_seconds) or max_retry_seconds <= 0:
+            raise ValueError("max_retry_seconds must be a finite positive number")
         self.node_id = None
         self.node_token = None
         self._started = set()
@@ -142,6 +148,7 @@ class NodeAgent:
 
     def run(self, stop_event=None):
         stop_event = stop_event or threading.Event()
+        retry_delay = min(self.poll_seconds, self.max_retry_seconds)
         while not stop_event.is_set():
             try:
                 self._heartbeat()
@@ -170,7 +177,11 @@ class NodeAgent:
                         raise
             except (RuntimeError, ValueError, KeyError) as exc:
                 print(f"[{self.name}] {exc}", flush=True)
-            stop_event.wait(self.poll_seconds)
+                stop_event.wait(retry_delay)
+                retry_delay = min(retry_delay * 2, self.max_retry_seconds)
+            else:
+                retry_delay = min(self.poll_seconds, self.max_retry_seconds)
+                stop_event.wait(self.poll_seconds)
 
     def _execute(self, assignment):
         request = assignment["request"]

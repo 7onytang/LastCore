@@ -164,6 +164,7 @@ FastAPI error bodies use its standard `{"detail": ...}` format; validation error
 - Keep node credentials private; never include tokens in logs or support output.
 - Persist `node_id` and `node_token` after successful registration and reconnect with them instead of registering again.
 - Send heartbeats within the configured TTL and report status changes; use client-side network timeouts and bounded retry/backoff.
+- The bundled Python Agent retries connection and response errors with exponential delays, capped at 30 seconds, and resets the delay after a successful poll.
 - Deduplicate repeated polls by assignment ID. Before starting, require an active task status and an unexpired deadline.
 - Stop work after observing `cancelled`, `failed`, or an expired deadline. The server cannot enforce remote process termination.
 - Treat `model_id` and ranges as scheduling metadata except for the three documented deterministic demo workloads. Linear tasks send their input vector through the Controller API and store partial outputs in SQLite; log-statistics tasks send their input lines through the Controller and store partial counts. Do not use these demo payloads for sensitive or large inputs. General model transfer, tensor transport, model versions/hashes, resource reservations beyond layer memory, and arbitrary output schemas are not defined by this API.
