@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from linear_edge import LinearController, MODEL, result_file
+from linear_edge import LinearController, LinearNodeAgent, MODEL, result_file
 from view_state import device_status
 from lastcore_node_agent.agent import NodeAgent
 from lastcore_node_agent.config import AgentConfig
@@ -20,7 +20,7 @@ def fixture(tmp_path,rows,reply=None):
         if request.method=='GET':return httpx.Response(200,json={'assignments':rows})
         return httpx.Response(200,json=reply or {'id':'task','assignments':[{'id':'old','status':'completed'}]})
     client=LinearController('https://example.test',tmp_path,transport=httpx.MockTransport(handler),publish=lambda *_:None)
-    agent=NodeAgent(AgentConfig('https://example.test','http://127.0.0.1:9000',128,state_dir=tmp_path,report_retries=1,retry_backoff=0),client)
+    agent=LinearNodeAgent(AgentConfig('https://example.test','http://127.0.0.1:9000',128,state_dir=tmp_path,report_retries=1,retry_backoff=0),client)
     agent.credentials=NodeCredentials('node','fixture-private',30)
     client.on_recovery_required=agent.shutdown
     record_pending_report(tmp_path,'old','completed',None)
@@ -66,6 +66,22 @@ def test_corrupt_cache_is_controlled_without_post_or_pending_loss(tmp_path):
     path=result_file(tmp_path,'old');path.parent.mkdir();path.write_text('{bad json')
     agent._flush_pending_reports()
     assert not requests and client.recovery_required and load_pending_reports(tmp_path)
+    client.close()
+
+
+def test_same_poll_missing_result_cannot_claim_or_launch_queued_work(tmp_path):
+    import time
+    rows=[{'id':'old','task_id':'old-task','task_status':'running','status':'running','request':{'model_id':MODEL}},
+          {'id':'new','task_id':'new-task','task_status':'queued','status':'pending',
+           'deadline':time.time()+100,'request':{'model_id':MODEL}}]
+    agent,client,requests=fixture(tmp_path,rows)
+    agent.executor_factory=lambda:pytest.fail('Recovery must stop before any executor is instantiated')
+    before=(tmp_path/'pending-reports.json').read_bytes()
+    agent._poll_once()
+    assert agent.stop_event.is_set() and client.recovery_required
+    assert not agent.stats.started and agent._current_run() is None
+    assert all(request.method=='GET' for request in requests)
+    assert (tmp_path/'pending-reports.json').read_bytes()==before
     client.close()
 
 

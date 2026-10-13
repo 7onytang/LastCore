@@ -173,6 +173,15 @@ class LinearController(ControllerClient):
         return task
 
 
+class LinearNodeAgent(NodeAgent):
+    def _start_assignment(self, row):
+        # Public NodeAgent may reach selection in the same poll that requested
+        # shutdown during pending replay. Fence before the running HTTP report.
+        if self.stop_event.is_set() or self.client.recovery_required:
+            return
+        return super()._start_assignment(row)
+
+
 class Session:
     def __init__(self, env_file, bind_existing_origin=None):
         values = read_env_file(env_file)
@@ -196,7 +205,7 @@ class Session:
                 raise ValueError("Confirm the original issuing origin before using existing credentials")
             self.node_id = credentials.node_id
             self.client = LinearController(current_origin, self.config.state_dir)
-            self.agent = NodeAgent(self.config, self.client,
+            self.agent = LinearNodeAgent(self.config, self.client,
                                    executor_factory=lambda: LinearExecutor(self.config.state_dir))
             self.client.on_recovery_required = self.agent.shutdown
         except Exception:
