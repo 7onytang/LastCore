@@ -31,13 +31,13 @@ def history_store(tmp_path, history_count):
             (f"history-{i:06}", request, ("completed", "failed", "cancelled")[i % 3],
              NOW - history_count - 10 + i, NOW - 1) for i in range(history_count)
         ))
-        db.executemany("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL)", (
+        db.executemany("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL,NULL)", (
             (f"assignment-{i:06}", f"history-{i:06}", f"node-{i % NODE_COUNT:02}", 0, 0, 1,
              ("completed", "failed", "cancelled")[i % 3]) for i in range(history_count)
         ))
         db.execute("INSERT INTO tasks VALUES (?,?,?,?,?,NULL)",
                    ("active-task", request, "running", NOW, NOW + 600))
-        db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL)",
+        db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL,NULL)",
                    ("active-assignment", "active-task", "node-00", 0, 0, 1, "running"))
     return store
 

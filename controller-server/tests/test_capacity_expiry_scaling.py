@@ -27,7 +27,7 @@ def seed_nodes(db, historical_count=0):
     db.execute("INSERT INTO tasks VALUES ('reserved-task', '{}', 'running', ?, ?, NULL)",
                (NOW - 1, NOW + 100))
     # Even a completed shard stays reserved while its pipeline is active.
-    db.execute("INSERT INTO assignments VALUES ('reserved-shard', 'reserved-task', 'reserved', 0, 0, 1, 'completed', NULL)")
+    db.execute("INSERT INTO assignments VALUES ('reserved-shard', 'reserved-task', 'reserved', 0, 0, 1, 'completed', NULL, NULL)")
 
 
 def new_store(tmp_path, name="store"):
@@ -96,14 +96,14 @@ def seed_expired(store, count=1_201):
                 node_id = f"node-{i:04}-{position}"
                 db.execute("INSERT INTO nodes VALUES (?, 'hash', 'stale', 'test', 'http://stale:9000', 1, 1, 1, ?)",
                            (node_id, NOW - 30))
-                db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,?)", (
+                db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,?,?)", (
                     f"shard-{i:04}-{position}", f"task-{i:04}", node_id, position,
-                    position, position + 1, status, "existing" if status == "completed" else None,
+                    position, position + 1, status, "existing" if status == "completed" else None, None,
                 ))
         db.execute("INSERT INTO tasks VALUES ('alive', '{}', 'queued', ?, ?, NULL)", (NOW, NOW + 100))
-        db.execute("INSERT INTO assignments VALUES ('alive-shard', 'alive', 'fresh', 0, 0, 1, 'pending', NULL)")
+        db.execute("INSERT INTO assignments VALUES ('alive-shard', 'alive', 'fresh', 0, 0, 1, 'pending', NULL, NULL)")
         db.execute("INSERT INTO tasks VALUES ('terminal', '{}', 'cancelled', 0, 1, 'operator')")
-        db.execute("INSERT INTO assignments VALUES ('terminal-shard', 'terminal', 'stale', 0, 0, 1, 'cancelled', 'operator')")
+        db.execute("INSERT INTO assignments VALUES ('terminal-shard', 'terminal', 'stale', 0, 0, 1, 'cancelled', 'operator', NULL)")
 
 
 def snapshot(store):
