@@ -1,0 +1,56 @@
+name: Edge portable build only
+on:
+  push:
+    paths: ["edge-client/**", "node-agent/lastcore_node_agent/**", "node-agent/desktop/env_file.py", ".github/workflows/edge-portable-build.yml"]
+  pull_request:
+    paths: ["edge-client/**", "node-agent/lastcore_node_agent/**", "node-agent/desktop/env_file.py", ".github/workflows/edge-portable-build.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x86_64
+          - os: ubuntu-22.04
+            target: linux-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.14'
+          architecture: x64
+      - name: Linux build-time Tcl/Tk dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk tk8.6 tcl8.6 binutils
+      - name: Create isolated packaging environment
+        shell: bash
+        run: |
+          python -m venv .edge-build-venv
+          if [ "$RUNNER_OS" = Windows ]; then
+            echo "EDGE_PY=$GITHUB_WORKSPACE/.edge-build-venv/Scripts/python.exe" >> "$GITHUB_ENV"
+          else
+            echo "EDGE_PY=$GITHUB_WORKSPACE/.edge-build-venv/bin/python" >> "$GITHUB_ENV"
+          fi
+      - name: Install native wheel hash lock
+        shell: bash
+        run: '"$EDGE_PY" -m pip install --require-hashes -r edge-client/packaging/locks/${{ matrix.target }}.txt'
+      - name: Collect full distribution licenses
+        shell: bash
+        run: '"$EDGE_PY" edge-client/packaging/prepare_licenses.py edge-client/build/licenses'
+      - name: Compile portable folders with official hooks
+        shell: bash
+        run: '"$EDGE_PY" -m PyInstaller --clean --noconfirm --distpath edge-client/dist --workpath edge-client/build/pyinstaller edge-client/packaging/portable.spec'
+      - name: Static native headers, license transport, hashes and source manifest
+        shell: bash
+        run: '"$EDGE_PY" edge-client/packaging/static_manifest.py --bundle edge-client/dist/LastCoreEdge --output edge-client/release-output'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edge-portable-${{ matrix.target }}-${{ github.sha }}
+          path: edge-client/release-output/*
+          if-no-files-found: error
+          retention-days: 14

@@ -13,6 +13,30 @@ device acceptance remain pending. `requirements-build.txt` identifies the
 existing PyInstaller tool versions for later native builds; it is not a complete
 platform-specific hash lock. Do not use the macOS dependency lock for Windows.
 
+## Native build-only portable previews
+
+`Edge portable build only` runs on Windows x64 and Ubuntu 22.04 x64 with Python
+3.12.14. It installs the separate full wheel SHA256 locks from
+`packaging/locks/`, reuses maintained PyInstaller Tk/certifi hooks, and builds
+two entry points in one portable folder. Its steps collect full installed
+Python/Tcl/Tk/dependency terms plus the actual OpenSSL version's upstream terms
+and notices. No private config or credentials are embedded. No Authenticode
+signature, Linux package installation or production-signing claim is made.
+
+CI inspects PE/ELF headers, transported license and CA bundle hashes, fixed Git
+source hashes, ZIP CRC and native dependency metadata. Linux's required GLIBC
+symbol version and external shared libraries are measured with `readelf`, not
+assumed from the runner name. Artifacts include the portable ZIP, external
+manifest and checksum. Native executable compilation and static integrity
+**do not prove that the GUI launches, the node connects or computation works**.
+Neither entry point, smoke script nor any task/model/device acceptance is run
+by this workflow. Publication of preview attachments remains a separate step.
+
+Build scripts: `packaging/prepare_licenses.py`, `packaging/portable.spec` and
+`packaging/static_manifest.py`. These tools write only build/release folders.
+Runtime acceptance and installers remain pending; the old macOS development
+checks below cannot substitute for native-platform execution evidence.
+
 ## Run from source
 
 Requires Python 3.12+ and the OS's Tk support for the optional GUI:
