@@ -6,7 +6,7 @@
 
 用户已明确要求：**最终 Demo、图片和压缩包等项目完成后再制作**。因此本目录当前保留文档草稿和已有 Alpha 证据；最终截图、Demo、ZIP 与发送步骤暂停，等待核心项目完成并固定源码版本后继续。
 
-当前开发状态来自协作主线：Mac worker 注册拒绝后的重试、凭据与 Controller origin 绑定、停止账本恢复上报顺序三处问题正在修复，最终源码尚未冻结。已有 Alpha 验收记录不作废，但不能据此宣称 Mac 异常恢复已全部验证；最终材料须补入修复提交与对应验证结果。
+Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc22c5db9f351d304604e65743ca02ccda3`，核心合并提交 `7a9cd4910ee41d3b27fdc8c1d02c08f8487bc331`。23 项相关测试（8 项新增回归）、真实本地 Controller 的三个恢复场景和一次真实固定 GGUF 任务通过；证据见 `submission/evidence/mac-worker-30b9efc-review.md` 与 `submission/evidence/mac-worker-30b9efc-local.json`。这是本地修复验收，不是新云部署或 Android 真机证明；最终参赛提交和展示材料仍待统一固定。
 
 ## 必需材料
 
@@ -33,7 +33,7 @@
 | 节点轮询、去重、取消/超时停止 | 已实现；停止依赖节点遵守协议 | `node-agent/lastcore_node_agent/agent.py`、`node-agent/lastcore_node_agent/executor.py`、`node-agent/lastcore_node_agent/inference_adapter.py`；`node-agent/tests/` |
 | tiny 分层推理与 TCP activation 传输 | 已实现，本机多进程验证路径；不是预训练大模型多设备分片 | `inference-engine/inference_engine/model.py`、`inference-engine/inference_engine/stage.py`、`inference-engine/inference_engine/pipeline.py`；`communication/communication/channel.py`、`communication/communication/protocol.py`；`integration/run_two_node_local.sh` |
 | 固定 SmolLM2 单设备真实模型 | 已实现；CPU 整模型，与 tiny 路径分开 | `real-model-runtime/runtime.py`、`real-model-runtime/bootstrap.py`；`real-model-runtime/evidence/verification.json` |
-| 云端整模型任务与 macOS CLI worker | 已实现；部署验收记录来自其他开发主线 | `controller-server/app/inference_jobs.py`、`controller-server/REAL_JOBS.md`；`real-model-runtime/worker.py`、`real-model-runtime/job_guardian.py`；`submission/evidence/ACCEPTANCE.txt` |
+| 云端整模型任务与 macOS CLI worker | 已实现；恢复修复已合，原云验收与修复后本地验收分开 | `controller-server/app/inference_jobs.py`、`controller-server/REAL_JOBS.md`；`real-model-runtime/worker.py`、`real-model-runtime/job_guardian.py`、`real-model-runtime/tests/test_worker_recovery.py`；`submission/evidence/ACCEPTANCE.txt`、`submission/evidence/mac-worker-30b9efc-local.json` |
 | Android 前台工作节点/JNI | 已实现并有构建和主机 JVM/JNI 证据；Android 真机未验收 | `android-app/app/src/main/java/ai/lastcore/android/MainActivity.java`、`android-app/app/src/main/java/ai/lastcore/android/CloudWorker.java`、`android-app/app/src/main/java/ai/lastcore/android/JniBackend.java`、`android-app/app/src/main/java/ai/lastcore/android/CredentialVault.java`；`android-app/app/src/main/cpp/local_runtime.cpp`；`submission/evidence/ACCEPTANCE.txt` |
 | SQLite 诊断、在线备份与恢复验证 | 已实现 | `controller-server/app/diagnostics.py`、`controller-server/app/backup.py`；`controller-server/tests/test_diagnostics.py`、`controller-server/tests/test_backup.py`；`integration/verify_backup_recovery.py` |
 | 部署与固定来源归档 | 已实现；公开 Alpha 有独立来源记录 | `ops/public-ip-https/`、`ops/staging/prepare_release.py`、`ops/staging/integration-sources.json`；`submission/evidence/` |

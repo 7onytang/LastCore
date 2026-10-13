@@ -14,7 +14,7 @@ LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲�
 | tiny 分层推理与 activation 逐跳传输 | 已实现 | 有本机双节点进程与单机逐字节一致验证；不是预训练大模型跨设备推理 |
 | 固定 SmolLM2-135M 整模型生成 | 已实现 | 固定 GGUF、后端和 SHA256；每个任务在一个选定 worker 上执行 |
 | 整模型任务结果、幂等、租约与停止确认 | 已实现 | 独立 `/v1/inference` API，默认关闭；与 legacy `/v1/tasks` 分开 |
-| macOS 整模型工作节点 | 已实现，CLI 入口 | 已有云端真实任务验收记录；冻结 macOS bundle 服务 tiny 路径 |
+| macOS 整模型工作节点 | 已实现，CLI 入口；恢复修复已合入 | 既有云任务证据与修复后本地真实模型证据分别保留；冻结 macOS bundle 服务 tiny 路径 |
 | Android 前台 UI、工作节点与 JNI 后端 | 已实现，真机未验收 | 有 APK 构建与主机 JVM/JNI 证据；不代表 Android 真机、Keystore 或生命周期已验证 |
 | SQLite 诊断、在线备份、恢复及部署归档 | 已实现 | 保留数据与凭据的验收范围见发布记录 |
 | 预训练大模型跨设备分层、KV cache/batching、NAT 穿透、离线自动迁移 | 未实现 | 不作为当前可交付功能 |
@@ -22,7 +22,9 @@ LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲�
 
 已有公开版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。最终参赛版本须在项目完成后再次固定。
 
-协作开发主线报告：Mac worker 的三处异常恢复/凭据问题正在修复，包括注册被明确拒绝后的重试、节点凭据与 Controller origin 的绑定，以及已有停止账本的恢复上报顺序。**最终源码尚未冻结**；既有验收记录仍保留其原有证明范围，不代表上述异常恢复已全部覆盖。
+Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7onytang/LastCore/pull/59) 合入，修复源提交为 `30b9efc`，核心合并提交为 `7a9cd49`：注册被明确拒绝后允许纠正并重试、节点凭据绑定原 Controller origin、已停止任务的恢复上报先于模型文件检查。相关测试共 23 项通过（含 8 项新增回归），本地真实 HTTP Controller 的三个恢复场景及一次真实固定 GGUF 任务也通过。依据见[独立复核记录](submission/evidence/mac-worker-30b9efc-review.md)、[本地模型证据](submission/evidence/mac-worker-30b9efc-local.json)和[回归测试](real-model-runtime/tests/test_worker_recovery.py)。自动 CI 通过；手动 `real-model-smoke` 为跳过，真实模型依据来自上述本地验收。
+
+上述修复后验收是本地测试，不代表新的云端模型运行或 Android 真机验证；云端 Controller 仍沿用原 Alpha 源码。**旧版无 origin 的 worker 凭据需先独立确认原服务器地址，再按[显式迁移说明](real-model-runtime/README.md#worker-credential-and-recovery-corrections)离线绑定**，不能删除状态目录或盲目绑定当前地址来绕过恢复。最终参赛提交与展示材料仍待项目完成后统一固定。
 
 **两种任务的结果语义不同：** legacy `/v1/tasks` 完成表示各分片上报完成，Controller 不存储该路径的模型输出；整模型 `/v1/inference/jobs` 保存有界文本结果和停止确认。单设备 SmolLM2 成功不能证明真实预训练模型已跨设备分层。
 

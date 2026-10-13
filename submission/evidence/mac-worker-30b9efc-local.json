@@ -1,0 +1,42 @@
+{
+  "scope": "one actual local HTTP Controller85 + repaired Mac worker30b9efc + real fixed GGUF; not public-cloud or Android/device proof",
+  "worker_source_commit": "30b9efc22c5db9f351d304604e65743ca02ccda3",
+  "controller_source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+  "cache_reused_no_download": true,
+  "fresh_fixture_private_state": true,
+  "actual_jobs_created": 1,
+  "passed": true,
+  "job_id": "d1784ec4-fb57-4bf0-8012-122b842f6e16",
+  "result": {
+    "text": "The capital of France is Paris. [end of text]",
+    "elapsed_seconds": 0.257,
+    "model_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169"
+  },
+  "stop_acknowledged": true,
+  "origin_saved_correctly": true,
+  "native_child_observed": true,
+  "native_and_guardian_reaped": true,
+  "worker_exit_code": 0,
+  "ledger_and_cleanup_files_cleared": true,
+  "lock_reacquirable": true,
+  "worker_ready_after_cleanup": true,
+  "all_started_processes_exited": true,
+  "listener_rebindable": true,
+  "tokens_absent_from_logs": true,
+  "checked_at_beijing": "2026-10-13T14:48:31.824926+08:00",
+  "model_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169",
+  "backend_sha256": "c38c65ac6143be74ccbd550940180594efc326cef16e4038b99b21652131f96b",
+  "source_hashes": {
+    "real-model-runtime/worker.py": "3278bcaad5a4d0e3e7882dea76a974de73b63fce4c24aac8dcf49bbebabbcf82",
+    "real-model-runtime/runtime.py": "55a5a5ef095060feeda79ea1bcae2b5da06925eb37800664222b6d9ea7e753ae",
+    "real-model-runtime/job_guardian.py": "5f3373c59892aa567d5675d06b126f30dbb526654350f43b4951e218f8413e9e"
+  },
+  "publication": {
+    "source_file": "lastcore-mac-30b9efc-real-normal-evidence.json",
+    "source_sha256": "188026d39c5893c77870707dc35c07455c2a5725fa7b8c2c7bba14516339533e",
+    "omitted_fields": [
+      "workdir"
+    ],
+    "reason": "omit temporary private fixture directory; results and source hashes unchanged"
+  }
+}
