@@ -7,6 +7,6 @@
   "model_file": "SmolLM2-135M-Instruct-Q4_K_M.gguf",
   "model_bytes": 105454144,
   "model_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169",
-  "scope": "local whole-model CPU reference only, no distributed executor",
+  "scope": "local or explicitly assigned Controller whole-model CPU; no multi-device layer executor",
   "native_toolchain": {"ndk":"28.2.13676358", "cmake":"3.22.1", "abi":"arm64-v8a", "api":29}
 }

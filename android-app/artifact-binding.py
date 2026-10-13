@@ -26,7 +26,7 @@ def source():
     return {'source_commit': sha, 'source_tracked_clean': True,
             'android_source_files': {p: digest(REPO / p) for p in files},
             'timezone': 'Asia/Shanghai', 'device_tests': 'compiled only, no device execution',
-            'node_admission': 'disabled; distributed transport not integrated',
+            'node_admission': 'legacy layers disabled; explicit foreground whole-model Controller worker',
             'model_backend': json.loads((ROOT / 'Model.lock.json').read_text()) if (ROOT / 'Model.lock.json').exists() else None}
 
 def verify():
