@@ -1,5 +1,10 @@
 # LastCore
 
+Native Mac `LastCoreClient` targeted linear tasks, numeric result display,
+build/verification and the arm64 DMG are documented in
+[macos-client/README.md](macos-client/README.md). This is a small deterministic
+calculation path, separate from the tiny TCP pipeline and pretrained-model jobs.
+
 LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI 任务调度服务，探索利用闲置算力执行推理。Mac 与 Android 是当前已实现的接入路径，其他边缘设备适配正在开发；本次交付未提供这些适配的具体设备清单和实测证据。当前提供两条独立执行路径：**tiny 模型的连续分层推理原型**，以及**固定 SmolLM2 模型在选定单设备上的完整推理**。
 
 技术栈：Python 3.12+、FastAPI、SQLite、NumPy/TCP、llama.cpp，以及 Android Java/JNI。项目业务时间统一使用 `Asia/Shanghai`；协议存储可使用 UTC。

@@ -34,7 +34,7 @@ def test_initialization_closes_connection_and_persists_schema(tmp_path, connecti
     assert_closed(connections[0])
     with closing(sqlite3.connect(store.path)) as db:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert tables == {"nodes", "tasks", "assignments"}
+        assert tables == {"nodes", "tasks", "assignments", "assignment_results"}
         assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
