@@ -75,7 +75,7 @@ python -m app.backup --database data/controller.sqlite3 \
 cd controller-server
 # 需要已构建包含 app.backup 的镜像，并且 Controller 正在运行。
 docker compose exec -T controller python -c 'from pathlib import Path; Path("/data/backups").mkdir(mode=0o700, exist_ok=True)'
-BACKUP_NAME="$(docker compose exec -T controller python -c 'from datetime import datetime; from zoneinfo import ZoneInfo; print("controller-" + datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%dT%H%M%S%z") + ".sqlite3")')"
+BACKUP_NAME="$(docker compose exec -T controller python -c 'from datetime import datetime, timedelta, timezone; print("controller-" + datetime.now(timezone(timedelta(hours=8), "Asia/Shanghai")).strftime("%Y%m%dT%H%M%S%z") + ".sqlite3")')"
 docker compose exec -T controller python -m app.backup \
   --database /data/controller.sqlite3 --output "/data/backups/$BACKUP_NAME"
 # 仅在上一条命令退出码为 0 后执行复制；宿主目录同样使用私有权限。
@@ -159,7 +159,7 @@ source .venv/bin/activate
 pytest -q
 ```
 
-测试覆盖两个节点的连续分层、算力权重及内存限制、鉴权和节点隔离、回报幂等、并发预留、断线/超时/取消/执行失败、数据库重启持久化和输入校验。GitHub Actions 使用 Python 3.12，并额外执行 Compose 配置校验、镜像构建和容器健康检查。测试使用模拟节点状态，不代表真实分布式推理已验证。
+测试覆盖两个节点的连续分层、算力权重及内存限制、鉴权和节点隔离、回报幂等、并发预留、断线/超时/取消/执行失败、数据库重启持久化和输入校验。备份回归覆盖活动 WAL、未提交事务隔离、完整性失败、有限锁等待、不覆盖已有目标及恢复真实 Store 后的原节点凭据、任务终态和活动预留；恢复测试注入受控时间以避免测试数据自然过期，生产恢复仍使用真实时间并按原 TTL/deadline 清理过期任务。GitHub Actions 使用 Python 3.12，并额外执行 Compose 配置校验、镜像构建、容器健康检查及数据卷在线备份、独立副本完整性检查和拒覆盖检查；CI 最后删除本次临时容器和数据卷。测试使用模拟节点状态，不代表真实分布式推理已验证。
 
 ## 后续集成
 

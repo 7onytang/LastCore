@@ -31,6 +31,14 @@ jobs:
         run: |
           docker compose up --build --wait --wait-timeout 120
           curl --fail http://127.0.0.1:8000/healthz
+          docker compose exec -T controller python -m app.backup --database /data/controller.sqlite3 --output /data/ci-backup.sqlite3
+          docker compose exec -T controller python -c 'import sqlite3; db = sqlite3.connect("file:/data/ci-backup.sqlite3?mode=ro", uri=True); assert db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]; assert db.execute("PRAGMA journal_mode").fetchone() == ("delete",); db.close()'
+          if docker compose exec -T controller python -m app.backup --database /data/controller.sqlite3 --output /data/ci-backup.sqlite3; then
+            echo "Backup unexpectedly overwrote existing output" >&2
+            exit 1
+          else
+            test "$?" -eq 1
+          fi
       - name: Container logs and cleanup
         if: always()
         env:
@@ -38,4 +46,4 @@ jobs:
           CONTROLLER_REGISTRATION_TOKEN: ci-registration-token-with-at-least-32-characters
         run: |
           docker compose logs
-          docker compose down
+          docker compose down --volumes

@@ -7,8 +7,11 @@ import sys
 import time
 
 import pytest
+from fastapi import HTTPException
 
 from app.backup import BackupTimeout, backup_database
+from app.models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
+from app.store import Store
 
 
 def make_database(path):
@@ -174,3 +177,51 @@ def test_cli_uses_no_controller_credentials(tmp_path):
     assert "already exists" in again.stderr
     assert "Traceback" not in again.stderr
     assert_no_temporary_files(tmp_path)
+
+
+def test_controller_backup_restores_credentials_reservations_and_terminal_history(tmp_path):
+    source, output = tmp_path / "controller.db", tmp_path / "restored.db"
+    # Production Store uses wall time. The controlled clock keeps the restored
+    # active task inside its heartbeat TTL/deadline during this regression.
+    now = [1000.0]
+    store = Store(str(source), heartbeat_ttl=30, clock=lambda: now[0])
+    node = store.register(NodeRegistration(
+        name="restore-node", platform="linux", endpoint="http://node.local:9000",
+        available_memory_mb=512, compute_weight=1))
+    request = TaskRequest(model_id="restore-test", num_layers=1, layer_memory_mb=512)
+    history = []
+    for status in ("completed", "cancelled", "failed"):
+        task = store.create_task(request)
+        if status == "cancelled":
+            terminal = store.cancel(task["id"])
+        else:
+            terminal = store.report(node["node_id"], node["node_token"],
+                                    task["assignments"][0]["id"],
+                                    AssignmentReport(status=status,
+                                                     error="controlled failure" if status == "failed" else None))
+        history.append(terminal)
+    active = store.create_task(request)
+    active = store.report(node["node_id"], node["node_token"],
+                          active["assignments"][0]["id"], AssignmentReport(status="running"))
+
+    backup_database(source, output)
+    now[0] += 1
+    restored = Store(str(output), heartbeat_ttl=30, clock=lambda: now[0])
+    assert restored.heartbeat(node["node_id"], node["node_token"],
+                              Heartbeat(available_memory_mb=512))["status"] == "busy"
+    assignments = restored.assignments(node["node_id"], node["node_token"])
+    statuses = {entry["task_id"]: entry["task_status"] for entry in assignments}
+    assert statuses[active["id"]] == "running"
+    assert restored.get_task(active["id"]) == active
+    for terminal in history:
+        assert restored.get_task(terminal["id"]) == terminal
+        assert statuses[terminal["id"]] == terminal["status"]
+    with pytest.raises(HTTPException) as exc:
+        restored.create_task(request)
+    assert exc.value.status_code == 409
+    # Releasing the recovered reservation permits one new task, and operations
+    # on the recovered file cannot alter the original controller database.
+    restored.cancel(active["id"])
+    assert restored.create_task(request)["status"] == "queued"
+    assert store.get_task(active["id"])["status"] == "running"
+    assert len(store.tasks()) == 4
