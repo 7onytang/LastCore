@@ -19,6 +19,8 @@ python desktop/smoke_bundle.py
 
 许可证包含完整 CPython、PyInstaller bootloader、HTTP 依赖以及 NumPy wheel 附带的 OpenBLAS/其他第三方条款（包括非标准文件名的嵌套许可证）。构建后核对实际 Analysis/COLLECT TOC、每份许可原文 SHA256，以及实际冻结 NumPy native 库的来源和最终文件 hashes。Mach-O 加载命令和 ad-hoc 签名会被 PyInstaller 改写，因此来源 hash 与产物 hash 分别记录。
 
+集成候选还将 LastCore 自身的完整 MIT 许可证放入 `_internal/licenses/lastcore/LICENSE`，与仓库顶层 `LICENSE` 逐字节对应。此文件也纳入完整 bundle sidecar 的大小与 SHA256 清单；第三方条款仍独立保留。
+
 当前产物没有开发者身份签名/公证；macOS 14+ arm64 本机验证可用。Windows 安装模板仅参考，当前基线源码锁使用 fcntl，不能声称 Windows 可运行；未做 Windows 构建和验收。以下保留桌面运行/安装说明，其中历史结果不代替当前构建验收。
 
 # 桌面节点启动 / 配置 / 安装（LC-12）

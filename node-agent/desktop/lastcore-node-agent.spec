@@ -54,6 +54,9 @@ license_datas += copy_metadata(licenses_manifest["build_tool"]["name"])
 # (both written by collect_licenses.py into build/licenses)
 license_datas.append(
     (os.path.join(node_agent_root, "build", "licenses"), "licenses"))
+# Ship LastCore's own source license alongside independent third-party terms.
+license_datas.append(
+    (os.path.join(node_agent_root, "..", "LICENSE"), "licenses/lastcore"))
 
 # run_agent.py loads the package dynamically via runpy.run_module(), which
 # static analysis cannot see; every submodule must be listed here.

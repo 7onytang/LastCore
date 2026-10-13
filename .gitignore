@@ -21,3 +21,8 @@ data/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Local unsigned desktop bundle and build products
+/node-agent/build/
+/node-agent/dist/
+/node-agent/.venv-build/
