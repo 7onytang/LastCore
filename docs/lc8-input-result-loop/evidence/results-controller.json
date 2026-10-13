@@ -1,0 +1,23 @@
+{
+  "running": 200,
+  "first_completed_status": 200,
+  "first_completed_task_status": "completed",
+  "repeat_completed_status": 200,
+  "repeat_completed_task_status": "completed",
+  "completed_report_idempotent": true,
+  "cancel_status": 200,
+  "cancel_task_status": "cancelled",
+  "late_completed_status": 409,
+  "late_completed_rejected": true,
+  "readback_status": "cancelled",
+  "terminal_status_preserved": true,
+  "result_payload_fields": [
+    "assignments",
+    "created_at",
+    "deadline",
+    "error",
+    "id",
+    "request",
+    "status"
+  ]
+}
