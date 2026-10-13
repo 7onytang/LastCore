@@ -169,10 +169,12 @@ def test_cli_uses_no_controller_credentials(tmp_path):
            if not key.startswith("CONTROLLER_")}
     args = [sys.executable, "-m", "app.backup", "--database", str(source),
             "--output", str(output)]
-    result = subprocess.run(args, env=env, capture_output=True, text=True, timeout=5)
+    result = subprocess.run(args, env=env, cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, result.stderr
     assert "integrity check passed" in result.stdout
-    again = subprocess.run(args, env=env, capture_output=True, text=True, timeout=5)
+    again = subprocess.run(args, env=env, cwd=Path(__file__).resolve().parents[1],
+                           capture_output=True, text=True, timeout=5)
     assert again.returncode == 1
     assert "already exists" in again.stderr
     assert "Traceback" not in again.stderr
