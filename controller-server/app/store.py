@@ -45,6 +45,8 @@ class Store:
                 CREATE INDEX IF NOT EXISTS assignments_node ON assignments(node_id);
                 CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
                 CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at DESC);
+                CREATE INDEX IF NOT EXISTS nodes_accepting_heartbeat ON nodes(last_seen)
+                    WHERE accepting_tasks != 0;
             """)
 
     @contextmanager
@@ -76,9 +78,22 @@ class Store:
             JOIN assignments a ON a.task_id=t.id JOIN nodes n ON n.id=a.node_id
             WHERE t.status IN ('queued','running') AND (t.deadline <= ? OR n.last_seen <= ?)
         """, (now, now - self.ttl)).fetchall()
+        by_error = {"task deadline exceeded": [], "assigned node heartbeat expired": []}
         for row in rows:
             error = "task deadline exceeded" if row["deadline"] <= now else "assigned node heartbeat expired"
-            self._end_task(db, row["id"], "failed", error)
+            by_error[error].append(row["id"])
+        # Keep every chunk in the original expiry transaction. Respect even a
+        # connection whose parameter limit is lower than SQLite's default.
+        batch_size = min(500, db.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) - 1)
+        for error, task_ids in by_error.items():
+            for start in range(0, len(task_ids), batch_size):
+                chunk = task_ids[start:start + batch_size]
+                placeholders = ",".join("?" for _ in chunk)
+                db.execute(f"UPDATE tasks SET status='failed', error=? WHERE id IN ({placeholders})",
+                           [error, *chunk])
+                db.execute(f"""UPDATE assignments SET status='failed', error=?
+                    WHERE task_id IN ({placeholders}) AND status IN ('pending','running')""",
+                           [error, *chunk])
 
     def expire(self):
         """Persist overdue task and node expiry without requiring API traffic."""
@@ -176,9 +191,18 @@ class Store:
 
     def create_task(self, request):
         with self.transaction() as db:
-            nodes = self._node_views(db)
+            # Retain historical nodes in the registry without materializing
+            # offline/draining entries on the scheduling path. node_id is NOT
+            # NULL, so NOT IN safely excludes all active pipeline reservations.
+            nodes = [dict(node) for node in db.execute("""
+                SELECT n.id, n.endpoint, n.available_memory_mb, n.compute_weight FROM nodes n
+                WHERE n.accepting_tasks != 0 AND n.last_seen > ? AND n.id NOT IN (
+                    SELECT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
+                    WHERE t.status IN ('queued','running')
+                )
+            """, (self.clock() - self.ttl,)).fetchall()]
             try:
-                plan = allocate([n for n in nodes if n["status"] == "available"], request.num_layers,
+                plan = allocate(nodes, request.num_layers,
                                 request.layer_memory_mb, request.max_nodes)
             except ValueError as exc:
                 raise HTTPException(409, str(exc)) from exc
