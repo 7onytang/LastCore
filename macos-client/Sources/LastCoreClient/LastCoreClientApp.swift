@@ -31,6 +31,7 @@ struct ContentView: View {
                     SecureField("注册凭据（仅首次注册需要）", text: $model.registrationToken)
                         .textFieldStyle(.roundedBorder)
                 }
+                .disabled(model.isRunning)
 
                 Section("节点") {
                     LabeledContent("节点 ID", value: model.nodeID ?? "尚未注册")
@@ -49,6 +50,15 @@ struct ContentView: View {
                     }
                     if model.messages.isEmpty {
                         Text("尚无活动记录").foregroundStyle(.secondary)
+                    }
+                }
+                if let result = model.lastResult {
+                    Section("最近一次计算结果 · 云端已确认") {
+                        Text(model.lastCompletedTaskID ?? "")
+                            .font(.caption).textSelection(.enabled)
+                        Text(result.prefix(16).map { String(format: "%.8f", $0) }.joined(separator: ", "))
+                            .font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                        if result.count > 16 { Text("显示前 16 项，共 \(result.count) 项") }
                     }
                 }
             }
@@ -85,6 +95,7 @@ struct ContentView: View {
                 .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 3) {
                 Text("LastCore 节点").font(.title3.weight(.semibold))
+                Text("LastCoreClient 0.1.1 · 线性任务").font(.caption2).foregroundStyle(.secondary)
                 Text(model.statusText)
                     .font(.caption)
                     .foregroundStyle(model.isRunning ? .green : .secondary)

@@ -14,11 +14,20 @@ final class ClientModel: ObservableObject {
     @Published private(set) var currentTask = "空闲"
     @Published private(set) var lastError: String?
     @Published private(set) var messages: [String] = []
+    @Published private(set) var lastResult: [Double]?
+    @Published private(set) var lastCompletedTaskID: String?
 
     private var loopTask: Task<Void, Never>?
     private var nodeToken: String?
     private var startedAssignments = Set<String>()
     private let memoryMB = 4096
+    private var activeControllerURL = ""
+    private let session = URLSession(configuration: .ephemeral, delegate: NoRedirectDelegate(), delegateQueue: nil)
+    private let persistCredentials: Bool
+
+    init(persistCredentials: Bool = true) {
+        self.persistCredentials = persistCredentials
+    }
 
     var statusText: String {
         guard isRunning else { return "已停止" }
@@ -28,8 +37,11 @@ final class ClientModel: ObservableObject {
     func start() {
         guard !isRunning else { return }
         guard let base = URL(string: controllerURL.trimmingCharacters(in: .whitespacesAndNewlines)),
-              ["https", "http"].contains(base.scheme ?? ""), base.host != nil else {
-            lastError = "请输入有效的 Controller HTTP(S) 地址"
+              base.host != nil, base.user == nil, base.password == nil,
+              base.query == nil, base.fragment == nil,
+              base.path.isEmpty || base.path == "/",
+              base.scheme == "https" || (base.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(base.host ?? "")) else {
+            lastError = "公网 Controller 必须使用 HTTPS，地址不能带用户名、路径或查询参数"
             return
         }
         guard !nodeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -37,12 +49,15 @@ final class ClientModel: ObservableObject {
             lastError = "请填写节点名称和有效的本机地址"
             return
         }
-        if KeychainCredentials.load(for: controllerURL) == nil && registrationToken.isEmpty {
+        if registrationToken.isEmpty && (!persistCredentials || KeychainCredentials.load(for: controllerURL) == nil) {
             lastError = "首次注册需要提供注册凭据"
             return
         }
 
-        saveSettings()
+        if persistCredentials { saveSettings() }
+        activeControllerURL = base.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        nodeID = nil
+        nodeToken = nil
         isRunning = true
         lastError = nil
         loopTask = Task { await runLoop() }
@@ -83,7 +98,8 @@ final class ClientModel: ObservableObject {
     }
 
     private func loadOrRegister() async throws {
-        if let saved = KeychainCredentials.load(for: controllerURL) {
+        if nodeID != nil && nodeToken != nil { return }
+        if persistCredentials, let saved = KeychainCredentials.load(for: activeControllerURL) {
             nodeID = saved.nodeID
             nodeToken = saved.nodeToken
             return
@@ -102,7 +118,9 @@ final class ClientModel: ObservableObject {
               let token = response["node_token"] as? String else {
             throw ClientError.message("Controller 注册响应缺少节点凭据")
         }
-        try KeychainCredentials.save(nodeID: id, nodeToken: token, for: controllerURL)
+        if persistCredentials {
+            try KeychainCredentials.save(nodeID: id, nodeToken: token, for: activeControllerURL)
+        }
         nodeID = id
         nodeToken = token
         registrationToken = ""
@@ -163,7 +181,13 @@ final class ClientModel: ObservableObject {
                 }
                 return tanh(total)
             }
-            _ = try await report(nodeID, nodeToken, id, ["status": "completed", "result": result])
+            let acknowledgement = try await report(nodeID, nodeToken, id, ["status": "completed", "result": result])
+            guard acknowledgement["status"] as? String == "completed",
+                  let savedResult = acknowledgement["result"] as? [Double], savedResult == result else {
+                throw ClientError.message("云端尚未确认同一计算结果")
+            }
+            lastResult = savedResult
+            lastCompletedTaskID = assignment["task_id"] as? String
             addMessage("任务 \(id) 完成（输出 \(result.count) 项）")
         } catch {
             _ = try? await report(nodeID, nodeToken, id, ["status": "failed", "error": String(error.localizedDescription.prefix(2048))])
@@ -188,7 +212,7 @@ final class ClientModel: ObservableObject {
 
     private func request(_ method: String, _ path: String, token: String,
                          body: [String: Any]? = nil) async throws -> [String: Any] {
-        let base = controllerURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let base = activeControllerURL
         guard let url = URL(string: base + path) else { throw ClientError.message("Controller 地址无效") }
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = method
@@ -197,7 +221,7 @@ final class ClientModel: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.fragmentsAllowed, .sortedKeys])
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ClientError.message("Controller 未返回 HTTP 响应") }
         guard (200..<300).contains(http.statusCode) else {
             let detail = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -216,9 +240,21 @@ final class ClientModel: ObservableObject {
     }
 
     private func addMessage(_ message: String) {
-        let time = Date.now.formatted(date: .omitted, time: .shortened)
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        formatter.dateFormat = "HH:mm:ss"
+        let time = formatter.string(from: Date())
         messages.append("\(time)  \(message)")
         messages = Array(messages.suffix(30))
+    }
+}
+
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }
 
