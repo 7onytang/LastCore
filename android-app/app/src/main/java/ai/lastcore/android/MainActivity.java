@@ -25,8 +25,8 @@ public final class MainActivity extends Activity {
     private volatile boolean destroyed;
     private boolean busy;
     private TextView status, output;
-    private EditText prompt;
-    private Button load, generate, clear, cancel;
+    private EditText prompt, endpoint;
+    private Button load, generate, clear, cancel, checkConnection;
     private ModelStore models;
 
     @Override public void onCreate(Bundle state) {
@@ -37,6 +37,10 @@ public final class MainActivity extends Activity {
         status = new TextView(this);
         status.setText("LastCore Android Preview\nLocal model: SmolLM2 135M\nChoose the pinned GGUF file to try inference on this device.\nDistributed node: offline; Controller connection is pending.");
         layout.addView(status);
+        endpoint = new EditText(this); endpoint.setSingleLine(true); endpoint.setHint("HTTPS Controller URL");
+        endpoint.setText(getPreferences(MODE_PRIVATE).getString("controller_origin", "https://8.134.161.123"));
+        layout.addView(endpoint);
+        checkConnection = button(layout, "Check Controller connection", this::checkController);
         load = button(layout, "Import model", () -> {
             Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             picker.setType("*/*"); picker.addCategory(Intent.CATEGORY_OPENABLE);
@@ -58,7 +62,7 @@ public final class MainActivity extends Activity {
     }
     private void setBusy(boolean value) {
         busy = value; load.setEnabled(!value); generate.setEnabled(!value); clear.setEnabled(!value);
-        prompt.setEnabled(!value); cancel.setEnabled(value);
+        prompt.setEnabled(!value); endpoint.setEnabled(!value); checkConnection.setEnabled(!value); cancel.setEnabled(value);
     }
     private String localRejection() {
         ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
@@ -70,6 +74,28 @@ public final class MainActivity extends Activity {
         if (thermal < 0 || thermal >= PowerManager.THERMAL_STATUS_SEVERE) return "Device is too warm or thermal status is unavailable.";
         if (level < 0 || level > 100 || (!battery.isCharging() && level < 20)) return "Charge the device before local inference.";
         return null;
+    }
+    private void checkController() {
+        if (busy) return;
+        final String origin;
+        try { origin = ControllerEndpoint.origin(endpoint.getText().toString()); }
+        catch (Exception error) { output.setText("Enter an HTTPS Controller URL without a path or credentials."); return; }
+        AtomicBoolean operation = new AtomicBoolean(); cancelled = operation;
+        setBusy(true); output.setText("Checking secure Controller connection…");
+        worker.execute(() -> {
+            String result;
+            try {
+                String body = ControllerEndpoint.health(origin);
+                if (!"ok".equals(new org.json.JSONObject(body).optString("status")))
+                    throw new IllegalStateException("Controller health status is invalid");
+                if (operation.get()) result = "Connection check cancelled.";
+                else {
+                    getPreferences(MODE_PRIVATE).edit().putString("controller_origin", origin).apply();
+                    result = "Secure Controller connection verified. This preview does not accept cloud jobs yet.";
+                }
+            } catch (Exception error) { result = operation.get() ? "Connection check cancelled." : "Secure connection failed. Check the URL, network and device clock."; }
+            complete(result);
+        });
     }
     private void generate() {
         if (busy) return;

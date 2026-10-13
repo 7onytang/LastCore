@@ -8,7 +8,7 @@ final class LocalRuntime implements AutoCloseable {
     static { System.loadLibrary("lastcore_local"); }
     private volatile long handle = nativeCreate();
     String generate(File verifiedModel, String prompt, int tokens) {
-        if (prompt == null || prompt.isBlank()) throw new IllegalArgumentException("Enter a prompt");
+        if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("Enter a prompt");
         // SmolLM2's pinned model uses ChatML. UTF-8 bytes avoid JNI modified-UTF-8 output corruption.
         String chat = "<|im_start|>user\n" + prompt + "<|im_end|>\n<|im_start|>assistant\n";
         byte[] output = nativeGenerate(handle, verifiedModel.getAbsolutePath().getBytes(StandardCharsets.UTF_8),

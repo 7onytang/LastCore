@@ -19,9 +19,11 @@ command -v gradle >/dev/null 2>&1 || { echo "BLOCKED: isolated Gradle8.13 missin
 test -d "$ANDROID_HOME/platforms/android-35" || { echo "BLOCKED: Android platform35 missing" >&2; exit 2; }
 python3 bootstrap-native.py
 python3 artifact-binding.py prepare
-gradle --no-daemon --console=plain assembleDebug assembleDebugAndroidTest assembleRelease
+gradle --no-daemon --console=plain assembleDebug assembleDebugAndroidTest assembleRelease lintDebug
 mkdir -p verification/admission-classes
 javac -d verification/admission-classes app/src/main/java/ai/lastcore/android/AdmissionPolicy.java tests/ai/lastcore/android/AdmissionPolicyCheck.java
 java -cp verification/admission-classes ai.lastcore.android.AdmissionPolicyCheck
 
+javac -d verification/admission-classes app/src/main/java/ai/lastcore/android/ControllerEndpoint.java tests/ai/lastcore/android/ControllerEndpointCheck.java
+java -cp verification/admission-classes ai.lastcore.android.ControllerEndpointCheck
 python3 artifact-binding.py verify
