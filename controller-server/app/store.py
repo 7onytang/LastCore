@@ -4,7 +4,7 @@ import json
 import secrets
 import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ class Store:
         self.ttl = heartbeat_ttl
         self.clock = clock
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS nodes (
@@ -43,6 +43,10 @@ class Store:
                     UNIQUE(task_id, position)
                 );
                 CREATE INDEX IF NOT EXISTS assignments_node ON assignments(node_id);
+                CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
+                CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at DESC);
+                CREATE INDEX IF NOT EXISTS nodes_accepting_heartbeat ON nodes(last_seen)
+                    WHERE accepting_tasks != 0;
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(assignments)")}
             if "result" not in columns:
@@ -50,22 +54,20 @@ class Store:
 
     @contextmanager
     def transaction(self):
-        db = sqlite3.connect(self.path, timeout=15)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys=ON")
-        try:
-            db.execute("BEGIN IMMEDIATE")
-            self._expire(db)
-            # Persist expiry even when the subsequent request is rejected.
-            db.commit()
-            db.execute("BEGIN IMMEDIATE")
-            yield db
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
+        with closing(sqlite3.connect(self.path, timeout=15)) as db:
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA foreign_keys=ON")
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                self._expire(db)
+                # Persist expiry even when the subsequent request is rejected.
+                db.commit()
+                db.execute("BEGIN IMMEDIATE")
+                yield db
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
 
     def _end_task(self, db, task_id, status, error=None):
         db.execute("UPDATE tasks SET status=?, error=? WHERE id=?", (status, error, task_id))
@@ -79,9 +81,27 @@ class Store:
             JOIN assignments a ON a.task_id=t.id JOIN nodes n ON n.id=a.node_id
             WHERE t.status IN ('queued','running') AND (t.deadline <= ? OR n.last_seen <= ?)
         """, (now, now - self.ttl)).fetchall()
+        by_error = {"task deadline exceeded": [], "assigned node heartbeat expired": []}
         for row in rows:
             error = "task deadline exceeded" if row["deadline"] <= now else "assigned node heartbeat expired"
-            self._end_task(db, row["id"], "failed", error)
+            by_error[error].append(row["id"])
+        # Keep every chunk in the original expiry transaction. Respect even a
+        # connection whose parameter limit is lower than SQLite's default.
+        batch_size = min(500, db.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) - 1)
+        for error, task_ids in by_error.items():
+            for start in range(0, len(task_ids), batch_size):
+                chunk = task_ids[start:start + batch_size]
+                placeholders = ",".join("?" for _ in chunk)
+                db.execute(f"UPDATE tasks SET status='failed', error=? WHERE id IN ({placeholders})",
+                           [error, *chunk])
+                db.execute(f"""UPDATE assignments SET status='failed', error=?
+                    WHERE task_id IN ({placeholders}) AND status IN ('pending','running')""",
+                           [error, *chunk])
+
+    def expire(self):
+        """Persist overdue task and node expiry without requiring API traffic."""
+        with self.transaction():
+            pass
 
     @staticmethod
     def _hash(token):
@@ -90,73 +110,102 @@ class Store:
     def _node_auth(self, db, node_id, token):
         node = db.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()
         if node is None or not hmac.compare_digest(node["token_hash"], self._hash(token)):
-            raise HTTPException(401, "invalid node credential")
+            raise HTTPException(401, "invalid node credential", headers={"WWW-Authenticate": "Bearer"})
         return node
 
-    def _node_view(self, db, node):
+    def _node_view(self, db, node, *, busy=None):
         data = dict(node)
         data.pop("token_hash")
         data["accepting_tasks"] = bool(data["accepting_tasks"])
-        busy = db.execute("""SELECT 1 FROM assignments a JOIN tasks t ON t.id=a.task_id
+        if busy is None:
+            busy = db.execute("""SELECT 1 FROM assignments a JOIN tasks t ON t.id=a.task_id
                              WHERE a.node_id=? AND t.status IN ('queued','running') LIMIT 1""",
                           (node["id"],)).fetchone()
         data["status"] = ("offline" if node["last_seen"] <= self.clock() - self.ttl
                           else "busy" if busy else "available" if node["accepting_tasks"] else "draining")
         return data
 
+    def _node_views(self, db):
+        # Completed shards remain reserved until their entire task terminates.
+        busy = {row["node_id"] for row in db.execute("""
+            SELECT DISTINCT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
+            WHERE t.status IN ('queued','running')
+        """)}
+        return [self._node_view(db, node, busy=node["id"] in busy)
+                for node in db.execute("SELECT * FROM nodes ORDER BY id").fetchall()]
+
     def register(self, request):
         node_id, token = str(uuid4()), secrets.token_urlsafe(32)
         with self.transaction() as db:
             db.execute("INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?,?)",
                        (node_id, self._hash(token), request.name, request.platform, str(request.endpoint),
-                        request.available_memory_mb, request.compute_weight, 1, self.clock()))
+                        request.available_memory_mb, request.compute_weight, request.accepting_tasks, self.clock()))
         return {"node_id": node_id, "node_token": token, "heartbeat_ttl_seconds": self.ttl}
 
     def nodes(self):
         with self.transaction() as db:
-            return [self._node_view(db, n) for n in db.execute("SELECT * FROM nodes ORDER BY id").fetchall()]
+            return self._node_views(db)
 
     def heartbeat(self, node_id, token, request):
         with self.transaction() as db:
             self._node_auth(db, node_id, token)
+            # Whole-model workers are explicitly ineligible for legacy layers,
+            # even if a client sends accepting_tasks=true on an old heartbeat.
+            real_workers = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='inference_workers'").fetchone()
+            whole_model = real_workers and db.execute('SELECT 1 FROM inference_workers WHERE node_id=?', (node_id,)).fetchone()
             db.execute("UPDATE nodes SET available_memory_mb=?, accepting_tasks=?, last_seen=? WHERE id=?",
-                       (request.available_memory_mb, request.accepting_tasks, self.clock(), node_id))
+                       (request.available_memory_mb, False if whole_model else request.accepting_tasks, self.clock(), node_id))
             return self._node_view(db, db.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone())
 
     def _task_view(self, db, task_id):
         task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         if task is None:
             raise HTTPException(404, "task not found")
-        result = dict(task)
-        result["request"] = json.loads(result["request"])
-        assignments = [dict(a) for a in db.execute("""
+        return self._task_views(db, [task])[0]
+
+    def _task_views(self, db, tasks):
+        if not tasks:
+            return []
+        # Public list/poll calls select at most 100 tasks. Load every shard so
+        # peer addresses still describe the full pipeline before poll filtering.
+        task_ids = [task["id"] for task in tasks]
+        placeholders = ",".join("?" for _ in task_ids)
+        by_task = {task_id: [] for task_id in task_ids}
+        for row in db.execute(f"""
             SELECT a.*, n.endpoint FROM assignments a JOIN nodes n ON n.id=a.node_id
-            WHERE a.task_id=? ORDER BY a.position
-        """, (task_id,)).fetchall()]
-        for assignment in assignments:
-            assignment["result"] = json.loads(assignment["result"]) if assignment["result"] else None
-        for i, assignment in enumerate(assignments):
-            assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
-            assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
-        result["assignments"] = assignments
-        result["result"] = None
-        if result["status"] == "completed" and all(a["result"] is not None for a in assignments):
-            workload = result["request"].get("workload", "linear")
-            if workload == "pi":
-                inside = sum(a["result"]["inside"] for a in assignments)
-                samples = sum(a["result"]["samples"] for a in assignments)
-                result["result"] = {"inside": inside, "samples": samples,
-                                     "pi_estimate": 4 * inside / samples}
-            elif workload == "log_stats":
-                levels = {}
-                for assignment in assignments:
-                    for level, count in assignment["result"].items():
-                        levels[level] = levels.get(level, 0) + count
-                result["result"] = {"levels": levels,
-                                     "total_lines": sum(levels.values())}
-            else:
-                result["result"] = [value for a in assignments for value in a["result"]]
-        return result
+            WHERE a.task_id IN ({placeholders}) ORDER BY a.task_id, a.position
+        """, task_ids):
+            by_task[row["task_id"]].append(dict(row))
+        results = []
+        for task in tasks:
+            result = dict(task)
+            result["request"] = json.loads(result["request"])
+            assignments = by_task[task["id"]]
+            for assignment in assignments:
+                assignment["result"] = json.loads(assignment["result"]) if assignment["result"] else None
+            for i, assignment in enumerate(assignments):
+                assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
+                assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
+            result["assignments"] = assignments
+            result["result"] = None
+            if result["status"] == "completed" and all(a["result"] is not None for a in assignments):
+                workload = result["request"].get("workload", "linear")
+                if workload == "pi":
+                    inside = sum(a["result"]["inside"] for a in assignments)
+                    samples = sum(a["result"]["samples"] for a in assignments)
+                    result["result"] = {"inside": inside, "samples": samples,
+                                         "pi_estimate": 4 * inside / samples}
+                elif workload == "log_stats":
+                    levels = {}
+                    for assignment in assignments:
+                        for level, count in assignment["result"].items():
+                            levels[level] = levels.get(level, 0) + count
+                    result["result"] = {"levels": levels,
+                                         "total_lines": sum(levels.values())}
+                else:
+                    result["result"] = [value for a in assignments for value in a["result"]]
+            results.append(result)
+        return results
 
     @staticmethod
     def _peer(assignment):
@@ -164,9 +213,18 @@ class Store:
 
     def create_task(self, request):
         with self.transaction() as db:
-            nodes = [self._node_view(db, n) for n in db.execute("SELECT * FROM nodes").fetchall()]
+            # Retain historical nodes in the registry without materializing
+            # offline/draining entries on the scheduling path. node_id is NOT
+            # NULL, so NOT IN safely excludes all active pipeline reservations.
+            nodes = [dict(node) for node in db.execute("""
+                SELECT n.id, n.endpoint, n.available_memory_mb, n.compute_weight FROM nodes n
+                WHERE n.accepting_tasks != 0 AND n.last_seen > ? AND n.id NOT IN (
+                    SELECT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
+                    WHERE t.status IN ('queued','running')
+                )
+            """, (self.clock() - self.ttl,)).fetchall()]
             try:
-                plan = allocate([n for n in nodes if n["status"] == "available"], request.num_layers,
+                plan = allocate(nodes, request.num_layers,
                                 request.layer_memory_mb, request.max_nodes)
             except ValueError as exc:
                 raise HTTPException(409, str(exc)) from exc
@@ -186,18 +244,17 @@ class Store:
 
     def tasks(self):
         with self.transaction() as db:
-            return [self._task_view(db, t["id"]) for t in
-                    db.execute("SELECT id FROM tasks ORDER BY created_at DESC LIMIT 100").fetchall()]
+            rows = db.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100").fetchall()
+            return self._task_views(db, rows)
 
     def assignments(self, node_id, token):
         with self.transaction() as db:
             self._node_auth(db, node_id, token)
             # Include terminal commands until the node observes them; no silent reuse after expiry.
-            rows = db.execute("""SELECT DISTINCT t.id FROM tasks t JOIN assignments a ON a.task_id=t.id
+            rows = db.execute("""SELECT DISTINCT t.* FROM tasks t JOIN assignments a ON a.task_id=t.id
                                  WHERE a.node_id=? ORDER BY t.created_at DESC LIMIT 100""", (node_id,)).fetchall()
             result = []
-            for row in rows:
-                task = self._task_view(db, row["id"])
+            for task in self._task_views(db, rows):
                 for assignment in task["assignments"]:
                     if assignment["node_id"] == node_id:
                         result.append({**assignment, "task_status": task["status"],

@@ -3,14 +3,15 @@
 ## 文档状态
 
 - 状态：产品与工程拆解草案，待确认产品范围和验收设备。
-- 基线：2026-10-13 检查的 `main`。该基线已有 Controller Server MVP；当前开发分支新增的 macOS 原生原型进度见下文，本文件其余内容仍是规划与验收要求。
+- 基线：本文件最初编写时的 Controller Server MVP。仓库现已增加 packaged Node Agent、tiny 分层推理、macOS CLI 与 whole-model worker，以及 Android whole-model worker；当前实现与验收边界以仓库根目录 README 和各组件文档为准。本文件保留为早期原生客户端规划，不代表当前实现清单。
 - 目标平台：macOS、Windows、Android。
 - 项目定位依据：仓库 README 将 LastCore 定义为把日常设备组成分布式 AI 推理网络。若产品方向已调整，应先更新本文件与 README。
 
 ## 实际进度（2026-10-13）
 
-- macOS：已新增 SwiftUI 原生窗口原型，包含注册/节点身份恢复、钥匙串凭据、心跳、暂停接单、assignment 轮询和内置线性演示任务执行。尚未完成签名分发、菜单栏常驻、可配置资源采集、任务取消过程验证或真实模型推理；不能视为桌面客户端验收完成。
-- Windows、Android：本仓库尚无对应原生客户端代码。
+- macOS：仓库包含 SwiftUI 线性 demo 原型、打包的 layer Agent，以及独立 whole-model CLI worker；三者能力和验证范围不同。SwiftUI 原型不是已签名桌面发行版。
+- Windows：仓库包含 packaged Node Agent 的计划任务安装脚本；未提供原生桌面 UI。
+- Android：仓库包含 whole-model Android 应用和 APK 构建/CI；当前 README 将真机验收列为未完成事项。
 - 多节点真实模型推理：尚无模型加载、节点间 tensor 传输和真机/跨设备验收证据。
 
 ## 产品目标

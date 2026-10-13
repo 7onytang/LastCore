@@ -1,5 +1,7 @@
 """Capacity-constrained weighted allocation of contiguous layer ranges."""
 
+import heapq
+
 
 def allocate(nodes: list[dict], num_layers: int, layer_memory_mb: int, max_nodes: int):
     candidates = sorted(
@@ -15,12 +17,16 @@ def allocate(nodes: list[dict], num_layers: int, layer_memory_mb: int, max_nodes
         raise ValueError("insufficient available node memory within max_nodes")
     counts = [0] * len(selected)
     # Choose the next least loaded device, normalized by its measured weight.
+    # A heap yields the same (ratio, index) minimum each step as scanning every
+    # node, in O(log k) instead of O(k) per layer.
+    heap = [(1 / n["compute_weight"], i) for i, n in enumerate(selected)]
+    heapq.heapify(heap)
     for _ in range(num_layers):
-        index = min(
-            (i for i, n in enumerate(selected) if counts[i] < capacity(n)),
-            key=lambda i: ((counts[i] + 1) / selected[i]["compute_weight"], i),
-        )
+        _, index = heapq.heappop(heap)
         counts[index] += 1
+        if counts[index] < capacity(selected[index]):
+            node = selected[index]
+            heapq.heappush(heap, ((counts[index] + 1) / node["compute_weight"], index))
     start = 0
     result = []
     for node, count in zip(selected, counts):

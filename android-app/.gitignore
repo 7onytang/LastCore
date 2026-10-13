@@ -1,0 +1,14 @@
+.toolchain/
+.toolchain-downloads/
+.gradle/
+.gradle-cache/
+local.properties
+**/build/
+verification/
+.android-user/
+__pycache__/
+.native-cache/
+verification-build.log
+**/.cxx/
+.native-host-check/
+.host-tests/

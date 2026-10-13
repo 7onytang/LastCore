@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-This document records the HTTP API implemented by Controller `0.2.0` under `/v1`. It is the integration baseline for an Agent. The bundled Agent supports three deterministic CPU demonstration workloads: `lastcore/linear-demo-v1`, `lastcore/pi-monte-carlo-v1`, and `lastcore/log-statistics-v1`. None is a pretrained LLM. Fields or behavior not described as implemented below must not be assumed by a client.
+This document records the legacy layer-task and node-lifecycle routes under `/v1`, including the deterministic `lastcore/linear-demo-v1`, `lastcore/pi-monte-carlo-v1`, and `lastcore/log-statistics-v1` demonstration workloads. None is a pretrained LLM. Current optional whole-model job behavior is documented separately in [`controller-server/REAL_JOBS.md`](../controller-server/REAL_JOBS.md); use [`node-agent/PROTOCOL.md`](../node-agent/PROTOCOL.md) for the packaged Agent protocol. Fields or behavior not described as implemented below must not be assumed by a client.
 
 The API is exposed at the Controller base URL, for example `https://controller.example.com`. The service does not enforce TLS itself. Deployments that carry credentials or task data must provide TLS or a trusted encrypted tunnel in front of it.
 

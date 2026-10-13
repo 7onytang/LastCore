@@ -1,0 +1,34 @@
+# LastCore node-agent desktop bundle - build dependency lock (LC-76 rework item 3).
+# Complete transitive closure of the BUILD venv (runtime deps httpx==0.28.1 and numpy==2.5.4 + build tool
+# pyinstaller==6.22.3 incl. pyinstaller-hooks-contrib and every transitive dep), pinned
+# with sha256 hashes of the exact wheel artifacts used.
+#
+# Scope (do NOT claim wider): generated for macOS arm64, CPython 3.12.14, pip 26.2.1
+# (system interpreter) / pip 25.0.1 (venv), index https://pypi.org/simple,
+# 2026-10-13 Asia/Shanghai. Wheel hashes are platform/architecture specific;
+# identical binary hashes are NOT guaranteed across other Python/macOS versions or
+# platforms - regenerate per target platform.
+#
+# Regeneration procedure (documented for future refresh):
+#   python3.12 -m venv venv-gen
+#   venv-gen/bin/python desktop/pip_no_sysconf_proxy.py install httpx==0.28.1 numpy==2.5.4 pyinstaller==6.22.3
+#   venv-gen/bin/pip freeze --all | grep -v '^pip==' > freeze.txt
+#   venv-gen/bin/python desktop/pip_no_sysconf_proxy.py download --no-deps --only-binary=:all: \
+#       -r freeze.txt -d wheelhouse
+#   # sha256 each wheelhouse/*.whl and emit '<name>==<ver> --hash=sha256:<hex>' lines.
+#
+# Installed by node-agent/desktop/build_bundle.sh with: pip install --require-hashes
+altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597  # wheel: altgraph-0.17.5-py2.py3-none-any.whl
+anyio==4.15.1 --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101  # wheel: anyio-4.15.1-py3-none-any.whl
+certifi==2026.7.22 --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775  # wheel: certifi-2026.7.22-py3-none-any.whl
+h11==0.16.0 --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86  # wheel: h11-0.16.0-py3-none-any.whl
+httpcore==1.0.9 --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55  # wheel: httpcore-1.0.9-py3-none-any.whl
+httpx==0.28.1 --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad  # wheel: httpx-0.28.1-py3-none-any.whl
+idna==3.20 --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c  # wheel: idna-3.20-py3-none-any.whl
+macholib==1.16.4 --hash=sha256:da1a3fa8266e30f0ce7e97c6a54eefaae8edd1e5f86f3eb8b95457cae90265ea  # wheel: macholib-1.16.4-py2.py3-none-any.whl
+packaging==26.3 --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c  # wheel: packaging-26.3-py3-none-any.whl
+pyinstaller==6.22.3 --hash=sha256:052f4a1cd4f81092ccb7a18fe8ebc9ecf832a5917317e39fb3775af4e959b253  # wheel: pyinstaller-6.22.3-py3-none-macosx_10_13_universal2.whl
+pyinstaller-hooks-contrib==2026.8 --hash=sha256:6d21d65323ea4467753afc21f52d7d0e69416ae8101dd88269bf273ad48db084  # wheel: pyinstaller_hooks_contrib-2026.8-py3-none-any.whl
+setuptools==84.0.0 --hash=sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670  # wheel: setuptools-84.0.0-py3-none-any.whl
+typing_extensions==4.16.0 --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8  # wheel: typing_extensions-4.16.0-py3-none-any.whl
+numpy==2.5.4 --hash=sha256:9cb18a327b49c5c337f972b03682f6a49855525faaf3c0d3e9c96cd0fd8880a8  # wheel: numpy-2.5.4-cp312-cp312-macosx_14_0_arm64.whl
