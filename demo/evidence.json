@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "mode": "public_historical_summary",
+  "banner": "回放已公开的真实验证记录，不创建或重跑任务。",
+  "time_zone": "Asia/Shanghai",
+  "current_deployed_source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+  "current_source_status": "公开发布与部署验收记录；healthz仅证明可达性，不验证源码版本",
+  "current_public_source_main_merge": "2e8c76b88fdff8f265dadafa1a0e0e6597133bed",
+  "evidence_checked_at_beijing": "2026-10-13T14:03:23.159854+08:00",
+  "cases": [
+    {
+      "id": "generation",
+      "label": "生成成功",
+      "badge": "真实云端记录摘要",
+      "scope": "公网 HTTPS Controller → macOS CLI → 固定 SmolLM2 整模型",
+      "controller_proof_source_commit": "21c5d4b7eeca8f418ab81570e7453395a2161f01",
+      "created_at": null,
+      "evidence_checked_at_beijing": "2026-10-13T14:03:23.159854+08:00",
+      "time_label": "已发布记录的核验时间，不是任务创建时间",
+      "status": "succeeded",
+      "display_output": "Paris",
+      "display_output_is_summary": true,
+      "stop_acknowledged": true,
+      "caption": "本机生成结果，云端保存结果与停止确认。",
+      "steps": [
+        {
+          "title": "云端分配",
+          "text": "整模型任务交给一个已注册节点。"
+        },
+        {
+          "title": "本机生成",
+          "text": "macOS CLI 调用固定模型与原生后端。"
+        },
+        {
+          "title": "结果回传",
+          "text": "真实输出摘要：Paris。"
+        },
+        {
+          "title": "确认停止",
+          "text": "任务成功并完成停止确认。"
+        }
+      ],
+      "sources": [
+        "acceptance",
+        "manifest",
+        "runtime_readme"
+      ]
+    },
+    {
+      "id": "timeout",
+      "label": "超时停止",
+      "badge": "真实云端记录摘要",
+      "scope": "macOS 原生后端执行超时及回收",
+      "controller_proof_source_commit": "21c5d4b7eeca8f418ab81570e7453395a2161f01",
+      "created_at": null,
+      "evidence_checked_at_beijing": "2026-10-13T14:03:23.159854+08:00",
+      "time_label": "已发布记录的核验时间，不是任务创建时间",
+      "status": "failed",
+      "display_output": "执行超时，任务结束",
+      "display_output_is_summary": true,
+      "stop_acknowledged": true,
+      "caption": "超时有结束状态，也有原生进程回收和停止确认。",
+      "steps": [
+        {
+          "title": "云端分配",
+          "text": "任务进入同一条真实执行链路。"
+        },
+        {
+          "title": "达到期限",
+          "text": "原生后端达到执行预算。"
+        },
+        {
+          "title": "停止回收",
+          "text": "后台进程停止并被回收。"
+        },
+        {
+          "title": "确认结束",
+          "text": "云端保存失败状态与停止确认。"
+        }
+      ],
+      "sources": [
+        "acceptance",
+        "runtime_readme"
+      ]
+    },
+    {
+      "id": "cancel",
+      "label": "取消清理",
+      "badge": "真实云端记录摘要",
+      "scope": "macOS 原生后端执行中取消、结果丢弃及进程回收",
+      "controller_proof_source_commit": "21c5d4b7eeca8f418ab81570e7453395a2161f01",
+      "created_at": null,
+      "evidence_checked_at_beijing": "2026-10-13T14:03:23.159854+08:00",
+      "time_label": "已发布记录的核验时间，不是任务创建时间",
+      "status": "cancelled",
+      "display_output": "已取消，无生成结果保留",
+      "display_output_is_summary": true,
+      "stop_acknowledged": true,
+      "caption": "取消后停止执行、丢弃结果，再确认清理结束。",
+      "steps": [
+        {
+          "title": "正在执行",
+          "text": "原生后端已进入真实运行。"
+        },
+        {
+          "title": "收到取消",
+          "text": "取消请求交给守卫处理。"
+        },
+        {
+          "title": "清理进程",
+          "text": "停止并回收后端，丢弃生成结果。"
+        },
+        {
+          "title": "确认取消",
+          "text": "云端保存取消状态与停止确认。"
+        }
+      ],
+      "sources": [
+        "acceptance",
+        "runtime_readme"
+      ]
+    }
+  ],
+  "additional_proofs": [
+    {
+      "id": "host-jni",
+      "title": "Android 同源主机 JNI",
+      "badge": "Host JVM/JNI 已验证",
+      "summary": "公网任务通过同源 worker 与实际主机 JNI 完成 Paris 生成及停止确认。",
+      "client_proof_source_commit": "1ffc0bd3cc8098ffaf4ac723014adff9c86ea8d8",
+      "controller_proof_source_commit": "b0b494b5c2b6d5340e7aa5ec226ffc0cf9aa0f2d",
+      "scope": "主机 JDK/JNI，不是 Android 真机、framework 或 Keystore 执行",
+      "sources": [
+        "acceptance",
+        "manifest"
+      ]
+    },
+    {
+      "id": "tiny",
+      "title": "双节点 tiny 链路",
+      "badge": "本地双节点已验证",
+      "summary": "两个 macOS 客户端完成 tiny 分层，结果与单机参考逐字节一致；取消和凭据重启已验证。",
+      "scope": "随机小模型本地验证，不是预训练模型多设备分层",
+      "mac_bundle_build_commit": "88a80e3b98b47b345487be913b96c663e662360a",
+      "sources": [
+        "acceptance",
+        "tiny_readme"
+      ]
+    },
+    {
+      "id": "mac-recovery-fixed-local",
+      "title": "Mac Worker 恢复修复及真实本地模型验证",
+      "worker_source_commit": "30b9efc22c5db9f351d304604e65743ca02ccda3",
+      "controller_source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+      "scope": "23相关回归、3个实际本地Controller合成恢复场景，及1次本地真实固定GGUF任务；不是新公网云任务或Android真机",
+      "checked_at_beijing": "2026-10-13T14:48:31.824926+08:00",
+      "stop_acknowledged": true,
+      "summary": "修复注册确定拒绝、凭据origin绑定和恢复顺序；坏模型仍可恢复已停止结果，不盲重新执行。正常真实本地模型路径通过。",
+      "sources": [
+        "mac_recovery_review",
+        "mac_recovery_local"
+      ]
+    }
+  ],
+  "scope_notes": [
+    "步骤动画是说明性回放，不是逐帧实际执行日志或实时延迟。",
+    "当前部署源85dd与模型证明源21c5/1ffc+b0b分别记录；有关API与worker/JNI组件的等价关系见公开manifest。",
+    "Android APK 已构建；真机推理、framework/Keystore及设备TLS未验证。",
+    "macOS frozen bundle服务legacy/tiny；整模型运行使用独立Python CLI。",
+    "Debug APK仅开发签名；release APK未签名。"
+  ],
+  "sources": [
+    {
+      "id": "release",
+      "title": "v0.1.0-alpha.1 公开预发布",
+      "url": "https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1"
+    },
+    {
+      "id": "acceptance",
+      "title": "公开验收摘要",
+      "url": "https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/ACCEPTANCE.txt"
+    },
+    {
+      "id": "manifest",
+      "title": "公开版本与产物清单",
+      "url": "https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/release-manifest.json"
+    },
+    {
+      "id": "runtime_readme",
+      "title": "macOS 整模型运行与生命周期说明",
+      "url": "https://github.com/7onytang/LastCore/blob/85ddad92758d072097de87857f7ed1a229c8f76e/real-model-runtime/README.md"
+    },
+    {
+      "id": "tiny_readme",
+      "title": "本地双节点 tiny 验证说明",
+      "url": "https://github.com/7onytang/LastCore/blob/85ddad92758d072097de87857f7ed1a229c8f76e/README.md#integrated-candidate-verification-and-staging"
+    },
+    {
+      "id": "current_core",
+      "title": "当前固定核心源码",
+      "url": "https://github.com/7onytang/LastCore/tree/09a02efa3569057d7a5ed0b2df5b817c13e77bb5"
+    },
+    {
+      "id": "mac_recovery_review",
+      "title": "Mac三处恢复修复独立审查",
+      "url": "https://github.com/7onytang/LastCore/blob/09a02efa3569057d7a5ed0b2df5b817c13e77bb5/submission/evidence/mac-worker-30b9efc-review.md"
+    },
+    {
+      "id": "mac_recovery_local",
+      "title": "修复后的单次真实本地GGUF验证",
+      "url": "https://github.com/7onytang/LastCore/blob/09a02efa3569057d7a5ed0b2df5b817c13e77bb5/submission/evidence/mac-worker-30b9efc-local.json"
+    }
+  ],
+  "private_source_extraction_performed": false,
+  "new_model_execution_performed": false,
+  "current_core_source_commit": "09a02efa3569057d7a5ed0b2df5b817c13e77bb5",
+  "current_core_scope": "Core includes Mac Worker recovery30b9; deployed Controller remains85dd. Demo is static presentation only."
+}
