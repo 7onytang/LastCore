@@ -51,6 +51,10 @@ def main():
     ca=bundle/'_internal/certifi/cacert.pem'
     if not ca.is_file() or sha(ca)!=sha(Path(certifi.where())):
         raise RuntimeError('Official certifi CA bundle hook did not transport the exact trust bundle')
+    for relative in ('_internal/_tcl_data/init.tcl','_internal/_tk_data/tk.tcl'):
+        if not (bundle/relative).is_file():raise RuntimeError('Official Tk hook resource missing: '+relative)
+    if not list((bundle/'_internal').rglob('_tkinter*')):
+        raise RuntimeError('Native _tkinter extension is absent')
     files={}
     glibc=set();external=set()
     for path in sorted(bundle.rglob('*')):
