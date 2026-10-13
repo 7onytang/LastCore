@@ -1,5 +1,5 @@
 {
-  "approval": "User explicitly confirmed 我已阅读并同意 through root agent in this task",
+  "approval": "User explicitly confirmed \u6211\u5df2\u9605\u8bfb\u5e76\u540c\u610f through root agent in this task",
   "license_id": "android-sdk-license",
   "official_terms": "https://developer.android.com/studio/terms",
   "license_sha1": "9002c006f4b8d9a16e715a9fa4df30ddb8abf9d9",
@@ -7,12 +7,20 @@
   "packages": [
     "platforms;android-35",
     "build-tools;35.0.0",
-    "platform-tools"
+    "platform-tools",
+    "ndk;28.2.13676358",
+    "cmake;3.22.1"
   ],
   "no_automatic_unrelated_license_acceptance": true,
   "sdkmanager_recorded_license_hashes": [
     "9002c006f4b8d9a16e715a9fa4df30ddb8abf9d9",
     "24333f8a63b6825ea9c5514f83c2829b004d1fee"
   ],
-  "acknowledgement": "single required SDK agreement accepted after explicit user approval, unrelated agreements not accepted"
+  "acknowledgement": "single required SDK agreement accepted after explicit user approval, unrelated agreements not accepted",
+  "native_packages_metadata": {
+    "source": "https://dl.google.com/android/repository/repository2-3.xml",
+    "license_id": "android-sdk-license",
+    "download_bytes": 990718426,
+    "scope": "same explicitly approved SDK terms, project-local only"
+  }
 }

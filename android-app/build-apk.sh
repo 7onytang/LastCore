@@ -17,7 +17,10 @@ command -v javac >/dev/null 2>&1 || { echo "BLOCKED: JDK17 required" >&2; exit 2
 java -version >/dev/null 2>&1 || { echo "BLOCKED: Java runtime unavailable" >&2; exit 2; }
 command -v gradle >/dev/null 2>&1 || { echo "BLOCKED: isolated Gradle8.13 missing" >&2; exit 2; }
 test -d "$ANDROID_HOME/platforms/android-35" || { echo "BLOCKED: Android platform35 missing" >&2; exit 2; }
-gradle --no-daemon --console=plain assembleDebug assembleDebugAndroidTest
+python3 artifact-binding.py prepare
+gradle --no-daemon --console=plain assembleDebug assembleDebugAndroidTest assembleRelease
 mkdir -p verification/admission-classes
 javac -d verification/admission-classes app/src/main/java/ai/lastcore/android/AdmissionPolicy.java tests/ai/lastcore/android/AdmissionPolicyCheck.java
 java -cp verification/admission-classes ai.lastcore.android.AdmissionPolicyCheck
+
+python3 artifact-binding.py verify
