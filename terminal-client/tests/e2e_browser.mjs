@@ -59,14 +59,20 @@ function launchChrome() {
     return Promise.resolve({ status: "missing" });
   }
   const userDir = mkdtempSync(join(tmpdir(), "lc14-chrome-"));
-  const child = spawn(chromePath, [
-    "--headless=new",
-    "--disable-gpu",
-    "--no-first-run",
-    "--user-data-dir=" + userDir,
-    "--remote-debugging-port=0",
-    "about:blank",
-  ], { stdio: ["ignore", "ignore", "pipe"] });
+  let child;
+  try {
+    child = spawn(chromePath, [
+      "--headless=new",
+      "--disable-gpu",
+      "--no-first-run",
+      "--user-data-dir=" + userDir,
+      "--remote-debugging-port=0",
+      "about:blank",
+    ], { stdio: ["ignore", "ignore", "pipe"] });
+  } catch (error) {
+    try { rmSync(userDir, { recursive: true, force: true }); } catch {}
+    return Promise.resolve({ status: "failed", reason: `chrome failed to spawn: ${error.message}` });
+  }
   return new Promise((resolve) => {
     let settled = false;
     const cleanup = () => {
