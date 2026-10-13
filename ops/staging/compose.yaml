@@ -1,0 +1,39 @@
+services:
+  controller:
+    image: lastcore-controller-staging:${SOURCE_COMMIT:?fixed release commit required}
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: ops/staging/Dockerfile
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    network_mode: host
+    command: [uvicorn, "app.main:create_app", --factory, --host, "127.0.0.1", --port, "8000", --workers, "1"]
+    environment:
+      TZ: Asia/Shanghai
+      CONTROLLER_ADMIN_TOKEN: ${CONTROLLER_ADMIN_TOKEN:?server secret required}
+      CONTROLLER_REGISTRATION_TOKEN: ${CONTROLLER_REGISTRATION_TOKEN:?server secret required}
+      CONTROLLER_DATABASE_PATH: /data/controller.sqlite3
+      CONTROLLER_HEARTBEAT_TTL_SECONDS: 30
+      CONTROLLER_EXPIRY_INTERVAL_SECONDS: 1
+    volumes: ["controller-data:/data"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+volumes:
+  controller-data:

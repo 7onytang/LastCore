@@ -198,3 +198,23 @@ pytest -q tests/test_store_lifecycle.py
 ## Isolated real local model runtime
 
 `real-model-runtime/` provides a pinned llama.cpp CPU completion adapter with a verified SmolLM2-135M-Instruct GGUF. See [setup, run and verification instructions](real-model-runtime/README.md). This local prompt-to-text smoke path is independent of the existing Controller and inference protocols; it does not establish distributed model execution or Android/cloud deployment.
+
+## Integrated candidate verification and staging
+
+`integration/run_two_node_local.sh` starts a real local Controller and two real tiny stage agents, compares the distributed logits with a single-machine reference, waits for both completed reports, and verifies that its processes and ports are cleaned up. Set `CONTROLLER_PY`, `NODE_PY`, and `ENGINE_PY` to separate Python environments installed from the respective modules' requirements. `LC11_RUN_DIR` selects a private local evidence directory. It generates tiny weights; this is not pretrained multi-device LLM inference.
+
+```sh
+CONTROLLER_PY=/path/to/controller/bin/python \
+NODE_PY=/path/to/node/bin/python ENGINE_PY=/path/to/engine/bin/python \
+LC11_RUN_DIR=/private/tmp/lastcore-integrated-evidence bash integration/run_two_node_local.sh
+/path/to/controller/bin/python integration/verify_backup_recovery.py \
+  --run-dir /private/tmp/lastcore-integrated-evidence
+```
+
+The recovery command backs up that completed run, starts a real Controller from a new restored copy, and checks that both persisted node credentials are accepted. Keep the evidence directory private because it includes local test credentials. GitHub Actions performs the integrated tiny and recovery checks and builds the isolated Linux staging image; a local pass does not claim the remote CI has run.
+
+For macOS bundle installation, preflight and bounded real bundle verification, see [desktop instructions](node-agent/desktop/README.md). For fixed source packaging, isolated loopback-only Linux staging, runtime acceptance and rollback, see [staging instructions](ops/staging/README.md). Public IP HTTPS and Android physical-device acceptance remain separate release gates; no domain purchase is required by these preparation files.
+
+## License
+
+LastCore's own source is licensed under [MIT](LICENSE), using the [OSI MIT template](https://opensource.org/license/mit). Third-party software and model weights retain their own terms. The real model/backend license texts and manifest are in `real-model-runtime/licenses/`; desktop packaging collects and verifies the frozen runtime's license materials. The top-level license does not replace those third-party notices.
