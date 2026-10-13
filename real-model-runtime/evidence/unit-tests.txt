@@ -1,0 +1,13 @@
+test_backend_failure (test_runtime.LifecycleTests.test_backend_failure) ... ok
+test_caller_exception_reaps_process (test_runtime.LifecycleTests.test_caller_exception_reaps_process) ... ok
+test_cancellation_reaps_process (test_runtime.LifecycleTests.test_cancellation_reaps_process) ... ok
+test_invalid_deadlines (test_runtime.LifecycleTests.test_invalid_deadlines) ... ok
+test_model_integrity (test_runtime.LifecycleTests.test_model_integrity) ... ok
+test_pre_cancel_does_not_launch (test_runtime.LifecycleTests.test_pre_cancel_does_not_launch) ... ok
+test_success (test_runtime.LifecycleTests.test_success) ... ok
+test_timeout_reaps_process (test_runtime.LifecycleTests.test_timeout_reaps_process) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.873s
+
+OK

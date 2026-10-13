@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-13T11:47:35.455742+08:00",
+  "platform": "macOS-15.8.1-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "manifest": {
+    "backend_commit": "8345f333951c661d166b00e6f9362e553768f292",
+    "backend_license": "MIT",
+    "source_sha256": "84050e783dbd0c4a4678f90f253b0881df04e90a98c20f73ae3709751c4a4850",
+    "backend_sha256": "c38c65ac6143be74ccbd550940180594efc326cef16e4038b99b21652131f96b",
+    "model_revision": "04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b",
+    "model_license": "Apache-2.0",
+    "model_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169",
+    "model_bytes": 105454144
+  },
+  "real_backend_lifecycle": [
+    {
+      "case": "timeout",
+      "result": "TimedOut",
+      "backend_reaped": true
+    },
+    {
+      "case": "cancel",
+      "result": "Cancelled",
+      "backend_reaped": true
+    }
+  ],
+  "limitations": [
+    "local CPU only",
+    "Controller and communication protocols unchanged",
+    "Android device not verified",
+    "No distributed model integration"
+  ]
+}
