@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-10-13T11:56:43.416591+08:00",
+  "licenses": [
+    {
+      "file": "SmolLM2-APACHE-2.0.txt",
+      "license": "Apache-2.0",
+      "text_source": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "model_revision": "04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b",
+      "license_declaration_source": "https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/tree/04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b",
+      "original_model_revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+      "original_model_source": "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/tree/12fd25f77366fa6b3b4b768ec3050bf629380bac",
+      "note": "Both pinned model cards declare apache-2.0; neither repository includes a LICENSE file. Standard full terms copied from Apache official source, with its exact text digest."
+    },
+    {
+      "file": "llama.cpp-LICENSE.txt",
+      "license": "MIT",
+      "backend_commit": "8345f333951c661d166b00e6f9362e553768f292",
+      "text_source": "https://github.com/ggml-org/llama.cpp/blob/8345f333951c661d166b00e6f9362e553768f292/LICENSE",
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+      "source_archive_sha256": "84050e783dbd0c4a4678f90f253b0881df04e90a98c20f73ae3709751c4a4850",
+      "note": "Full original copyright and MIT terms copied verbatim from the hash-verified pinned source archive."
+    }
+  ]
+}

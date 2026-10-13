@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-13T11:47:35.455742+08:00",
+  "checked_at": "2026-10-13T11:57:33.733991+08:00",
   "platform": "macOS-15.8.1-arm64-arm-64bit-Mach-O",
   "architecture": "arm64",
   "manifest": {
@@ -12,6 +12,10 @@
     "model_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169",
     "model_bytes": 105454144
   },
+  "runtime_source_sha256": "55a5a5ef095060feeda79ea1bcae2b5da06925eb37800664222b6d9ea7e753ae",
+  "verification_source_sha256": "eb47376cb083d6705035d22eabefab40dd3aad378be639b8fbc830c05181cd62",
+  "license_text_checksums_verified": true,
+  "output_limit_bytes_per_stream": 1048576,
   "real_backend_lifecycle": [
     {
       "case": "timeout",

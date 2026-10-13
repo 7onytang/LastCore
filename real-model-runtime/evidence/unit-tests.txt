@@ -4,10 +4,13 @@ test_cancellation_reaps_process (test_runtime.LifecycleTests.test_cancellation_r
 test_invalid_deadlines (test_runtime.LifecycleTests.test_invalid_deadlines) ... ok
 test_model_integrity (test_runtime.LifecycleTests.test_model_integrity) ... ok
 test_pre_cancel_does_not_launch (test_runtime.LifecycleTests.test_pre_cancel_does_not_launch) ... ok
+test_process_group_children_removed_after_cancel_and_parent_early_exit (test_runtime.LifecycleTests.test_process_group_children_removed_after_cancel_and_parent_early_exit) ... ok
+test_real_subprocess_output_overflow_fails_without_truncated_success (test_runtime.LifecycleTests.test_real_subprocess_output_overflow_fails_without_truncated_success) ... ok
+test_reused_instance_rejects_replaced_model_and_backend (test_runtime.LifecycleTests.test_reused_instance_rejects_replaced_model_and_backend) ... ok
 test_success (test_runtime.LifecycleTests.test_success) ... ok
 test_timeout_reaps_process (test_runtime.LifecycleTests.test_timeout_reaps_process) ... ok
 
 ----------------------------------------------------------------------
-Ran 8 tests in 0.873s
+Ran 11 tests in 1.507s
 
 OK
