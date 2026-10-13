@@ -217,6 +217,10 @@ For macOS bundle installation, preflight and bounded real bundle verification, s
 
 The optional [real whole-model jobs API](controller-server/REAL_JOBS.md) connects a selected [macOS CLI worker](real-model-runtime/README.md) to the fixed local GGUF adapter. It stores bounded generated text/results under a separate `/v1/inference` namespace and defaults to disabled. Its local acceptance uses an actual Controller and native model backend, covering generated text, idempotency, backend timeout, cancellation acknowledgment and cleanup. A whole-model worker runs the complete model on one device; it does not implement multi-device pretrained layer distribution. Existing `/v1/tasks` behavior and tiny protocols remain independent. Enable/deploy the optional API only after fixed-source review and separately verify the actual public-cloud loop.
 
+## Planning and reference records
+
+[`AI_USAGE.md`](AI_USAGE.md) and [`ai-logs/`](ai-logs/) describe the source and review boundaries for project reference material. [`docs/CLIENT_AGENT_TASKS.md`](docs/CLIENT_AGENT_TASKS.md) is a product and engineering draft for future macOS, Windows, and Android node clients; the terminal prototype is not a production client, and the draft does not claim those clients are implemented. [`lc10-cost-supplement/`](lc10-cost-supplement/) contains an illustrative, source-bound budget example; it is not wired into Controller scheduling or resource reservation.
+
 ## License
 
 LastCore's own source is licensed under [MIT](LICENSE), using the [OSI MIT template](https://opensource.org/license/mit). Third-party software and model weights retain their own terms. The real model/backend license texts and manifest are in `real-model-runtime/licenses/`; desktop packaging collects and verifies the frozen runtime's license materials. The top-level license does not replace those third-party notices.
