@@ -3,7 +3,7 @@
   "time_zone": "Asia/Shanghai",
   "capture_tool": "ego-browser actual rendered PNG; no composition or mock",
   "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
-  "release_source_note": "Published release bf5 differs by one401-handling line; these screenshots are attributed to actually deployedcc7, not releasebf5.",
+  "release_source_note": "The console.js page differs by one 401-handling line between deployed cc7 and release bf5; the overall source also has other changes. Screenshots attest deployed cc7, not the full release bf5.",
   "anonymous": true,
   "credential_input": false,
   "task_posts": 0,
