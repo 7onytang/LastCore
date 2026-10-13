@@ -2,9 +2,9 @@ name: macOS client bundle
 on:
   workflow_dispatch:
   push:
-    paths: ['node-agent/**', 'inference-engine/**', 'communication/**', 'controller-server/**', 'tools/client-ci/verify_desktop_binding.py', '.github/workflows/desktop-bundle.yml']
+    paths: ['LICENSE', 'node-agent/**', 'inference-engine/**', 'communication/**', 'controller-server/**', 'tools/client-ci/verify_desktop_binding.py', '.github/workflows/desktop-bundle.yml']
   pull_request:
-    paths: ['node-agent/**', 'inference-engine/**', 'communication/**', 'controller-server/**', 'tools/client-ci/verify_desktop_binding.py', '.github/workflows/desktop-bundle.yml']
+    paths: ['LICENSE', 'node-agent/**', 'inference-engine/**', 'communication/**', 'controller-server/**', 'tools/client-ci/verify_desktop_binding.py', '.github/workflows/desktop-bundle.yml']
 permissions:
   contents: read
 jobs:

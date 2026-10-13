@@ -85,7 +85,7 @@ public final class MainActivity extends Activity {
         worker.execute(() -> {
             String result;
             try {
-                String body = ControllerEndpoint.health(origin);
+                String body = ControllerEndpoint.health(origin, operation);
                 if (!"ok".equals(new org.json.JSONObject(body).optString("status")))
                     throw new IllegalStateException("Controller health status is invalid");
                 if (operation.get()) result = "Connection check cancelled.";

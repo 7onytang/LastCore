@@ -10,7 +10,9 @@ public final class ControllerEndpointCheck {
             try { ControllerEndpoint.origin(value); throw new AssertionError("unsafe origin accepted"); }
             catch (IllegalArgumentException expected) { }
         }
-        System.out.println("PASS: 9 HTTPS origin checks (pure Java, no device TLS)");
+        try { ControllerEndpoint.health(origin, new java.util.concurrent.atomic.AtomicBoolean(true)); throw new AssertionError("pre-cancelled health connected"); }
+        catch (IllegalStateException expected) { }
+        System.out.println("PASS: 9 HTTPS origin checks and pre-cancelled health refusal (pure Java, no device TLS)");
         if (args.length == 1) {
             String body = ControllerEndpoint.health(args[0]);
             if (!body.contains("\"status\":\"ok\"") && !body.contains("\"status\": \"ok\"")) throw new AssertionError("health status");
