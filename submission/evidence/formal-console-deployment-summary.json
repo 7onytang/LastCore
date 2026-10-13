@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "time_zone": "Asia/Shanghai",
+  "source": "Deployment owner verified receipt; material maintainer did not rerun deployment or tasks",
+  "verified_at_beijing": "2026-10-13T18:04:30+08:00",
+  "public_url": "https://8.134.161.123/",
+  "console_url": "https://8.134.161.123/console",
+  "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
+  "release_source_commit": "bf5b82e37636d344959d06945c3a6a9e7dfd74ac",
+  "source_difference": "console.js differs by one 401-handling line; the overall source includes other changes. Full release source is not asserted deployed",
+  "checks": {
+    "root_get_head_routes_to_console": true,
+    "console_http_status": 200,
+    "tls_verified": true,
+    "health_ok": true,
+    "existing_data_preserved": true
+  },
+  "scope": "Reachability and deployment only, no new model, device or business task execution",
+  "original_a6_archive_unchanged": true
+}

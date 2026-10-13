@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scope": "actual public HTTPS Controller to Mac mini whole-model CPU worker; one pretrained GGUF generation; not MacBook Pro native linear arithmetic or distributed pretrained layers",
+  "controller_source_commit": "f91397620575444e253c528a71105b09c2ef776d",
+  "worker_source_commit": "30b9efc22c5db9f351d304604e65743ca02ccda3",
+  "backend_commit": "8345f333951c661d166b00e6f9362e553768f292",
+  "model_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169",
+  "model_id": "SmolLM2-135M-Instruct-Q4_K_M",
+  "actual_jobs_created": 1,
+  "result_summary": "Paris",
+  "result_is_summary_not_verbatim_response": true,
+  "elapsed_seconds_single_observation": 0.253,
+  "not_a_performance_benchmark": true,
+  "checked_at_beijing": "2026-10-13T17:43:27.512839+08:00",
+  "passed": true,
+  "stop_acknowledged": true,
+  "native_child_observed": true,
+  "native_and_guardian_reaped": true,
+  "worker_exit_code": 0,
+  "ledger_cleared": true,
+  "lock_reacquirable": true,
+  "worker_process_exited": true,
+  "material_author_did_not_rerun_job": true,
+  "raw_private_receipt_published": false,
+  "excluded_fields": [
+    "job_id",
+    "node_id",
+    "private_workdir",
+    "raw_logs",
+    "credentials"
+  ]
+}

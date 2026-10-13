@@ -117,7 +117,8 @@ class StageExecutor(Executor):
             served += len(results)
             failures = 0
             for result in results:
-                LOG.info("stage served request: %s", result)
+                context.result_summary = {key:result[key] for key in ("output_shape","output_preview","local_seconds","parameter_bytes") if key in result}
+                LOG.info("stage served request: %s", {key:value for key,value in result.items() if key != "output_preview"})
 
 
 def _ensure_weights(model_config, weights_path: Path) -> Path:

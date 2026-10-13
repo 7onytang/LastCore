@@ -1,0 +1,12 @@
+<resources>
+    <color name="lc_background">#101719</color>
+    <color name="lc_surface">#172024</color>
+    <color name="lc_raised">#222F33</color>
+    <color name="lc_text">#F2F6ED</color>
+    <color name="lc_muted">#AAB9BF</color>
+    <color name="lc_accent">#D7ECB4</color>
+    <color name="lc_on_accent">#1D2E27</color>
+    <color name="lc_border">#687D86</color>
+    <color name="lc_card_border">#34454D</color>
+    <color name="lc_danger">#FFB4AB</color>
+</resources>

@@ -22,7 +22,7 @@ import numpy as np
 
 from .config import ModelConfig
 from .errors import ShardError
-from .model import embed, run_layers, unembed
+from .model import check_batch, embed, run_layers, unembed
 from .weights import ShardWeights, load_shard, segment_parameter_names
 
 
@@ -92,6 +92,9 @@ class StageRuntime:
         return "first" if self.is_first else "last" if self.is_last else "middle"
 
     def execute(self, batch: np.ndarray) -> np.ndarray:
+        # Shape metadata is enough to reject before a dtype conversion copies input.
+        if batch.ndim:
+            check_batch(batch.shape[0])
         if self.is_first:
             if batch.dtype.kind not in "iu":
                 raise ShardError(f"the first stage expects integer token ids, got {batch.dtype}")

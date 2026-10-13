@@ -201,3 +201,36 @@ def test_single_stage_pipeline_is_the_reference(checkpoint):
     finally:
         server.close()
     assert np.array_equal(logits, forward_full(tokens, weights, config))
+
+
+@pytest.mark.parametrize("hidden_stage", [False, True])
+def test_oversized_tcp_batch_is_rejected_and_connection_closes(checkpoint, hidden_stage):
+    from inference_engine.model import MAX_BATCH_SIZE
+    from communication.errors import ChannelClosed
+    config, _, path = checkpoint
+    runtime = load_stage(config, path, 2, 4, task_id="batch-bound", assignment_id="stage-2") if hidden_stage else load_stage(config, path, 0, 4, task_id="batch-bound", assignment_id="stage-0")
+    server = StageServer(runtime, timeout=2)
+    address = server.address
+    thread = threading.Thread(target=serve_quietly, args=(server,))
+    thread.start()
+    link = Channel.connect(address, timeout=2)
+    try:
+        if hidden_stage:
+            link.send_hello(role="first", model_id=config.model_id, num_layers=config.n_layers,
+                layer_start=0, layer_end=2, task_id="batch-bound", assignment_id="stage-0")
+        else:
+            link.send_hello(role="client",model_id=config.model_id,layer_end=0,task_id="batch-bound",assignment_id="stage-0")
+        link.recv_hello()
+        value = np.zeros((MAX_BATCH_SIZE+1,2,config.d_model),dtype=np.float32) if hidden_stage else np.zeros((MAX_BATCH_SIZE+1,2),dtype=np.int64)
+        link.send_tensor("hidden" if hidden_stage else "tokens",value,task_id="batch-bound",assignment_id=runtime.assignment_id)
+        with pytest.raises(PeerError,match="batch size"):
+            link.recv_result()
+        with pytest.raises(ChannelClosed):
+            link.recv_frame()
+    finally:
+        link.close();thread.join(timeout=3);server.close()
+    assert not thread.is_alive()
+    assert server.processed == 0
+    # The rejected socket and subsequently closed listener leave the bind port reusable.
+    listener=ChannelListener(*address)
+    listener.close()

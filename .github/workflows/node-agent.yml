@@ -7,6 +7,21 @@ on:
 permissions:
   contents: read
 jobs:
+  state-lock:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: node-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q tests/test_credentials.py
   test:
     runs-on: ubuntu-latest
     defaults:

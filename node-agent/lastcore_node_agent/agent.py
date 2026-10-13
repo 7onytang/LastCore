@@ -54,8 +54,10 @@ class NodeAgent:
     def __init__(self, config: AgentConfig, client: ControllerClient,
                  clock: Callable[[], float] = time.time,
                  executor_factory: Callable[[], Executor] | None = None,
-                 stats: RunStats | None = None):
+                 stats: RunStats | None = None,
+                 observer: Callable[[dict], None] | None = None):
         self.config = config
+        self.observer = observer
         self.client = client
         self.clock = clock
         self.executor_factory = executor_factory or (lambda: load_executor(config.executor))
@@ -69,6 +71,18 @@ class NodeAgent:
         self._heartbeat_lock = threading.Lock()
         self._last_heartbeat_ok = 0.0
         self._credential_error: str | None = None
+
+    def _notify(self, **updates) -> None:
+        if self.observer is not None:
+            try: self.observer(updates)
+            except Exception: LOG.warning("local UI observation unavailable")
+
+    def _task_details(self, row: dict) -> dict:
+        return {"task_id": row.get("task_id"), "assignment_id": row.get("id"),
+                "model_id": str((row.get("request") or {}).get("model_id", "")),
+                "executor": self.config.executor, "layer_start": row.get("layer_start"),
+                "layer_end": row.get("layer_end"), "status": "preparing",
+                "cleanup_confirmed": False, "report_status": "running-reported", "result": None}
 
     def ensure_credentials(self) -> NodeCredentials:
         credentials = load_credentials(self.config.state_dir)
@@ -103,8 +117,10 @@ class NodeAgent:
                 try:
                     self._poll_once()
                 except httpx.HTTPError as exc:
+                    self._notify(poll_status="unavailable")
                     LOG.warning("assignments poll failed: %s", exc)
                 except ControllerError as exc:
+                    self._notify(poll_status="rejected")
                     LOG.warning("assignments poll rejected: %s", exc)
                 self.stop_event.wait(self.config.poll_interval)
             if self._credential_error:
@@ -114,6 +130,7 @@ class NodeAgent:
             if heartbeat_thread is not None:
                 heartbeat_thread.join(1.0)
             self._shutdown_execution()
+            self._notify(connection="stopped")
 
     def shutdown(self) -> None:
         self.stop_event.set()
@@ -135,6 +152,7 @@ class NodeAgent:
                 self._send_heartbeat()
                 return True
             except (httpx.HTTPError, ControllerError) as exc:
+                self._notify(connection="unreachable")
                 LOG.warning("controller not reachable yet (%s), retrying in 1s", exc)
                 self.stop_event.wait(1.0)
         return False
@@ -144,10 +162,12 @@ class NodeAgent:
             try:
                 self._send_heartbeat()
             except CredentialRejected as exc:
+                self._notify(connection="rejected")
                 self._credential_error = str(exc)
                 self.stop_event.set()
                 return
             except (httpx.HTTPError, ControllerError) as exc:
+                self._notify(connection="heartbeat-failed")
                 self.stats.heartbeats_failed += 1
                 LOG.warning("heartbeat failed: %s", exc)
 
@@ -171,12 +191,15 @@ class NodeAgent:
         with self._heartbeat_lock:
             self._last_heartbeat_ok = self.clock()
         self.stats.heartbeats_ok += 1
+        self._notify(connection="connected",node_id=self.credentials.node_id,last_heartbeat=self._last_heartbeat_ok,
+                     heartbeat_ttl=self.credentials.heartbeat_ttl_seconds)
 
     def _poll_once(self) -> None:
         assert self.credentials is not None
         rows = self._guarded(self.client.assignments)(self.credentials.node_id,
                                                       self.credentials.node_token)
         self.stats.polls += 1
+        self._notify(poll_status="ok")
         run = self._current_run()
         if run is not None:
             self._watch_active(rows, run)
@@ -236,6 +259,7 @@ class NodeAgent:
                 return
             LOG.warning("could not report running for %s, will retry next poll: %s", assignment_id, exc)
             return
+        self._notify(task=self._task_details(row))
         try:
             executor = self.executor_factory()
         except Exception as exc:
@@ -245,6 +269,9 @@ class NodeAgent:
                 self._settle(assignment_id, "failed")
             self._attempt_terminal_report(assignment_id, "failed", error)
             self.stats.failed.append(assignment_id)
+            self._notify(task_update={"assignment_id":assignment_id,"status":"failed",
+                "error_code":"executor_unavailable","cleanup_confirmed":True,
+                **({"report_status":"pending"} if assignment_id in self._pending else {})})
             return
         context = ExecutionContext(
             task_id=task_id,
@@ -264,6 +291,7 @@ class NodeAgent:
                          assignment_id=assignment_id, task_id=task_id)
         with self._active_lock:
             self._active = run
+        self._notify(task_update={"assignment_id":assignment_id,"status":"running"})
         worker.start()
         self.stats.started.append(assignment_id)
         LOG.info("started assignment %s (task %s) layers [%s, %s)",
@@ -298,11 +326,18 @@ class NodeAgent:
         if status == "cancelled-local":
             self._settle(run.assignment_id, "stopped")
             self.stats.stopped.append(run.assignment_id)
+            self._notify(task_update={"assignment_id":run.assignment_id,"status":"stopped-local",
+                "cleanup_confirmed":True,"report_status":"not-sent",
+                "error_code":error if error in {"shutdown","deadline","heartbeat-stall","task-terminal"} else "local-cancel"})
             LOG.info("assignment %s stopped locally (%s)", run.assignment_id, error)
             return
         if self._record_pending(run.assignment_id, status, error):
             self._settle(run.assignment_id, status)
         self._attempt_terminal_report(run.assignment_id, status, error)
+        self._notify(task_update={"assignment_id":run.assignment_id,"status":status,
+            "cleanup_confirmed":True,"error_code":"execution_failed" if error else None,
+            "result":run.context.result_summary,
+            **({"report_status":"pending"} if run.assignment_id in self._pending else {})})
         if status == "completed":
             self.stats.completed.append(run.assignment_id)
             LOG.info("assignment %s completed", run.assignment_id)
@@ -352,12 +387,14 @@ class NodeAgent:
                 if exc.status_code in (404, 409):
                     LOG.info("terminal report for %s not accepted: %s", assignment_id, exc)
                     self._clear_pending(assignment_id)
+                    self._notify(task_update={"assignment_id":assignment_id,"report_status":"terminal-conflict"})
                     return
                 LOG.warning("terminal report for %s rejected: %s", assignment_id, exc)
             except httpx.HTTPError as exc:
                 LOG.warning("terminal report for %s unreachable: %s", assignment_id, exc)
             else:
                 self._clear_pending(assignment_id)
+                self._notify(task_update={"assignment_id":assignment_id,"report_status":"acknowledged"})
                 return
             self.stop_event.wait(self.config.retry_backoff)
         LOG.error("gave up reporting %s=%s after %s attempts; kept pending for replay",
@@ -367,9 +404,12 @@ class NodeAgent:
         run = self._current_run()
         if run is None:
             return
+        self._notify(task_update={"assignment_id":run.assignment_id,"status":"stopping","cleanup_confirmed":False})
         run.context.request_cancel("shutdown")
         run.worker.join(self.config.stop_grace)
         if run.worker.is_alive():
+            self._notify(task_update={"assignment_id":run.assignment_id,"status":"stop-unconfirmed",
+                "cleanup_confirmed":False,"error_code":"cleanup_timeout","report_status":"not-sent"})
             LOG.error("executor for %s ignored cancellation within %ss; abandoning thread",
                       run.assignment_id, self.config.stop_grace)
             with self._active_lock:
