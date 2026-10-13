@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "scope": "public access and material usability supplement for immutable a6 delivery; not private runtime logs or a new LastCoreClient computation proof",
+  "source_commit": "a6e4e8c6f916e6d4d224c3976d816934c6b0a5ae",
+  "public_access_checked_at_beijing": "2026-10-13T16:09:29.915656+08:00",
+  "public_demo_url": "https://8.134.161.123/demo/",
+  "public_zip_url": "https://8.134.161.123/demo/lastcore-demo-kit.zip",
+  "public_demo_status": 200,
+  "http_entry_final_url": "https://8.134.161.123/demo/",
+  "zip_sha256": "6bec87093bd9e62ecd444f22993cecf83ee91adcf125b7e748f081553a923c72",
+  "zip_bytes": 1030039,
+  "zip_same_canonical": true,
+  "public_health_status": 200,
+  "public_docs_status": 200,
+  "material_extraction": {
+    "regular_files": 254,
+    "checked_relative_links": 76,
+    "broken_links": [],
+    "external_offline_rendering_assets": []
+  },
+  "new_app_execution_verified_by_this_supplement": false,
+  "immutable_zip_changed": false,
+  "excluded": "private receipts, operator/server paths, credentials, node identity, model results, cache/build outputs"
+}
