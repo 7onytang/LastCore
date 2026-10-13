@@ -21,8 +21,11 @@ class StageExecutor(Executor):
 
     The server binds exactly the address this node registered as its endpoint,
     so the address the controller holds for peers is the address that listens.
-    ``complete_after`` served requests end the execution normally (the agent
-    then reports completed); ``None`` serves until the agent cancels.
+    The assignment's ``deadline`` is absolute epoch seconds — the same base the
+    engine and communication layer use — and is handed to the StageServer so the
+    engine stops serving once it expires; the agent's deadline monitor stays as a
+    second layer. ``complete_after`` served requests end the execution normally
+    (the agent then reports completed); ``None`` serves until the agent cancels.
     """
 
     name = "stage"
@@ -46,18 +49,18 @@ class StageExecutor(Executor):
         runtime, plan = load_assigned_stage(context.raw, self.model_config, self.weights_path)
         address = parse_endpoint(self.endpoint)
         server = StageServer(runtime, address=address, downstream=plan.next_endpoint,
-                             timeout=self.timeout, deadline=None, cancel=context.cancel)
-        LOG.info("stage %s serving on %s:%s layers [%s, %s) role=%s downstream=%s",
+                             timeout=self.timeout, deadline=plan.deadline, cancel=context.cancel)
+        LOG.info("stage %s serving on %s:%s layers [%s, %s) role=%s downstream=%s deadline=%s",
                  context.assignment_id, address[0], address[1], runtime.layer_start,
-                 runtime.layer_end, runtime.role, plan.next_endpoint)
+                 runtime.layer_end, runtime.role, plan.next_endpoint, plan.deadline)
         try:
-            self._serve_loop(context, server)
+            self._serve_loop(context, server, plan.deadline)
         finally:
             server.close()
             LOG.info("stage %s closed listener %s:%s", context.assignment_id,
                      address[0], address[1])
 
-    def _serve_loop(self, context: ExecutionContext, server) -> None:
+    def _serve_loop(self, context: ExecutionContext, server, deadline: float | None) -> None:
         from communication.errors import (ChannelClosed, ChannelTimeout, PeerError,
                                           ProtocolError, TransportError)
         from inference_engine.errors import ShardError, TaskCancelled
@@ -82,6 +85,9 @@ class StageExecutor(Executor):
                     ShardError, OSError) as exc:
                 if context.cancel.is_set():
                     raise ExecutionCancelled(context.cancel_reason or "cancelled") from None
+                if deadline is not None and time.time() >= deadline:
+                    context.request_cancel("deadline")
+                    raise ExecutionCancelled("deadline") from None
                 failures += 1
                 LOG.warning("stage request failed (%s/%s): %s", failures,
                             MAX_CONSECUTIVE_FAILURES, exc)
