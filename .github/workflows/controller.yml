@@ -33,6 +33,8 @@ jobs:
         run: |
           docker compose up --build --wait --wait-timeout 120
           curl --fail http://127.0.0.1:8000/healthz
+      - name: Read-only database diagnostics in container
+        run: docker compose exec -T controller python -m app.diagnostics --database /data/controller.sqlite3
       - name: Container logs and cleanup
         if: always()
         env:

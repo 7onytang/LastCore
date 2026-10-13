@@ -54,6 +54,21 @@ Compose 默认仅绑定云服务器的 `127.0.0.1:8000`。公网节点接入通�
 
 持久化数据在 `controller-data` 数据卷。`docker compose down` 停止服务且保留数据；`docker compose down -v` 会删除数据，不能用于常规更新。更新使用 `docker compose up -d --build --wait`。首版只部署一个 Controller 实例，数据库放本机文件系统，不放 NFS。备份使用 SQLite backup API 或停服后复制整个数据卷，不能只复制正在写入的 `.sqlite3` 文件。
 
+### 数据库只读诊断
+
+`/healthz` 仅表示进程健康。检查已有 Controller 数据库的物理完整性、外键以及必需表、字段和外键声明时，使用：
+
+```bash
+cd controller-server
+python -m app.diagnostics --database data/controller.sqlite3 --timeout-seconds 10
+# Docker 中使用现有数据卷，不需要管理员或注册 token
+docker compose exec -T controller python -m app.diagnostics --database /data/controller.sqlite3
+```
+
+命令输出一份脱敏 JSON，时间显式使用北京时间 `Asia/Shanghai`。退出码 0 表示所列检查通过，1 表示发现完整性、外键或结构问题，2 表示无法打开、文件损坏、锁等待或扫描超时。预算须大于 0 且不超过 300 秒；SQLite 锁等待最多为预算与 1 秒中的较小值，长扫描用进度回调中断，耗时不是硬实时保证。不会输出节点凭据、任务内容、SQL 错误文本或违规行。
+
+源文件使用 SQLite `mode=ro`，同一读事务保持检查快照一致，不初始化数据库、不执行任务到期清理或修复；活动 WAL 数据库按 SQLite 的正常读锁协议读取，可能需要访问或创建共享内存 `-shm` 文件，不使用可能漏读 WAL 的 `immutable` 模式。路径不存在时拒绝检查，不创建空库。通过诊断仅说明所列结构和当前快照可读，不代表精确 schema 迁移版本、安全审计或真实节点推理验收。若需要确定的备份内容，应对离线备份运行诊断。实现复用 [SQLite 官方 PRAGMA](https://www.sqlite.org/pragma.html) 与 Python 标准库，无额外依赖。
+
 ## API 与权限
 
 所有受保护接口使用 `Authorization: Bearer <token>`。注册 token 仅用于入网，管理员 token 用于创建和查看任务，注册返回的节点 token 仅管理该节点。节点 token 只返回一次，服务器保存 SHA-256 摘要；节点程序需要持久化 `node_id` 和 `node_token`。断线后使用原凭据重新发心跳，避免重复注册。
