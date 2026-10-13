@@ -64,7 +64,7 @@ jobs:
         run: '"$EDGE_PY" edge-client/packaging/static_manifest.py --bundle edge-client/dist/LastCoreEdge --output edge-client/release-output'
       - uses: actions/upload-artifact@v4
         with:
-          name: edge-portable-${{ matrix.target }}-${{ github.sha }}
+          name: edge-portable-${{ matrix.target }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: edge-client/release-output/*
           if-no-files-found: error
           retention-days: 14
