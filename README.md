@@ -208,6 +208,20 @@ pytest -q tests/test_controller.py -k scheduler
 
 回归使用真实临时 SQLite 库：验证 105 个多节点任务的限量、顺序、完整上下游信息与鉴权；比较 1,000/20,000 条历史记录下的 SQLite 指令量；重新打开旧库两次验证索引幂等、数据和节点凭据保留。查询扩展性使用指令量而非墙钟阈值判断，不能据此宣称生产延迟或真实设备吞吐。完整 Controller、双节点 tiny HTTP/TCP 链路和备份恢复仍按上述命令独立验证。
 
+创建任务时，数据库直接筛选最近心跳未过期、愿意接单且没有活跃流水线预留的节点，仅读取调度所需字段；历史离线或排空节点仍保留并可通过节点列表查询。启动时幂等增加 `nodes(last_seen) WHERE accepting_tasks != 0` 部分索引，避免任务创建时加载整个历史节点注册表。TTL 边界、已完成分片在活跃流水线中的预留、容量不足时的 409 行为保持不变。
+
+大量任务同时到期时，清理先按 deadline/节点心跳失败原因分组，再每批最多 500 个任务更新任务和未完成分片。每批实际大小还受当前 SQLite 连接的绑定参数上限约束；整个扫描仍在原有单个事务中，任一批失败都会回滚整次清理，后续请求失败前已经提交的清理仍保留。deadline 和节点超时同时发生时优先记录 deadline，已完成分片及其他终态记录保持原样。此优化不会缩小单次事务的锁定范围，也不能强制停止远端执行。
+
+实现参考维护中的 MIT 许可 [Peewee 批量写入](https://github.com/coleifer/peewee)与 [SQLite 参数上限](https://www.sqlite.org/limits.html)，复用现有标准库参数化 SQL，无新增 ORM 依赖或复制第三方源码。首次部分索引创建同样需要预留磁盘与维护时间。
+
+```bash
+cd controller-server
+source .venv/bin/activate
+pytest -q tests/test_capacity_expiry_scaling.py
+```
+
+回归覆盖 1,000/20,000 个历史离线节点下的调度 SQL 指令量、1,201 个混合原因到期任务、降低至 99 的绑定参数上限、后续批次故障回滚与重试、请求拒绝后的清理落盘和旧注册表重新打开。它验证有限批次及状态一致性，不代表生产规模延迟验收。
+
 ## 后续集成
 
 - 接入真实大模型：替换 `inference-engine/model.py` 的算子与权重映射，在两节点验证真实模型的加载、分片、tensor 传输与输出（协议见 `node-agent/PROTOCOL.md`）。
