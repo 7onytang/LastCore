@@ -21,7 +21,7 @@ async function request(path, token = admin, options = {}) {
 function clearData() {
   for (const id of ['node-count','online-count','active-count','worker-count']) $(id).textContent = '—';
   $('node-list').replaceChildren(text('p','连接后查看设备、可用内存与节点状态。','empty'));
-  const row = document.createElement('tr'), cell = text('td','尚未获取任务。','empty'); cell.colSpan = 4; row.append(cell); $('task-list').replaceChildren(row);
+  const row = document.createElement('tr'), cell = text('td','尚未获取任务。','empty'); cell.colSpan = 6; row.append(cell); $('task-list').replaceChildren(row);
   $('updated').textContent = '尚未获取数据'; $('worker-note').textContent = '等待查询可用 worker';
 }
 function accessControls() {
@@ -63,8 +63,8 @@ async function refresh() {
       head.append(text('h3',n.name || '未命名节点'),badge(n.status)); card.append(head,text('p',n.platform || '未知平台'),text('p',`${n.available_memory_mb ?? '—'} MiB 可用内存 · 权重 ${n.compute_weight ?? '—'}`),text('small',`最近心跳 ${date(n.last_seen)}（北京）`)); list.append(card);
     }
     const rows = $('task-list'); rows.replaceChildren();
-    if (!tasks.length) { const r = document.createElement('tr'), c = text('td','暂无 tiny 任务。','empty'); c.colSpan = 4; r.append(c); rows.append(r); }
-    for (const t of tasks) { const r = document.createElement('tr'), state = document.createElement('td'); state.append(badge(t.status)); r.append(text('td',t.id || t.task_id || '—'),state,text('td',Array.isArray(t.assignments) ? t.assignments.length : '—'),text('td',date(t.created_at))); rows.append(r); }
+    if (!tasks.length) { const r = document.createElement('tr'), c = text('td','暂无运算任务。','empty'); c.colSpan = 6; r.append(c); rows.append(r); }
+    for (const t of tasks) { const r = document.createElement('tr'), state = document.createElement('td'); state.append(badge(t.status)); const model = t.request?.model_id; const kind = model === 'lastcore/linear-demo-v1' ? '线性运算' : model === 'lastcore/tiny-cpu' ? 'tiny 前向' : '模型运算'; const saved = t.result === null || t.result === undefined ? '未返回' : typeof t.result === 'string' ? t.result : JSON.stringify(t.result); r.append(text('td',t.id || t.task_id || '—'),text('td',model ? `${kind} · ${model}` : '未声明'),state,text('td',Array.isArray(t.assignments) ? t.assignments.length : '—'),text('td',saved),text('td',date(t.created_at))); rows.append(r); }
     $('updated').textContent = `更新于 ${date(Date.now()/1000)}（北京）`;
     connected = true; $('connection').textContent = '已连接 · 只读'; $('connection').className = 'badge good';
     message('真实数据已更新。手动刷新可获取最新状态。');
