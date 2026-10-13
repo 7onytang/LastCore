@@ -143,6 +143,9 @@ class StageServer:
 
         Idle waiting is a short poll, so a stop request (``should_stop`` or a cancel event) takes
         effect within ``poll_interval``; ``timeout`` only bounds a request once a peer connected.
+        An expired task ``deadline`` (epoch seconds, as the Controller and node-agent report it)
+        raises ``ChannelTimeout`` instead of looping: the node must not keep polling work whose
+        task has already been failed by the Controller.
         """
         results: list[dict] = []
         while max_requests is None or len(results) < max_requests:
@@ -154,6 +157,8 @@ class StageServer:
                 conn = self.listener.accept(timeout=poll_interval, cancel=self.cancel,
                                             channel_timeout=self.timeout, deadline=self.deadline)
             except ChannelTimeout:
+                if self.deadline is not None and time.time() >= self.deadline:
+                    raise
                 continue
             except TaskCancelled:
                 break
