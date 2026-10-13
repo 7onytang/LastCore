@@ -1,6 +1,6 @@
 # LastCore
 
-LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲置算力执行推理。面向希望组织多台电脑和移动设备的开发者，当前提供两条独立路径：**tiny 模型的连续分层推理原型**，以及**固定 SmolLM2 模型在选定单设备上的完整推理**。
+LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI 任务调度服务，探索利用闲置算力执行推理。Mac 与 Android 是当前已实现的接入路径，其他边缘设备适配正在开发；本次交付未提供这些适配的具体设备清单和实测证据。当前提供两条独立执行路径：**tiny 模型的连续分层推理原型**，以及**固定 SmolLM2 模型在选定单设备上的完整推理**。
 
 技术栈：Python 3.12+、FastAPI、SQLite、NumPy/TCP、llama.cpp，以及 Android Java/JNI。项目业务时间统一使用 `Asia/Shanghai`；协议存储可使用 UTC。
 
@@ -26,6 +26,7 @@ LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲�
 | Android 前台 UI、工作节点与 JNI 后端 | 已实现，真机未验收 | 有 APK 构建与主机 JVM/JNI 证据；不代表 Android 真机、Keystore 或生命周期已验证 |
 | SQLite 诊断、在线备份、恢复及部署归档 | 已实现 | 保留数据与凭据的验收范围见发布记录 |
 | 预训练大模型跨设备分层、KV cache/batching、NAT 穿透、离线自动迁移 | 未实现 | 不作为当前可交付功能 |
+| 其他类型边缘设备适配 | 开发中 | 用户确认的后续开发范围；具体设备与支持状态以实际源码和验收材料为准 |
 | 生产客户端签名、公证与 Windows 发布 | 未交付 | Android debug 为开发签名，release APK 未签名；macOS bundle 未签名/未公证 |
 
 已有公开版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。最终参赛版本须在项目完成后再次固定。

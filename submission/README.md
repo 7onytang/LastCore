@@ -38,6 +38,7 @@ Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc
 | SQLite 诊断、在线备份与恢复验证 | 已实现 | `controller-server/app/diagnostics.py`、`controller-server/app/backup.py`；`controller-server/tests/test_diagnostics.py`、`controller-server/tests/test_backup.py`；`integration/verify_backup_recovery.py` |
 | 部署与固定来源归档 | 已实现；公开 Alpha 有独立来源记录 | `ops/public-ip-https/`、`ops/staging/prepare_release.py`、`ops/staging/integration-sources.json`；`submission/evidence/` |
 | 预训练大模型跨设备分层、KV cache、NAT 穿透、自动迁移 | 未实现 | 根 README 已列局限，不列为已完成功能 |
+| 其他类型边缘设备适配 | 开发中 | 定位为多类型边缘设备计算网络；本次材料未提供具体设备清单和实测证据，不列为已验收支持 |
 | Android 真机运行、生产签名/公证、Windows 发布 | 未验收 / 未交付 | 不把 APK 构建、主机 JNI 或未签名 bundle 当作这些能力的证明 |
 
 ## 评分依据索引
