@@ -88,13 +88,21 @@ def main():
         except subprocess.CalledProcessError:raise RuntimeError('Untracked required input: '+relative) from None
         if path.read_bytes()!=original:raise RuntimeError('Required input differs from fixed Git: '+relative)
         sources[relative]=sha(path);git_blobs[relative]=blob
+    tk_versions={}
     if sys.platform=='win32':
         import pefile
         for component in ('tcl','tk'):
             dll=bundle/'_internal'/(component+'86t.dll')
             pe=pefile.PE(str(dll));info=pe.VS_FIXEDFILEINFO[0]
             version=(info.FileVersionMS>>16,info.FileVersionMS&65535,info.FileVersionLS>>16,info.FileVersionLS&65535)
-            if version[:3]!=(8,6,15):raise RuntimeError('Native Tcl/Tk does not match pinned vendor license version')
+            # Tcl's VERSIONINFO numeric fields can encode release level/serial,
+            # not the semantic patch version. Preserve them without relabeling.
+            script=bundle/('_internal/_tcl_data/init.tcl' if component=='tcl' else '_internal/_tk_data/tk.tcl')
+            found=re.search(r'package require\s+-exact\s+'+component.capitalize()+r'\s+([0-9.]+)',script.read_text())
+            declared=found.group(1) if found else None
+            print(json.dumps({'component':component,'numeric_file_version':version,'script_exact_requirement':declared}))
+            if declared!='8.6.15':raise RuntimeError('Installed Tk script version does not match pinned full vendor terms')
+            tk_versions[component]={'numeric_file_version':version,'script_exact_requirement':declared,'license_source_version':'8.6.15'}
             pe.close()
     maximum=max(glibc,key=lambda v:tuple(map(int,v.split('.')))) if glibc else None
     manifest={'schema_version':1,'source_commit':commit,'target':target,'python_version':platform.python_version(),
@@ -105,6 +113,7 @@ def main():
               'binary_headers':binaries,'linux_glibc_required_at_least':maximum,
               'linux_required_shared_libraries':sorted(external),'source_files':sources,'files':files,
               'source_git_blobs':git_blobs,'runtime_inputs':runtime_inputs,'build_inputs':build_inputs,
+              'windows_tcl_tk_static_versions':tk_versions,
               'license_manifest':license_data,'lock_sha256':sha(ROOT/'edge-client/packaging/locks'/f'{target}.txt')}
     manifest['ca_bundle']={'relative_path':'_internal/certifi/cacert.pem','sha256':sha(ca)}
     if any(v.get('authenticode_certificate_present') for v in binaries.values()):

@@ -25,7 +25,9 @@ def main():
             source = Path(distribution.locate_file(relative))
             target = out / "dependencies" / name / Path(relative).name
             target.parent.mkdir(parents=True, exist_ok=True);shutil.copyfile(source, target)
-        entries.append({"name":name,"version":distribution.version})
+        entries.append({"name":name,"version":distribution.version,
+                        "license":module.license_label(distribution.metadata),
+                        "project_url":module.project_url(distribution.metadata)})
     python_license = module.locate_cpython_license()
     shutil.copyfile(python_license, out / "CPython-LICENSE.txt")
     if module.PSF_LICENSE_HEADING not in (out / "CPython-LICENSE.txt").read_bytes():
@@ -58,6 +60,13 @@ def main():
         except urllib.error.HTTPError as exc:
             if exc.code!=404:raise
     shutil.copyfile(ROOT / "LICENSE", out / "LastCore-LICENSE.txt")
+    notices=['Third-party source availability and license notices',
+             'Full license files are preserved beside this notice.']
+    for entry in entries:
+        notices.append(f"{entry['name']} {entry['version']}: {entry['license']}; upstream {entry['project_url']}")
+        if 'MPL' in entry['license'].upper():
+            notices.append('Source Code Form for this exact version is available from the upstream project/tag above; no MPL-covered files are modified.')
+    (out/'THIRD-PARTY-NOTICES.txt').write_text('\n'.join(notices)+'\n')
     manifest={"python_version":sys.version.split()[0],"runtime_distributions":entries,
               "openssl_version":openssl_version,"openssl_license_source":license_url,
               "source_paths_excluded":True,
