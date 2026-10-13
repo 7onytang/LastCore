@@ -21,6 +21,7 @@ class Store:
         self.path = path
         self.ttl = heartbeat_ttl
         self.clock = clock
+        self._result_storage_ready = False
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(path)) as db, db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -42,16 +43,15 @@ class Store:
                     status TEXT NOT NULL, error TEXT,
                     UNIQUE(task_id, position)
                 );
-                CREATE TABLE IF NOT EXISTS assignment_results (
-                    assignment_id TEXT PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
-                    result TEXT NOT NULL
-                );
                 CREATE INDEX IF NOT EXISTS assignments_node ON assignments(node_id);
                 CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
                 CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at DESC);
                 CREATE INDEX IF NOT EXISTS nodes_accepting_heartbeat ON nodes(last_seen)
                     WHERE accepting_tasks != 0;
             """)
+            self._result_storage_ready = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='assignment_results'"
+            ).fetchone() is not None
 
     @contextmanager
     def transaction(self):
@@ -172,11 +172,8 @@ class Store:
         task_ids = [task["id"] for task in tasks]
         placeholders = ",".join("?" for _ in task_ids)
         by_task = {task_id: [] for task_id in task_ids}
-        result_table = db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='assignment_results'"
-        ).fetchone()
-        result_join = "LEFT JOIN assignment_results ar ON ar.assignment_id=a.id" if result_table else ""
-        result_column = ", ar.result AS stored_result" if result_table else ", NULL AS stored_result"
+        result_join = "LEFT JOIN assignment_results ar ON ar.assignment_id=a.id" if self._result_storage_ready else ""
+        result_column = ", ar.result AS stored_result" if self._result_storage_ready else ", NULL AS stored_result"
         for row in db.execute(f"""
             SELECT a.*, n.endpoint{result_column}
             FROM assignments a JOIN nodes n ON n.id=a.node_id
@@ -308,10 +305,12 @@ class Store:
             db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
                        (report.status, report.error if report.status == "failed" else None, assignment_id))
             if report.result is not None:
-                db.execute("""CREATE TABLE IF NOT EXISTS assignment_results (
-                    assignment_id TEXT PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
-                    result TEXT NOT NULL
-                )""")
+                if not self._result_storage_ready:
+                    db.execute("""CREATE TABLE IF NOT EXISTS assignment_results (
+                        assignment_id TEXT PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
+                        result TEXT NOT NULL
+                    )""")
+                    self._result_storage_ready = True
                 db.execute("INSERT INTO assignment_results (assignment_id, result) VALUES (?, ?) "
                            "ON CONFLICT(assignment_id) DO UPDATE SET result=excluded.result",
                            (assignment_id, json.dumps(report.result)))
