@@ -341,3 +341,30 @@ Release artifacts must keep their actual build commit, source-file hashes, platf
 ## License
 
 LastCore's own source is licensed under [MIT](LICENSE), using the [OSI MIT template](https://opensource.org/license/mit). Third-party software and model weights retain their own terms. The real model/backend license texts and manifest are in `real-model-runtime/licenses/`; desktop packaging collects and verifies the frozen runtime's license materials. The top-level license does not replace those third-party notices.
+
+## 统一 UI 与本地桌面面板
+
+网站 `demo/`、Controller 控制台、桌面节点面板与 Android 共用[设计规范](design-system/lastcore/MASTER.md)：鼠尾草绿、深墨色控制界面、统一操作状态和 48dp/px 触控区域。网站的公开历史回放仍保留原有来源，控制台查询实际数据；两者验证范围不同。
+
+Controller 按上文启动后，访问 `http://127.0.0.1:8000/`，输入本机管理员凭据查看节点和最近 tiny 任务；整模型 API 关闭时明确显示未启用。页面只读、手动刷新，凭据只在页面内存中保留，断开后清除。公开部署必须沿用 HTTPS。
+
+桌面端使用源码浏览器面板（macOS / Windows / Linux），无需新增 UI 运行依赖：先安装 `node-agent/requirements.txt`，按 `node-agent/desktop/env.example` 准备私有配置，再执行：
+
+```sh
+python node-agent/desktop/ui.py --env-file /absolute/private/node.env
+```
+
+仅监听随机 loopback 端口，自动打开本机浏览器；页面显式启动/停止 tiny 或 demo 节点。退出启动终端会请求节点停止；停止待确认时保留私有恢复状态。macOS 的整模型 worker 仍是 `real-model-runtime/` 下的独立 CLI。Windows/Linux 源码入口不代表原生窗口、安装包或真机均已验收。
+
+UI skill 已固定来源并**仅安装到本项目** `.agents/skills/ui-ux-pro-max/`，下次会话可发现，未安装全局 skill。验证入口：
+
+```sh
+(cd controller-server && python -m pytest -q tests/test_console_ui.py tests/test_controller.py)
+(cd node-agent && python -m pytest -q tests/test_desktop_ui.py tests/test_desktop_configuration.py)
+node --check controller-server/app/ui/console.js
+python demo/export-standalone.py
+```
+
+Android 仍按 `android-app/README.md` 使用固定 SDK/NDK 构建；资源/Java 编译、完整 APK 构建与真机推理是独立的验证层次。
+
+桌面源码节点面板已进一步限定为“当前任务 / 设备状态”两卡，独立页面没有管理员凭据、全节点列表、派活或全局取消。安装其项目级依赖：`python -m pip install -r node-agent/desktop/requirements-ui.txt`。它显示本机接受的任务、分片与实际数值摘要，确认心跳按北京时间展示，CPU/内存来自本机 OS 采样，缺失时显示 `Unavailable`。该面板不是用户已有的 SwiftUI `LastCoreClient`；不能依据 App 名称或在线注册字段推断 live executor 兼容。legacy 停止只确认本机清理，Controller 后续收敛与停止确认协议的范围见桌面 README，未修改服务器协议。
