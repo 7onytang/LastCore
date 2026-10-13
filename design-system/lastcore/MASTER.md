@@ -3,7 +3,7 @@
 ## Product and surface roles
 LastCore connects multiple edge-device types. Android and macOS have current implementation paths; Windows/Linux source launchers are separate from verified binary distribution. Other edge adapters remain in development. Interfaces must distinguish tiny layer execution, single-device SmolLM2 jobs, and historical replay.
 
-The existing product website (`demo/`) uses a warm paper canvas. Operational web/desktop panels (`controller-server/app/ui/`) and Android use deep green ink surfaces. Both share sage accents, the LastCore three-column mark, restrained typography, generous spacing, and explicit status language. Illustrations are explanatory art; never label them device screenshots or telemetry.
+The existing product website (`demo/`) uses a warm paper canvas. Operational web/desktop panels (`controller-server/app/ui/`) and Android use neutral charcoal surfaces. Both share sage accents, the LastCore three-column mark, restrained typography, generous spacing, and explicit status language. Illustrations are explanatory art; never label them device screenshots or telemetry.
 
 ## Shared tokens
 | Role | Marketing | Control surfaces / Android |

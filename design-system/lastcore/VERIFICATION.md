@@ -1,16 +1,25 @@
 # Unified UI verification
 
-Implementation baseline: `fd007a5c51d4e8b91a338c9f896006849591d8e9`, branch `codex/unified-ui`. Follow-up UI-only changes add the remote-HTTP credential guard and contain decorative tablet geometry; Android source is unchanged from the baseline.
+Final UI source: `1760373d17489eb377f74635b079efd77e766bf0`, branch `codex/unified-ui`, draft PR [#67](https://github.com/7onytang/LastCore/pull/67). Any subsequent commit changes only verification documentation.
 
-- Controller console plus existing controller regressions: **19 passed**. Real temporary SQLite, public asset access, private API authentication, traversal rejection, and unchanged health behavior.
-- Desktop security/configuration/node lifecycle regressions: **28 passed**. Loopback server rejects missing session, foreign Origin and foreign Host. No credentials in browser assets.
-- Real local browser/HTTP loop: the desktop panel launched a configured **demo-mode** node; an isolated real Controller received its registration/heartbeat. The same UI stopped it with **exit code 0**. This is process/protocol proof, not model execution or production proof.
-- Browser UI exercised the actual Controller APIs, empty task lists, registered-node data, clearing the input after connection, explicit disconnect/data clearing, invalid-credential feedback, website history-tab switching, and mobile 48px control targets. 1440/768/390px layouts checked. No fabricated metrics or persisted API token.
-- Android full `build-apk.sh`: **BUILD SUCCESSFUL**, debug/unsigned-release/instrumentation APKs, `lintDebug`, artifact/source/license binding, 7 admission checks and 9 pure Java HTTPS checks passed. APK sources bind exactly to `fd007a5...`. Instrumentation was compiled, **not executed**. Physical Android checks remain deferred.
-- Debug APK SHA256: `51a82a28296fcf2ffb6176293d245926da23533bb934fd387511bd7ccd3d422c` (development signature).
-- Unsigned release SHA256: `2e26c7102d8d469523c055564aeaa551fb32017e078073742797a6d81389f978`.
-- Instrumentation APK SHA256: `ca198d00232fc5e15bc41825c1c5b64e0cc49a0a07e8ea498932fc43bcab4a71`.
+## Functional workflow
+- **Web:** neutral charcoal workspace with a compact heading; connect -> credential input collapses -> refresh/disconnect. Invalid credentials clear memory/data and restore the form. Page navigation clears the authenticated UI as well as the token. Inputs/actions disable during requests, and stale results are labeled after failure.
+- **Desktop:** idle shows start; running shows stop. A pending stop is not complete; new start stays unavailable until the original child exits. Failed/unknown requests permit a state recheck instead of blind reexecution. An expired page session keeps controls disabled with a reopen-link instruction.
+- **Android:** shared model preparation, mutually exclusive local/cloud modes, expandable first enrollment, inline field errors and one primary operation. Model presence is a hint; exact hash checks still run. Missing model files do not prevent cloud lease recovery. Busy work disables competing actions and takes the user to output/stop; stopping remains pending until the existing executor completes.
+- **Website:** original light showcase and evidence unchanged; short primary labels, visible reset text and >=48px interactive targets.
 
-Local full build log: `/private/tmp/lastcore-unified-ui-android-build.log`; artifact details: `android-app/verification/artifact-manifest.json` (ignored build evidence). Browser PNGs: `/private/tmp/lastcore-ui-final-1440.png`, `lastcore-ui-final-768.png`, `lastcore-ui-final-390.png`, `lastcore-ui-local-panel.png`, `lastcore-ui-website-mobile.png`. Screenshots are actual browser renders, not Android device screenshots.
+## Verified results
+- **19 Controller regressions passed** with real temporary SQLite: public assets, private data authentication, traversal rejection and unchanged health behavior.
+- **29 desktop/config/node regressions passed**, including loopback session/Host/Origin protection and a controlled delayed-child fixture proving stop timeout cannot report completion or launch another child. The delayed fixture is a simulated timing condition.
+- **Real local browser/HTTP demo-node loop:** an actual configured demo-mode process registered and heartbeated to an isolated real Controller, then stopped with exit 0 through the same panel. This proves process/protocol controls, not model inference or production behavior.
+- **Actual browser QA:** live local API data, input collapse/clearing, disconnect, invalid credential retry, start/stop visibility, expired-session disabled state, website replay/reset, and no horizontal overflow at 1440/768/390px.
+- **Android full build-apk.sh passed:** debug, unsigned release and instrumentation APKs, lintDebug, fixed-source/license/artifact binding, 7 admission checks and 9 pure-Java HTTPS checks. Source binding is `1760373d17489eb377f74635b079efd77e766bf0`. Instrumentation was compiled, **not executed**.
 
-No production deployment, publishing, native signing, Windows/Linux hardware execution or physical Android execution occurred. Current stable website historical evidence and artifact identities remain separate. The startup/test servers are closed after QA.
+## Android artifacts
+- Debug: `16a08e7b407232c34d82cf443d0522c5946291bc8f15b8f31fdbf181c55a70a8` (development signature).
+- Unsigned release: `4570f8394f3581693c4354885b101c027f664a20e1850e0632e13875fe9259eb`.
+- Instrumentation: `ca198d00232fc5e15bc41825c1c5b64e0cc49a0a07e8ea498932fc43bcab4a71` (not executed).
+
+Full build log: `/private/tmp/lastcore-ui-workflow-android-build.log`. Full local manifest: `android-app/verification/artifact-manifest.json` (ignored build evidence). Latest real browser screenshots: `/private/tmp/lastcore-ui-simple-1440.png`, `lastcore-ui-simple-768.png`, `lastcore-ui-simple-390.png`, `lastcore-ui-simple-local.png`, `lastcore-ui-simple-website.png`. These are browser renders, not Android device screenshots.
+
+No production deployment, merge, publishing, release signing, Windows/Linux hardware execution or Android physical-device execution occurred. The existing stable release, frozen bundles and historic evidence remain independently identified. Local test/preview services were stopped after QA.
