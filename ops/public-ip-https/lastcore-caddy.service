@@ -1,0 +1,43 @@
+[Unit]
+Description=LastCore IP HTTPS (Caddy v2.11.7)
+Documentation=https://caddyserver.com/docs/
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/lastcore/tls/LE-SA-v1.8-accepted
+
+[Service]
+Type=notify
+User=lastcore-caddy
+Group=lastcore-caddy
+ExecStart=/opt/lastcore/tls/current/caddy run --config /opt/lastcore/tls/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+LimitNOFILE=16384
+Environment=TZ=Asia/Shanghai
+Environment=HOME=/var/lib/lastcore-caddy
+Environment=XDG_CONFIG_HOME=/var/lib/lastcore-caddy/config
+Environment=XDG_DATA_HOME=/var/lib/lastcore-caddy/data
+StateDirectory=lastcore-caddy
+StateDirectoryMode=0700
+UMask=0077
+MemoryMax=256M
+TasksMax=128
+CPUQuota=50%
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lastcore-caddy
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

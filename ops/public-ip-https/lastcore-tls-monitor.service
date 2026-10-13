@@ -1,0 +1,25 @@
+[Unit]
+Description=Check LastCore certificate trust, expiry and HTTPS health
+After=lastcore-caddy.service
+
+[Service]
+Type=oneshot
+User=lastcore-caddy
+Group=lastcore-caddy
+ExecStart=/usr/bin/python3 /opt/lastcore/tls/current/tls_monitor.py
+Environment=TZ=Asia/Shanghai
+Environment=LASTCORE_TLS_CONNECT_HOST=127.0.0.1
+Environment=LASTCORE_TLS_SERVER_IP=8.134.161.123
+Environment=LASTCORE_TLS_WARN_HOURS=48
+StateDirectory=lastcore-caddy
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lastcore-caddy
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=64M
+TimeoutStartSec=30s

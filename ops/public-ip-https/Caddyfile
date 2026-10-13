@@ -1,0 +1,54 @@
+{
+	admin off
+	default_sni 8.134.161.123
+	auto_https disable_redirects
+	storage file_system {
+		root /var/lib/lastcore-caddy
+	}
+	servers {
+		protocols h1 h2
+		timeouts {
+			read_header 10s
+			idle 60s
+		}
+	}
+}
+
+# Port 80 serves CertMagic's ACME HTTP-01 handler before these routes.
+# All other plaintext requests are rejected, never proxied or redirected.
+http://:80 {
+	respond "HTTPS required." 400
+	log {
+		output discard
+	}
+}
+
+https://8.134.161.123:443 {
+	tls {
+		protocols tls1.2 tls1.3
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			test_dir https://acme-staging-v02.api.letsencrypt.org/directory
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+	request_body {
+		max_size 1MB
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8000 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 30s
+		}
+	}
+	# Access logs contain neither paths, headers nor token-bearing requests.
+	log {
+		output discard
+	}
+}
