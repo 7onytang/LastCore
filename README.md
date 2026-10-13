@@ -22,6 +22,8 @@ LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲�
 
 已有公开版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。最终参赛版本须在项目完成后再次固定。
 
+协作开发主线报告：Mac worker 的三处异常恢复/凭据问题正在修复，包括注册被明确拒绝后的重试、节点凭据与 Controller origin 的绑定，以及已有停止账本的恢复上报顺序。**最终源码尚未冻结**；既有验收记录仍保留其原有证明范围，不代表上述异常恢复已全部覆盖。
+
 **两种任务的结果语义不同：** legacy `/v1/tasks` 完成表示各分片上报完成，Controller 不存储该路径的模型输出；整模型 `/v1/inference/jobs` 保存有界文本结果和停止确认。单设备 SmolLM2 成功不能证明真实预训练模型已跨设备分层。
 
 ## 核心文件清单
