@@ -1,9 +1,11 @@
 import os
 import secrets
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
@@ -34,8 +36,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     if not 5 <= settings.heartbeat_ttl_seconds <= 3600:
         raise ValueError("Heartbeat TTL must be between 5 and 3600 seconds")
     store = store or Store(settings.database_path, settings.heartbeat_ttl_seconds)
-    app = FastAPI(title="LastCore Controller", version="0.1.0")
+    app = FastAPI(title="LastCore Controller", version="0.2.0")
     bearer = HTTPBearer(auto_error=False)
+
+    @app.get("/", include_in_schema=False)
+    def showcase():
+        return FileResponse(Path(__file__).with_name("showcase.html"))
 
     def credential(auth: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
         if auth is None or auth.scheme.lower() != "bearer":

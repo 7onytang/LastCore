@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f3">
+  <title>LastCore | 分布式计算演示</title>
+  <style>
+    :root { color-scheme: light; --ink:#17251f; --muted:#63736a; --line:#dce4de; --paper:#fff; --canvas:#f4f6f3; --green:#16724d; --lime:#c9ef6a; --blue:#3279a8; --red:#ba5145; --amber:#a87012; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--canvas); color:var(--ink); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    button,input { font:inherit; }
+    .shell { max-width:1200px; margin:auto; padding:28px 30px 48px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:20px; border-bottom:1px solid var(--line); padding-bottom:20px; }
+    .brand { display:flex; align-items:center; gap:12px; font-weight:750; font-size:18px; }
+    .mark { width:34px; height:34px; display:grid; place-items:center; border-radius:8px; background:var(--green); color:var(--lime); font-size:18px; }
+    .brand small { display:block; color:var(--muted); font-size:12px; font-weight:500; }
+    .connection { color:var(--muted); display:flex; align-items:center; gap:8px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#aab6ae; }
+    .dot.online { background:#28a36b; }
+    main { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:32px; padding-top:28px; }
+    h1 { margin:0; font-size:25px; line-height:1.2; }
+    .sub { color:var(--muted); margin:7px 0 22px; }
+    .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--line); border-radius:8px; background:var(--paper); margin-bottom:26px; }
+    .metric { padding:15px 18px; border-right:1px solid var(--line); }
+    .metric:last-child { border:0; }
+    .metric span { display:block; color:var(--muted); font-size:12px; }
+    .metric strong { display:block; margin-top:3px; font-size:22px; font-variant-numeric:tabular-nums; }
+    .section-head { display:flex; justify-content:space-between; align-items:center; margin:0 0 10px; }
+    h2 { margin:0; font-size:15px; }
+    .quiet { color:var(--muted); font-size:12px; }
+    .nodes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .node { background:var(--paper); border:1px solid var(--line); border-radius:7px; padding:13px; min-width:0; }
+    .node-top { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+    .node-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:650; }
+    .badge { font-size:11px; color:var(--green); background:#e7f4ed; padding:2px 7px; border-radius:99px; }
+    .badge.busy { color:#8b5c08; background:#fbf1d9; }
+    .badge.offline { color:#68746d; background:#edf0ed; }
+    .node-meta { margin-top:10px; color:var(--muted); font-size:12px; display:flex; justify-content:space-between; }
+    .empty { border:1px dashed #bdc9c1; border-radius:7px; color:var(--muted); padding:25px; text-align:center; grid-column:1/-1; }
+    .task-area { margin-top:28px; }
+    .task-list { margin-top:10px; border-top:1px solid var(--line); }
+    .task-row { display:grid; grid-template-columns:minmax(140px,1fr) 100px 1fr 100px; gap:12px; align-items:center; padding:12px 4px; border-bottom:1px solid var(--line); font-size:12px; }
+    .task-id { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,monospace; }
+    aside { border-left:1px solid var(--line); padding-left:25px; }
+    .aside-title { font-size:12px; color:var(--muted); text-transform:uppercase; }
+    .credential { margin-top:8px; width:100%; height:38px; border:1px solid var(--line); border-radius:6px; padding:0 10px; background:white; }
+    .mode { display:grid; grid-template-columns:1fr 1fr; padding:3px; gap:3px; background:#e8ede8; border-radius:7px; margin:20px 0 16px; }
+    .mode button { border:0; border-radius:5px; background:transparent; color:var(--muted); cursor:pointer; padding:8px 5px; }
+    .mode button.selected { background:white; color:var(--ink); box-shadow:0 1px 3px #15251a18; font-weight:650; }
+    .field { margin:13px 0; }
+    .field label { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:var(--muted); margin-bottom:5px; }
+    .field input { width:100%; height:36px; border:1px solid var(--line); border-radius:6px; padding:0 9px; background:white; color:var(--ink); }
+    input[type=range] { padding:0; accent-color:var(--green); }
+    .run { width:100%; height:40px; border:0; border-radius:6px; color:white; background:var(--green); font-weight:650; cursor:pointer; margin-top:8px; }
+    .run:hover { background:#105d3e; }
+    .run:disabled { cursor:wait; opacity:.65; }
+    .result { border-top:1px solid var(--line); margin-top:18px; padding-top:16px; display:none; }
+    .result.show { display:block; }
+    .result-label { color:var(--muted); font-size:12px; }
+    .result-value { font-size:23px; font-weight:700; margin:4px 0; overflow-wrap:anywhere; }
+    .result-detail { color:var(--muted); font-size:12px; }
+    .error { color:var(--red); font-size:12px; margin-top:10px; min-height:18px; }
+    .foot { color:var(--muted); font-size:11px; margin-top:20px; }
+    @media(max-width:850px) { main { grid-template-columns:1fr; } aside { border-left:0; border-top:1px solid var(--line); padding:22px 0 0; } }
+    @media(max-width:560px) { .shell { padding:18px 15px 32px; } header { align-items:flex-start; } .connection { font-size:12px; } h1 { font-size:22px; } .nodes { grid-template-columns:repeat(2,minmax(0,1fr)); } .metric { padding:12px 10px; } .metric strong { font-size:19px; } .task-row { grid-template-columns:minmax(100px,1fr) 68px 1fr; } .task-row span:last-child { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><div class="mark">L</div><div>LastCore<small>Distributed Compute Lab</small></div></div>
+      <div class="connection"><i class="dot" id="healthDot"></i><span id="healthText">连接中</span></div>
+    </header>
+    <main>
+      <section>
+        <h1>分布式计算演示</h1>
+        <p class="sub">由 Controller 派发任务，在线节点并行计算并汇总结果。</p>
+        <div class="metrics">
+          <div class="metric"><span>在线节点</span><strong id="onlineCount">—</strong></div>
+          <div class="metric"><span>执行中任务</span><strong id="runningCount">—</strong></div>
+          <div class="metric"><span>已完成任务</span><strong id="doneCount">—</strong></div>
+        </div>
+        <div class="section-head"><h2>计算节点</h2><span class="quiet" id="nodeRefresh">等待授权</span></div>
+        <div class="nodes" id="nodes"><div class="empty">输入管理员令牌后查看节点</div></div>
+        <div class="task-area">
+          <div class="section-head"><h2>最近任务</h2><span class="quiet" id="taskRefresh">—</span></div>
+          <div class="task-list" id="tasks"><div class="quiet">暂无任务</div></div>
+        </div>
+      </section>
+      <aside>
+        <div class="aside-title">Controller 管理员令牌</div>
+        <input class="credential" id="token" type="password" autocomplete="off" placeholder="粘贴 CONTROLLER_ADMIN_TOKEN">
+        <div class="mode" role="tablist" aria-label="计算类型">
+          <button class="selected" data-mode="pi">圆周率</button>
+          <button data-mode="logs">日志统计</button>
+        </div>
+        <div id="piFields">
+          <div class="field"><label for="samples">采样点 <strong id="sampleLabel">300,000</strong></label><input id="samples" type="range" min="30000" max="1200000" step="30000" value="300000"></div>
+        </div>
+        <div id="logFields" hidden>
+          <div class="field"><label>输入日志</label><div class="quiet">运行内置的 48 行演示日志，统计 ERROR / WARN / INFO。</div></div>
+        </div>
+        <div class="field"><label for="workers">最多使用节点 <strong id="workerLabel">3</strong></label><input id="workers" type="range" min="1" max="8" value="3"></div>
+        <button class="run" id="run">运行圆周率计算</button>
+        <div class="error" id="error"></div>
+        <div class="result" id="result"><div class="result-label" id="resultLabel">计算结果</div><div class="result-value" id="resultValue">—</div><div class="result-detail" id="resultDetail"></div></div>
+        <div class="foot">任务通过当前 Controller 的调度器分片。Worker 不需要公开入站端口，可主动轮询领取任务。</div>
+      </aside>
+    </main>
+  </div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let mode = "pi";
+  let busy = false;
+  let taskIds = new Set();
+  const sampleLines = [
+    "2026-10-13T09:00:01Z INFO api request accepted path=/healthz",
+    "2026-10-13T09:00:02Z INFO node registered name=worker-01",
+    "2026-10-13T09:00:03Z WARN heartbeat delayed node=worker-02 delay_ms=1400",
+    "2026-10-13T09:00:04Z INFO task queued id=demo-001",
+    "2026-10-13T09:00:05Z ERROR worker timeout node=worker-03",
+    "2026-10-13T09:00:06Z INFO assignment retried id=assignment-12",
+    "2026-10-13T09:00:07Z WARN memory pressure node=worker-02 used_pct=82",
+    "2026-10-13T09:00:08Z INFO task completed id=demo-001",
+    "2026-10-13T09:00:09Z ERROR invalid task payload id=demo-002",
+    "2026-10-13T09:00:10Z INFO node heartbeat ok name=worker-01",
+    "2026-10-13T09:00:11Z INFO task queued id=demo-003",
+    "2026-10-13T09:00:12Z WARN worker reconnecting node=worker-04",
+    "2026-10-13T09:00:13Z INFO assignment started node=worker-02",
+    "2026-10-13T09:00:14Z ERROR result validation failed id=assignment-19",
+    "2026-10-13T09:00:15Z INFO task completed id=demo-003",
+    "2026-10-13T09:00:16Z INFO node registered name=worker-05"
+  ];
+  const logs = Array.from({length:3}, (_, round) => sampleLines.map(line => line.replace("09:00:", `09:0${round}:`))).flat();
+  function auth() { return {Authorization: `Bearer ${$("token").value.trim()}`}; }
+  async function api(path) {
+    const response = await fetch(path, {headers: auth()});
+    if (!response.ok) throw new Error((await response.text()).slice(0, 220));
+    return response.json();
+  }
+  async function refresh() {
+    if (!$("token").value.trim()) return;
+    try {
+      const [nodeData, taskData] = await Promise.all([api("/v1/nodes"), api("/v1/tasks")]);
+      $("healthDot").classList.add("online"); $("healthText").textContent = "Controller 已连接";
+      const nodes = nodeData.nodes;
+      $("onlineCount").textContent = nodes.filter(n => n.status !== "offline").length;
+      const tasks = taskData.tasks;
+      $("runningCount").textContent = tasks.filter(t => ["queued", "running"].includes(t.status)).length;
+      $("doneCount").textContent = tasks.filter(t => t.status === "completed").length;
+      $("nodeRefresh").textContent = `${nodes.length} 个已注册`;
+      $("nodes").innerHTML = nodes.length ? nodes.map(n => {
+        const state = n.status === "available" ? "在线" : n.status === "busy" ? "计算中" : n.status === "offline" ? "离线" : "暂停接单";
+        const badge = n.status === "busy" ? "busy" : n.status === "offline" ? "offline" : "";
+        return `<div class="node"><div class="node-top"><span class="node-name" title="${escapeHtml(n.name)}">${escapeHtml(n.name)}</span><span class="badge ${badge}">${state}</span></div><div class="node-meta"><span>${escapeHtml(n.platform)}</span><span>权重 ${n.compute_weight}</span></div></div>`;
+      }).join("") : '<div class="empty">等待 Worker 注册并发送心跳</div>';
+      $("workers").max = Math.max(1, Math.min(8, nodes.filter(n => n.status === "available").length || 1));
+      if (Number($("workers").value) > Number($("workers").max)) $("workers").value = $("workers").max;
+      $("workerLabel").textContent = $("workers").value;
+      $("taskRefresh").textContent = "刚刚更新";
+      const recent = tasks.slice(0, 8);
+      $("tasks").innerHTML = recent.length ? recent.map(t => `<div class="task-row"><span class="task-id" title="${t.id}">${t.id.slice(0, 18)}</span><span>${t.request.workload || "linear"}</span><span>${escapeHtml(t.status)}</span><span>${t.assignments.length} 个分片</span></div>`).join("") : '<div class="quiet">暂无任务</div>';
+      for (const task of tasks) {
+        if (taskIds.has(task.id) && busy && ["completed", "failed", "cancelled"].includes(task.status)) showTask(task);
+      }
+      taskIds = new Set(tasks.map(t => t.id));
+    } catch (error) {
+      $("healthDot").classList.remove("online"); $("healthText").textContent = "待输入有效令牌";
+      $("nodeRefresh").textContent = "授权失败或 Controller 不可达";
+    }
+  }
+  function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function showTask(task) {
+    if (task.status === "failed") { $("error").textContent = task.error || "任务执行失败"; return; }
+    if (task.status !== "completed" || !task.result) return;
+    $("result").classList.add("show");
+    if (task.request.workload === "pi") {
+      $("resultLabel").textContent = "Monte Carlo π 估算";
+      $("resultValue").textContent = task.result.pi_estimate.toFixed(5);
+      $("resultDetail").textContent = `${task.result.samples.toLocaleString()} 个采样点 · ${task.result.inside.toLocaleString()} 个落在圆内`;
+    } else {
+      $("resultLabel").textContent = "日志级别统计";
+      $("resultValue").textContent = `ERROR ${task.result.levels.ERROR || 0} · WARN ${task.result.levels.WARN || 0}`;
+      $("resultDetail").textContent = `${task.result.total_lines} 行 · INFO ${task.result.levels.INFO || 0} · OTHER ${task.result.levels.OTHER || 0}`;
+    }
+  }
+  async function runTask() {
+    $("error").textContent = "";
+    if (!$("token").value.trim()) { $("error").textContent = "请先输入管理员令牌"; return; }
+    $("run").disabled = true; $("run").textContent = "正在派发…"; busy = true;
+    $("result").classList.remove("show");
+    try {
+      const body = mode === "pi" ? {
+        model_id:"lastcore/pi-monte-carlo-v1", workload:"pi", num_layers:24, layer_memory_mb:1,
+        max_nodes:Number($("workers").value), timeout_seconds:180, total_samples:Number($("samples").value), weight_seed:20261013
+      } : {
+        model_id:"lastcore/log-statistics-v1", workload:"log_stats", num_layers:logs.length, layer_memory_mb:1,
+        max_nodes:Number($("workers").value), timeout_seconds:120, log_lines:logs
+      };
+      const response = await fetch("/v1/tasks", {method:"POST", headers:{...auth(), "Content-Type":"application/json"}, body:JSON.stringify(body)});
+      if (!response.ok) throw new Error((await response.text()).slice(0, 300));
+      const created = await response.json(); taskIds.add(created.id);
+      $("run").textContent = `任务已派发 · ${created.assignments.length} 个节点`;
+      const deadline = Date.now() + body.timeout_seconds * 1000;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 900));
+        const task = await api(`/v1/tasks/${created.id}`);
+        await refresh();
+        if (["completed", "failed", "cancelled"].includes(task.status)) { showTask(task); break; }
+      }
+      if (!$("result").classList.contains("show") && !$("error").textContent) $("error").textContent = "等待超时，请检查 Worker 心跳和 Controller 日志";
+    } catch (error) { $("error").textContent = error.message; }
+    finally { busy = false; $("run").disabled = false; $("run").textContent = mode === "pi" ? "运行圆周率计算" : "运行日志统计"; await refresh(); }
+  }
+  document.querySelectorAll(".mode button").forEach(button => button.addEventListener("click", () => {
+    document.querySelectorAll(".mode button").forEach(item => item.classList.toggle("selected", item === button));
+    mode = button.dataset.mode; $("piFields").hidden = mode !== "pi"; $("logFields").hidden = mode !== "logs";
+    if (!busy) $("run").textContent = mode === "pi" ? "运行圆周率计算" : "运行日志统计";
+  }));
+  $("samples").addEventListener("input", () => $("sampleLabel").textContent = Number($("samples").value).toLocaleString());
+  $("workers").addEventListener("input", () => $("workerLabel").textContent = $("workers").value);
+  $("run").addEventListener("click", runTask);
+  $("token").addEventListener("change", refresh);
+  setInterval(refresh, 5000);
+  refresh();
+</script>
+</body>
+</html>

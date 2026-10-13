@@ -230,3 +230,85 @@ def test_scheduler_randomized_coverage():
             assert count * size <= node_map[shard["node_id"]]["available_memory_mb"]
             cursor = shard["layer_end"]
         assert cursor == layers
+
+
+def test_agent_registration_reports_windows_platform_and_recovers_credentials(tmp_path, monkeypatch):
+    from app import agent
+
+    calls = []
+
+    def fake_request_json(controller, path, token, body, method):
+        calls.append((controller, path, token, body, method))
+        return {"node_id": "node-1", "node_token": "node-secret"}
+
+    monkeypatch.setattr(agent, "request_json", fake_request_json)
+    monkeypatch.setattr(agent.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(agent.platform, "machine", lambda: "AMD64")
+    state_path = tmp_path / "node.json"
+
+    registered = agent.NodeAgent("http://controller", "node", "http://node", "registration",
+                                 state_path)
+    assert registered.node_id == "node-1"
+    assert calls[0][3]["platform"] == "Windows-AMD64"
+    assert state_path.stat().st_mode & 0o777 == 0o600
+
+    calls.clear()
+    restored = agent.NodeAgent("http://controller", "renamed", "http://node", "unused",
+                               state_path)
+    assert restored.node_id == "node-1"
+    assert restored.node_token == "node-secret"
+    assert calls == []
+
+
+def test_pi_workload_aggregates_partial_counts(setup):
+    from app.agent import PI_ID, pi_demo
+
+    client, _, _ = setup
+    nodes = [register(client), register(client)]
+    samples, seed, chunks = 10_011, 29, 4
+    created = task(client, layers=chunks, model_id=PI_ID, workload="pi", layer_memory_mb=1,
+                   max_nodes=2, total_samples=samples, weight_seed=seed)
+    assert created.status_code == 201
+    plan = created.json()
+    by_id = {node["node_id"]: node for node in nodes}
+    partials = []
+    for assignment in plan["assignments"]:
+        partial = pi_demo(samples, seed, chunks, assignment["layer_start"], assignment["layer_end"])
+        partials.append(partial)
+        node = by_id[assignment["node_id"]]
+        response = client.post(
+            f"/v1/nodes/{node['node_id']}/assignments/{assignment['id']}/report",
+            headers=auth(node["node_token"]), json={"status": "completed", "result": partial},
+        )
+        assert response.status_code == 200, response.text
+
+    result = response.json()["result"]
+    assert result["inside"] == sum(partial["inside"] for partial in partials)
+    assert result["samples"] == samples
+    assert result["pi_estimate"] == 4 * result["inside"] / samples
+
+
+def test_log_stats_workload_aggregates_partial_levels(setup):
+    from app.agent import LOG_ID, log_stats
+
+    client, _, _ = setup
+    nodes = [register(client), register(client)]
+    lines = ["ERROR timeout", "WARN retry", "INFO ready", "trace", "error failed", "warn slow"]
+    created = task(client, layers=len(lines), model_id=LOG_ID, workload="log_stats",
+                   layer_memory_mb=1, max_nodes=2, log_lines=lines)
+    assert created.status_code == 201
+    plan = created.json()
+    by_id = {node["node_id"]: node for node in nodes}
+    for assignment in plan["assignments"]:
+        partial = log_stats(lines, assignment["layer_start"], assignment["layer_end"])
+        node = by_id[assignment["node_id"]]
+        response = client.post(
+            f"/v1/nodes/{node['node_id']}/assignments/{assignment['id']}/report",
+            headers=auth(node["node_token"]), json={"status": "completed", "result": partial},
+        )
+        assert response.status_code == 200, response.text
+
+    assert response.json()["result"] == {
+        "levels": {"ERROR": 2, "WARN": 2, "INFO": 1, "OTHER": 1},
+        "total_lines": 6,
+    }

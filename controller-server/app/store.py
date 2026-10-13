@@ -39,11 +39,14 @@ class Store:
                     id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
                     node_id TEXT NOT NULL REFERENCES nodes(id), position INTEGER NOT NULL,
                     layer_start INTEGER NOT NULL, layer_end INTEGER NOT NULL,
-                    status TEXT NOT NULL, error TEXT,
+                    status TEXT NOT NULL, error TEXT, result TEXT,
                     UNIQUE(task_id, position)
                 );
                 CREATE INDEX IF NOT EXISTS assignments_node ON assignments(node_id);
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(assignments)")}
+            if "result" not in columns:
+                db.execute("ALTER TABLE assignments ADD COLUMN result TEXT")
 
     @contextmanager
     def transaction(self):
@@ -130,10 +133,29 @@ class Store:
             SELECT a.*, n.endpoint FROM assignments a JOIN nodes n ON n.id=a.node_id
             WHERE a.task_id=? ORDER BY a.position
         """, (task_id,)).fetchall()]
+        for assignment in assignments:
+            assignment["result"] = json.loads(assignment["result"]) if assignment["result"] else None
         for i, assignment in enumerate(assignments):
             assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
             assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
         result["assignments"] = assignments
+        result["result"] = None
+        if result["status"] == "completed" and all(a["result"] is not None for a in assignments):
+            workload = result["request"].get("workload", "linear")
+            if workload == "pi":
+                inside = sum(a["result"]["inside"] for a in assignments)
+                samples = sum(a["result"]["samples"] for a in assignments)
+                result["result"] = {"inside": inside, "samples": samples,
+                                     "pi_estimate": 4 * inside / samples}
+            elif workload == "log_stats":
+                levels = {}
+                for assignment in assignments:
+                    for level, count in assignment["result"].items():
+                        levels[level] = levels.get(level, 0) + count
+                result["result"] = {"levels": levels,
+                                     "total_lines": sum(levels.values())}
+            else:
+                result["result"] = [value for a in assignments for value in a["result"]]
         return result
 
     @staticmethod
@@ -152,7 +174,8 @@ class Store:
             db.execute("INSERT INTO tasks VALUES (?,?,?,?,?,NULL)",
                        (task_id, request.model_dump_json(), "queued", now, now + request.timeout_seconds))
             for position, shard in enumerate(plan):
-                db.execute("INSERT INTO assignments VALUES (?,?,?,?,?,?,?,NULL)",
+                db.execute("INSERT INTO assignments (id,task_id,node_id,position,layer_start,layer_end,status,error,result) "
+                           "VALUES (?,?,?,?,?,?,?,NULL,NULL)",
                            (str(uuid4()), task_id, shard["node_id"], position,
                             shard["layer_start"], shard["layer_end"], "pending"))
             return self._task_view(db, task_id)
@@ -189,12 +212,37 @@ class Store:
             if assignment is None:
                 raise HTTPException(404, "assignment not found")
             task = self._task_view(db, assignment["task_id"])
+            if report.result is not None:
+                request = task["request"]
+                workload = request.get("workload", "linear")
+                valid = report.status == "completed"
+                if workload == "pi":
+                    expected_samples = (request["total_samples"] * assignment["layer_end"] // request["num_layers"]
+                                        - request["total_samples"] * assignment["layer_start"] // request["num_layers"])
+                    valid = (valid and isinstance(report.result, dict)
+                             and set(report.result) == {"inside", "samples"}
+                             and all(type(value) is int and value >= 0 for value in report.result.values())
+                             and report.result["samples"] == expected_samples
+                             and report.result["inside"] <= expected_samples)
+                elif workload == "log_stats":
+                    valid = (valid and isinstance(report.result, dict)
+                             and set(report.result).issubset({"ERROR", "WARN", "INFO", "OTHER"})
+                             and all(isinstance(key, str) and type(value) is int and value >= 0
+                                     for key, value in report.result.items())
+                             and sum(report.result.values()) == assignment["layer_end"] - assignment["layer_start"])
+                else:
+                    expected = assignment["layer_end"] - assignment["layer_start"]
+                    valid = (valid and isinstance(report.result, list)
+                             and len(report.result) == expected)
+                if not valid:
+                    raise HTTPException(422, "completed result does not match the assigned workload")
             if assignment["status"] == report.status:
                 return task  # Retries are idempotent, including terminal acknowledgements.
             if task["status"] not in ACTIVE or assignment["status"] not in ("pending", "running"):
                 raise HTTPException(409, "assignment is terminal")
-            db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
-                       (report.status, report.error if report.status == "failed" else None, assignment_id))
+            db.execute("UPDATE assignments SET status=?, error=?, result=? WHERE id=?",
+                       (report.status, report.error if report.status == "failed" else None,
+                        json.dumps(report.result) if report.result is not None else None, assignment_id))
             if report.status == "failed":
                 self._end_task(db, task["id"], "failed", report.error or "node reported failure")
             elif not db.execute("SELECT 1 FROM assignments WHERE task_id=? AND status!='completed'",

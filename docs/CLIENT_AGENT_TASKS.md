@@ -3,9 +3,15 @@
 ## 文档状态
 
 - 状态：产品与工程拆解草案，待确认产品范围和验收设备。
-- 基线：2026-10-13 检查的 `main`。该分支已有 Controller Server MVP；本文件描述后续客户端工作，不表示客户端已实现。
+- 基线：2026-10-13 检查的 `main`。该基线已有 Controller Server MVP；当前开发分支新增的 macOS 原生原型进度见下文，本文件其余内容仍是规划与验收要求。
 - 目标平台：macOS、Windows、Android。
 - 项目定位依据：仓库 README 将 LastCore 定义为把日常设备组成分布式 AI 推理网络。若产品方向已调整，应先更新本文件与 README。
+
+## 实际进度（2026-10-13）
+
+- macOS：已新增 SwiftUI 原生窗口原型，包含注册/节点身份恢复、钥匙串凭据、心跳、暂停接单、assignment 轮询和内置线性演示任务执行。尚未完成签名分发、菜单栏常驻、可配置资源采集、任务取消过程验证或真实模型推理；不能视为桌面客户端验收完成。
+- Windows、Android：本仓库尚无对应原生客户端代码。
+- 多节点真实模型推理：尚无模型加载、节点间 tensor 传输和真机/跨设备验收证据。
 
 ## 产品目标
 
@@ -57,6 +63,10 @@
 
 ## 工程边界建议
 
+### 当前实现基线
+
+Controller API 契约见 [`API_CONTRACT.md`](API_CONTRACT.md)。`controller-server/app/agent.py` 提供可运行的 Python CLI Agent，支持凭据保存/恢复、心跳、assignment 轮询和内置 `lastcore/linear-demo-v1` 分片计算；`python -m app.demo` 在本机启动 Controller 与三个 Agent，验证结果汇总。该 Agent 尚不支持预训练模型、节点间 tensor 传输、运行中的取消中断、原生桌面 UI 或 Android 生命周期管理。
+
 - **Controller API**：复用 `controller-server/` 中现有注册、心跳、assignment 查询和状态回报接口。客户端开发前先冻结请求/响应 schema、错误码、认证和版本兼容策略。
 - **Agent Core**：负责配置、凭据接口、心跳、轮询、去重、deadline、取消、状态机和结构化日志；不依赖桌面 UI。
 - **Executor**：定义稳定的本地执行器接口。先提供可重复的小型 fake executor 做协议联调，再接入真实推理引擎；不要用 fake 结果宣称模型推理完成。
@@ -68,7 +78,7 @@
 
 ### Phase 0：协议与安全边界
 
-- [ ] 建立 Controller API contract 文档，记录当前接口字段、认证方式、分页/轮询行为、错误响应和版本策略。
+- [x] 建立 Controller API contract 文档，记录当前接口字段、认证方式、分页/轮询行为、错误响应和版本策略。参见 [`API_CONTRACT.md`](API_CONTRACT.md)。
 - [ ] 定义 assignment 的执行类型、模型标识/版本、资源预算、deadline、取消语义、输入输出引用和幂等键。
 - [ ] 明确节点间数据通道：可达地址、TLS/证书策略、连接建立方、端口配置、断连超时与重试上限。
 - [ ] 约定客户端最小权限原则；明确拒绝未知 task type、未知模型来源、过量资源预算和过期 assignment。
@@ -124,10 +134,10 @@
 
 1. `SPEC-01` 冻结 Agent 与 Controller API 契约。
 2. `SPEC-02` 定义 assignment 安全策略、任务类型和模型清单。
-3. `SPEC-03` 选择首个模型、推理后端、测试硬件与许可来源。
+3. `SPEC-03` 选择首个预训练模型、推理后端、测试硬件与许可来源。
 4. `AGENT-01` 实现注册、凭据恢复、心跳与节点资源上报。
 5. `AGENT-02` 实现 assignment 轮询、去重、状态机、deadline 和取消。
-6. `AGENT-03` 提供 fake executor 与协议端到端联调。
+6. `AGENT-03` 已有确定性线性 demo executor 与协议端到端联调；后续将其替换/扩展为预训练推理后端。
 7. `AGENT-04` 完成 macOS/Windows CLI 打包和受控网络双节点演示。
 8. `AGENT-05` 接入真实推理后端及单机结果校验。
 9. `AGENT-06` 接通双节点 tensor 通道与端到端输出校验。
