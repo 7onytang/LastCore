@@ -195,7 +195,8 @@ def main(argv=None) -> int:
     }
 
     last_port, first_port = free_port(), free_port()
-    last_server = StageServer(load_stage(config, weights_path, *SEGMENTS[-1]),
+    last_server = StageServer(load_stage(config, weights_path, *SEGMENTS[-1],
+                                        task_id=TASK_ID, assignment_id="asg-1"),
                               address=("127.0.0.1", last_port), timeout=30.0)
     stop = threading.Event()
     last_thread = threading.Thread(
