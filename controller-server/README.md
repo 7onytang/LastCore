@@ -48,7 +48,22 @@ errors.py <── main.py / nodes.py
 cd controller-server
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q          # 16 项行为基线
+pytest -q          # 16 个测试用例（含 5 个输入校验参数化用例）
 ```
 
-真实 HTTP 关键流程（鉴权、预留、取消、超时、重启持久化）的复现命令见仓库根 README「本地运行」；拆分后的实跑记录随任务交付附带。
+`pytest -q` 覆盖固定接口回归、调度纯函数和 SQLite 行为；CI 的对应入口是
+`.github/workflows/controller.yml`，还会校验 Compose 配置并执行容器
+`/healthz` smoke test。测试使用模拟节点，不等同于真实多机推理验证。
+
+### 发布口径
+
+- 仓库根 README 的「本地运行」只提供服务启动、`/healthz` 和 `/docs` 的
+  smoke test；完整的注册、预留、回报、取消、超时和重启持久化复现命令
+  不在本文件或根 README 中维护，不能把该段文字当作已有命令附件。
+- `/v1/tasks*` 返回的任务 `status` 为 `queued`、`running`、`completed`、
+  `failed` 或 `cancelled`；任务 `error` 是失败/取消原因。节点回报请求的
+  `status` 只接受 `running`、`completed`、`failed`，`error` 仅作为失败
+  原因回传。HTTP 异常统一为 `{"detail": "..."}`。
+- `model_id` 只是任务标识，`layer_memory_mb` 是调度估算值。本次拆分和
+  本 README 不声称已实现模型加载、分片传输、真实推理输出、KV cache、
+  多机/真机联调或自动迁移；这些边界以仓库根 README 为准。
