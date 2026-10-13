@@ -2,8 +2,7 @@
 
 正式发行入口：[v0.1.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.1)。安装、运行入口沿用下方及各模块 README；本次发布说明与未验收范围见 [发布记录](submission/RELEASE-v0.1.1.md)。按用户要求，发布整合本身不新增真实任务或设备测试；本轮此前已完成的真实 Mac 线性与 GGUF 验收单独列出。GitHub Release 不自动证明公网服务已更新。
 
-Windows/Linux local linear client work and its unverified platform/release
-boundaries are tracked in [edge-client/README.md](edge-client/README.md).
+Windows/Linux 已发布未签名的 `0.2.0-preview` 便携开发预览包：[Windows x86_64](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip)、[Linux x86_64](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip)（GLIBC >= 2.35）。原生构建与静态检查通过，GUI、联网、真实设备和跨设备 relay 未验；仅支持有界线性运算，不执行 GGUF 或 tiny Stage。校验文件、来源与范围见 [edge-client/README.md](edge-client/README.md)。
 
 Native Mac `LastCoreClient` targeted linear tasks, numeric result display,
 build/verification and the arm64 DMG are documented in
@@ -40,7 +39,8 @@ Android 开发预览附件：[arm64 APK](https://github.com/7onytang/LastCore/re
 | SQLite 诊断、在线备份、恢复及部署归档 | 已实现 | 保留数据与凭据的验收范围见发布记录 |
 | 预训练大模型跨设备分层、tiny 路径 KV cache/batching、自动 NAT 穿透、故障任务自动迁移 | 未实现 | 不作为当前可交付功能 |
 | 其他类型边缘设备适配 | 开发中 | 用户确认的后续开发范围；具体设备与支持状态以实际源码和验收材料为准 |
-| 生产客户端签名、公证与 Windows 发布 | 未交付 | Android debug 为开发签名，release APK 未签名；原生 Swift DMG 为 ad-hoc 开发签名、未 Developer ID 签名/公证，旧 Python bundle 未签名/未公证 |
+| Windows/Linux 线性客户端 | 已发布未签名开发预览 | 原生构建/静态检查通过，GUI、联网、设备和 relay 未验；Linux GLIBC >= 2.35，详见 edge-client 说明 |
+| 生产客户端签名、公证与正式安装器 | 未交付 | Android debug 为开发签名，release APK 未签名；原生 Swift DMG 为 ad-hoc 开发签名、未 Developer ID 签名/公证，旧 Python bundle 未签名/未公证 |
 
 早期 Alpha 历史版本为 [v0.1.0-alpha.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1)，固定源码 `85ddad9`，其树与 main 的整合提交 `2e8c76b` 一致。[验收记录](submission/evidence/ACCEPTANCE.txt)和[来源说明](submission/evidence/README.md)记录该版本的验证范围；本次文档整理未重新执行其中的模型或部署验收。当前正式源码与支持范围见顶部 v0.1.1 发布记录；新材料包单独绑定最终材料提交。
 
