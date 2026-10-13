@@ -1,4 +1,4 @@
-# Windows/Linux linear edge client (in development)
+# Windows/Linux linear edge client — development preview
 
 This entry point reuses the existing node lifecycle and the contributor's
 cross-platform state lock from PR70 (`4f698b9`, preserved by cherry-pick). It
@@ -23,7 +23,16 @@ The archive manifest binds 21 explicit runtime/build inputs to fixed Git blobs,
 and includes bundled-file hashes, full licenses, exact CA bundle, OS/ABI and
 signing scope. This documentation update follows the build source; it does not
 relabel those compiled artifacts with a later documentation commit. Download
-links must refer to the project owner's separately published preview assets.
+links below refer to the published development preview attachments on the existing v0.1.1 release.
+
+## Published preview downloads
+
+| Platform | Portable ZIP | Integrity and source |
+| --- | --- | --- |
+| Windows x86_64 | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip) | [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.json) |
+| Linux x86_64 (GLIBC >= 2.35) | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip) | [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.json) |
+
+Unpack the portable folder without dropping its `_internal` or license files. These are unsigned development previews for bounded linear math only: no GGUF/LLM or tiny Stage execution. Native builds and static checks passed; native GUI launch, networking, user-device execution and Mac-to-Windows relay remain unverified. New runtime/device checks are paused at the user’s request. Publishing these attachments does not change the formal core tag, historical screenshots or fixed r2 submission archive.
 
 ## Native build-only portable previews
 
@@ -43,7 +52,7 @@ assumed from the runner name. Artifacts include the portable ZIP, external
 manifest and checksum. Native executable compilation and static integrity
 **do not prove that the GUI launches, the node connects or computation works**.
 Neither entry point, smoke script nor any task/model/device acceptance is run
-by this workflow. Publication of preview attachments remains a separate step.
+by this workflow. Preview attachments have been published separately as linked above.
 
 Build scripts: `packaging/prepare_licenses.py`, `packaging/portable.spec` and
 `packaging/static_manifest.py`. These tools write only build/release folders.
@@ -95,9 +104,9 @@ had stale heartbeats; no task was dispatched to that offline node.
 The intended relay is Mac output → Windows input → final reference comparison.
 It has not been executed. The separate existing MacBook Pro linear tests cannot
 substitute for the Windows stage. New real tasks/device checks are paused at the
-user's request. Future native packaging must run PyInstaller on each target OS
-(it is not a cross-compiler), carry Python/Tcl/Tk/dependency licenses and exact
-source/artifact hashes, and state the Linux glibc baseline.
+user's request. The published native previews were built separately on each target OS
+(PyInstaller is not a cross-compiler), carry Python/Tcl/Tk/dependency licenses
+and source/artifact hashes, and state the Linux GLIBC baseline.
 
 Researched reusable components: existing MIT LastCore client math/lifecycle,
 [CPython `msvcrt` locking](https://github.com/python/cpython/blob/main/Doc/library/msvcrt.rst),
