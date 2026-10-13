@@ -32,3 +32,22 @@ def test_local_controls_require_session_and_reject_foreign_host_origin():
         assert request('/ui/../../env_file.py')[0] == 404
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+
+def test_stopping_is_not_reported_as_stopped_or_restarted(tmp_path, monkeypatch):
+    """A delayed child must keep its recovery barrier and prevent duplicate launch."""
+    import subprocess
+    env = tmp_path/'node.env'; env.write_text('NODE_AGENT_EXECUTOR=demo\n'); env.chmod(0o600)
+    node = ui.NodeProcess(env)
+    class DelayedProcess:
+        exit_code = None
+        def poll(self): return self.exit_code
+        def send_signal(self, value): pass
+        def wait(self, timeout): raise subprocess.TimeoutExpired('node',timeout)
+    process = DelayedProcess(); node.process = process
+    state = node.stop()
+    assert state['running'] and state['stopping']
+    monkeypatch.setattr(ui.subprocess,'Popen',lambda *a,**kw: (_ for _ in ()).throw(AssertionError('must not restart a live process')))
+    assert node.start()['stopping']
+    process.exit_code = 0
+    assert node.state() == {'running':False,'stopping':False,'exit_code':0,'mode':'demo'}

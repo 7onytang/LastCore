@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let admin = '', loading = false, generation = 0;
+let admin = '', loading = false, generation = 0, connected = false;
 const desktop = new URLSearchParams(location.search).has('desktop');
 const localKey = desktop ? location.hash.slice(1) : '';
 if (desktop) history.replaceState(null, '', location.pathname + location.search);
@@ -14,7 +14,7 @@ function text(tag, value, cls) { const el = document.createElement(tag); el.text
 function message(value, error = false) { $('feedback').textContent = value; $('feedback').classList.toggle('error', error); }
 async function request(path, token = admin, options = {}) {
   const response = await fetch(path, {...options, cache:'no-store', credentials:'omit', redirect:'error', headers:{...options.headers, ...(token ? {Authorization:`Bearer ${token}`} : {})}, signal:AbortSignal.timeout(12000)});
-  if (response.status === 401) throw new Error('凭据无效或已失效，请重新连接。');
+  if (response.status === 401) { const error = new Error('凭据无效或已失效，请重新连接。'); error.code = 'unauthorized'; throw error; }
   if (!response.ok) throw new Error(`查询失败（HTTP ${response.status}），请稍后重试。`);
   return response.json();
 }
@@ -24,10 +24,24 @@ function clearData() {
   const row = document.createElement('tr'), cell = text('td','尚未获取任务。','empty'); cell.colSpan = 4; row.append(cell); $('task-list').replaceChildren(row);
   $('updated').textContent = '尚未获取数据'; $('worker-note').textContent = '等待查询可用 worker';
 }
-function disconnect() { admin = ''; generation++; $('admin-token').value = ''; $('disconnect').hidden = true; $('refresh').disabled = true; clearData(); $('connection').textContent = '尚未连接'; $('connection').className = 'badge'; message('已断开，页面凭据和数据已清除。'); }
+function accessControls() {
+  $('connect-title').textContent = connected ? 'Controller' : '连接 Controller';
+  $('credential-entry').hidden = connected;
+  $('connected-actions').hidden = !connected;
+  $('connect-submit').disabled = loading;
+  $('admin-token').disabled = loading;
+  $('refresh').disabled = loading || !connected;
+  $('connect-submit').firstChild.textContent = loading ? '连接中… ' : '连接 ';
+}
+function disconnect() {
+  admin = ''; connected = false; generation++;
+  $('admin-token').value = ''; clearData(); accessControls();
+  $('connection').textContent = '尚未连接'; $('connection').className = 'badge';
+  message('已断开。页面凭据和数据已清除。');
+}
 async function refresh() {
   if (loading || !admin) return;
-  loading = true; $('refresh').disabled = true; const ticket = generation, token = admin;
+  loading = true; accessControls(); const ticket = generation, token = admin;
   message('正在查询 Controller…');
   try {
     const [nodesData, tasksData, workersResponse] = await Promise.all([
@@ -52,14 +66,26 @@ async function refresh() {
     if (!tasks.length) { const r = document.createElement('tr'), c = text('td','暂无 tiny 任务。','empty'); c.colSpan = 4; r.append(c); rows.append(r); }
     for (const t of tasks) { const r = document.createElement('tr'), state = document.createElement('td'); state.append(badge(t.status)); r.append(text('td',t.id || t.task_id || '—'),state,text('td',Array.isArray(t.assignments) ? t.assignments.length : '—'),text('td',date(t.created_at))); rows.append(r); }
     $('updated').textContent = `更新于 ${date(Date.now()/1000)}（北京）`;
-    $('connection').textContent = '已连接 · 只读'; $('connection').className = 'badge good';
+    connected = true; $('connection').textContent = '已连接 · 只读'; $('connection').className = 'badge good';
     message('真实数据已更新。手动刷新可获取最新状态。');
-  } catch (error) { if (ticket === generation) { message(error instanceof TypeError || error.name === 'TimeoutError' ? '连接超时或网络不可达，请检查 Controller。' : error.message, true); $('connection').textContent = '查询失败 · 数据可能过期'; $('connection').className = 'badge bad'; } }
-  finally { loading = false; $('refresh').disabled = !admin; }
+  } catch (error) {
+    if (ticket === generation) {
+      if (error.code === 'unauthorized') { admin = ''; connected = false; clearData(); }
+      message(error instanceof TypeError || error.name === 'TimeoutError' ? '连接超时或网络不可达，请重试。' : error.message, true);
+      $('connection').textContent = connected ? '数据可能过期' : '连接失败'; $('connection').className = 'badge bad';
+    }
+  } finally { loading = false; accessControls(); }
 }
-$('connect-form').addEventListener('submit', event => { event.preventDefault(); if (loading) return; if (location.protocol !== 'https:' && !['127.0.0.1','localhost','[::1]'].includes(location.hostname)) { message('请通过 HTTPS 打开 Controller，再输入管理员凭据。', true); return; } admin = $('admin-token').value.trim(); $('admin-token').value = ''; generation++; clearData(); $('disconnect').hidden = false; refresh(); });
+$('connect-form').addEventListener('submit', event => {
+  event.preventDefault(); if (loading || connected) return;
+  if (location.protocol !== 'https:' && !['127.0.0.1','localhost','[::1]'].includes(location.hostname)) {
+    message('请通过 HTTPS 打开 Controller，再输入管理员凭据。', true); return;
+  }
+  admin = $('admin-token').value.trim(); $('admin-token').value = '';
+  generation++; clearData(); refresh();
+});
 $('refresh').addEventListener('click',refresh); $('disconnect').addEventListener('click',disconnect);
-window.addEventListener('pagehide', () => {admin = ''; generation++;});
+window.addEventListener('pagehide', () => { if (!desktop) disconnect(); });
 for (const a of document.querySelectorAll('nav a')) a.addEventListener('click', () => { for (const b of document.querySelectorAll('nav a')) b.removeAttribute('aria-current'); a.setAttribute('aria-current','page'); });
 async function localRequest(path, method = 'GET') {
   const response = await fetch(path,{method,cache:'no-store',headers:{'X-LastCore-Session':localKey},signal:AbortSignal.timeout(12000)});
@@ -69,15 +95,33 @@ async function localRequest(path, method = 'GET') {
 let localLoading = false;
 async function localState(action) {
   if (localLoading) return; localLoading = true;
-  $('start-agent').disabled = true; $('stop-agent').disabled = true;
-  try { const state = await localRequest(action ? `/desktop/${action}` : '/desktop/state',action ? 'POST' : 'GET'); $('process-status').textContent = state.running ? '进程运行中' : '进程已停止'; $('process-status').className = state.running ? 'badge good' : 'badge'; $('desktop-result').textContent = `${state.mode === 'demo' ? 'Demo 模拟' : 'tiny 分层节点'} · ${state.running ? '请在 Controller 查看实际注册、心跳与任务状态。' : state.exit_code === null ? '等待启动。' : `退出码 ${state.exit_code}；恢复信息保留在私有状态目录。`}`; $('start-agent').disabled = state.running; $('stop-agent').disabled = !state.running; }
-  catch (error) { $('desktop-result').textContent = error.message; $('process-status').textContent = '状态未知'; $('start-agent').disabled = false; }
-  finally { localLoading = false; }
+  $('start-agent').disabled = true; $('stop-agent').disabled = true; $('refresh-local').disabled = true;
+  if (action) { $('process-status').textContent = action === 'start' ? '正在启动…' : '正在停止…'; }
+  try {
+    if (!localKey) throw new Error('本地会话已失效，请从启动终端重新打开原始面板链接。');
+    const state = await localRequest(action ? `/desktop/${action}` : '/desktop/state', action ? 'POST' : 'GET');
+    $('process-status').textContent = state.stopping ? '正在停止 · 等待确认' : state.running ? '进程运行中' : state.exit_code !== null && state.exit_code !== 0 ? '进程已退出' : '已停止';
+    $('process-status').className = state.running && !state.stopping ? 'badge good' : 'badge';
+    const mode = state.mode === 'demo' ? 'Demo 模拟' : 'tiny 分层节点';
+    $('desktop-result').textContent = `${mode} · ${state.stopping ? '停止已请求，原进程退出后才可重新启动。' : state.running ? '请在 Controller 查看注册、心跳与任务状态。' : state.exit_code === null ? '点击启动节点。' : state.exit_code === 0 ? '已正常停止，恢复状态已保留。' : `退出码 ${state.exit_code}，检查私有配置后重试。`}`;
+    $('start-agent').hidden = state.running; $('stop-agent').hidden = !state.running;
+    $('start-agent').textContent = state.exit_code !== null && state.exit_code !== 0 ? '重试启动' : '启动节点';
+    $('stop-agent').textContent = state.stopping ? '正在停止…' : '停止节点';
+    $('start-agent').disabled = state.running; $('stop-agent').disabled = !state.running || state.stopping;
+    $('refresh-local').hidden = true;
+  } catch (error) {
+    $('desktop-result').textContent = error.message; $('process-status').textContent = '状态未确认';
+    // A failed request can have taken effect: re-read state before allowing another action.
+    $('refresh-local').hidden = !localKey; $('refresh-local').disabled = false;
+  } finally { localLoading = false; }
 }
 if (desktop) {
   $('desktop-panel').hidden = false;
   for (const selector of ['.connect-card','#feedback','.metrics-title','.metrics','#nodes','#tasks','#api-docs','nav a[href="#nodes"]','nav a[href="#tasks"]']) document.querySelector(selector).hidden = true;
   $('connection').textContent = '本地节点面板';
+  document.querySelector('.workspace-heading h1').textContent = '设备控制';
+  document.querySelector('.workspace-heading .muted').textContent = '启动、停止，查看当前进程状态。';
+  $('refresh-local').addEventListener('click',() => localState());
   $('start-agent').addEventListener('click',() => localState('start')); $('stop-agent').addEventListener('click',() => localState('stop')); localState();
   // Poll only the local process while the page is visible; never infer cloud health.
   setInterval(() => {if (!document.hidden) localState();},5000);

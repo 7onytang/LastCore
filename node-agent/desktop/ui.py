@@ -24,15 +24,18 @@ class NodeProcess:
             raise ValueError('Select stage or demo in the private configuration')
         self.env_file = env_file
         self.process = None
+        self.stop_requested = False
         self.lock = threading.Lock()
 
     def state(self):
         code = None if self.process is None else self.process.poll()
-        return {'running': self.process is not None and code is None, 'exit_code': code, 'mode': self.mode}
+        running = self.process is not None and code is None
+        return {'running': running, 'stopping': running and self.stop_requested, 'exit_code': code, 'mode': self.mode}
 
     def start(self):
         with self.lock:
             if not self.state()['running']:
+                self.stop_requested = False
                 # Never send child logs (which may contain private data) to the browser.
                 options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == 'win32' else {'start_new_session': True}
                 self.process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('run_agent.py')), '--env-file', str(self.env_file)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
@@ -41,6 +44,7 @@ class NodeProcess:
     def stop(self):
         with self.lock:
             if self.state()['running']:
+                self.stop_requested = True
                 self.process.send_signal(signal.CTRL_BREAK_EVENT if sys.platform == 'win32' else signal.SIGINT)
                 try:
                     self.process.wait(timeout=6)

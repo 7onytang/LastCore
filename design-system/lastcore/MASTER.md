@@ -8,13 +8,13 @@ The existing product website (`demo/`) uses a warm paper canvas. Operational web
 ## Shared tokens
 | Role | Marketing | Control surfaces / Android |
 | --- | --- | --- |
-| Canvas | #F6F7F2 | #14251E |
-| Surface | #FFFFFF | #1C3027 |
+| Canvas | #F6F7F2 | #101719 |
+| Surface | #FFFFFF | #172024 |
 | Main text | #1D2E27 | #F2F6ED |
-| Supporting text | #53644F | #ABBCA9 |
+| Supporting text | #53644F | #AAB9BF |
 | Accent | #D7ECB4 | #D7ECB4 |
 | On accent | #1D2E27 | #1D2E27 |
-| Input border | #67746C | #72856D |
+| Input border | #67746C | #687D86 |
 | Focus | #5A7846 | #D7ECB4 |
 | Destructive text | #A53128 | #FFB4AB |
 
@@ -36,3 +36,8 @@ Checked Material Components Android (maintenance mode) and pywebview (BSD-3-Clau
 Run Controller console/auth regressions and desktop loopback security tests. Exercise the browser at 390/768/1440px, keyboard navigation, real API connection, error/disconnect states and empty data. Exercise a real local demo-node process for launch/stop; label demo mode as simulation. Compile native Android resources and Java with the pinned API35/JDK17 toolchain; full APK/lint/device verification must be reported separately. Physical Android verification remains deferred.
 
 Source work is isolated on `codex/unified-ui` at `/private/tmp/lastcore-unified-ui`; it is not a deployed update. The project skill is included in that branch. The shared main checkout was restored after verifying a binary diff backup plus SHA256 matches for all 94 migrated files; unrelated files were left intact.
+
+## Concise technology workflow
+Use neutral charcoal control surfaces, sage only for the active primary action, 14px/dp card corners, and a compact workspace title. Do not put a marketing hero, orbit art or repeated bilingual metadata above operational controls. Preserve the website's established light composition.
+
+Buttons use short verb labels and reveal only actions available in the current state. Web: connect -> compact connected status -> refresh/disconnect, with field/credentials cleared on disconnect/auth failure. Desktop: start -> stop -> stopping confirmation -> start; unknown outcomes permit a status retry only. Android: shared model preparation -> local/cloud mode -> one primary operation -> result and stop. First enrollment is expandable. Never gate cloud recovery on model presence. Field errors appear next to the relevant input; busy states disable competing actions; waiting-to-stop must remain distinct from stopped.

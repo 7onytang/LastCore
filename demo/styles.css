@@ -31,3 +31,7 @@
 .service-check span{font-size:11px;color:#53644f}.replay-footer{font-size:11px}
 .button:hover{transform:none}.button:active,.play-button:active,.reset-button:active{filter:brightness(.94)}
 @media(max-width:600px){.site-header nav{gap:14px}.replay-tabs{flex-wrap:wrap}.replay-tabs button{padding:8px 10px;font-size:12px}.service-check{max-width:190px}.service-check span{font-size:10px}.site-footer{font-size:10px}.replay-footer,.replay-footer span:last-child{font-size:10px}.verification-matrix p{font-size:12px}.verification-matrix a{font-size:11px}}
+
+/* Short, visible action labels; reset is no longer icon-only. */
+.reset-button{width:auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 12px;font-size:12px}
+.replay-steps button:focus-visible{outline:2px solid var(--lc-accent);outline-offset:3px}

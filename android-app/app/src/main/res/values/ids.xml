@@ -1,0 +1,5 @@
+<resources>
+    <item name="input_prompt" type="id" />
+    <item name="controller_endpoint" type="id" />
+    <item name="registration_credential" type="id" />
+</resources>
