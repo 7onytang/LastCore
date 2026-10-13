@@ -7,7 +7,7 @@
   "console_url": "https://8.134.161.123/console",
   "deployed_source_commit": "cc7c7ba1700784d2a6d96631e640d2ce5bacefd6",
   "release_source_commit": "bf5b82e37636d344959d06945c3a6a9e7dfd74ac",
-  "source_difference": "One 401-handling line; release source is not asserted deployed",
+  "source_difference": "console.js differs by one 401-handling line; the overall source includes other changes. Full release source is not asserted deployed",
   "checks": {
     "root_get_head_routes_to_console": true,
     "console_http_status": 200,

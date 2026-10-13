@@ -13,7 +13,7 @@ LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI �
 
 ## 工作台、演示与实际截图
 
-公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。部署负责人已在北京时间 18:04:30 核验默认入口转至工作台，实际部署源码 `cc7c7ba`，与正式发布源码有一行 401 处理差异，见[部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
+公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。部署负责人已在北京时间 18:04:30 核验默认入口转至工作台，实际部署源码 `cc7c7ba`，其中 `console.js` 页面代码与正式发布源码有一行 401 处理差异；整体源码另有其他改动，不声称发布源整体已部署，见[部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
 
 保留的历史展示地址：[LastCore Demo](https://8.134.161.123/demo/)。该地址与统一 ZIP 镜像的可达性、内容和摘要由最后交付验收核对。也可直接打开 [离线展示页面](demo/offline.html)，按[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt)展示；页面提供历史结果回放、下载和公开证据入口，不创建新的模型任务。
 
