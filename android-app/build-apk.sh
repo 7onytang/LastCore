@@ -17,6 +17,7 @@ command -v javac >/dev/null 2>&1 || { echo "BLOCKED: JDK17 required" >&2; exit 2
 java -version >/dev/null 2>&1 || { echo "BLOCKED: Java runtime unavailable" >&2; exit 2; }
 command -v gradle >/dev/null 2>&1 || { echo "BLOCKED: isolated Gradle8.13 missing" >&2; exit 2; }
 test -d "$ANDROID_HOME/platforms/android-35" || { echo "BLOCKED: Android platform35 missing" >&2; exit 2; }
+python3 bootstrap-native.py
 python3 artifact-binding.py prepare
 gradle --no-daemon --console=plain assembleDebug assembleDebugAndroidTest assembleRelease
 mkdir -p verification/admission-classes

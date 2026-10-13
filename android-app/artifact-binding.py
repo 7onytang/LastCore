@@ -26,7 +26,8 @@ def source():
     return {'source_commit': sha, 'source_tracked_clean': True,
             'android_source_files': {p: digest(REPO / p) for p in files},
             'timezone': 'Asia/Shanghai', 'device_tests': 'compiled only, no device execution',
-            'node_admission': 'disabled; distributed transport not integrated'}
+            'node_admission': 'disabled; distributed transport not integrated',
+            'model_backend': json.loads((ROOT / 'Model.lock.json').read_text()) if (ROOT / 'Model.lock.json').exists() else None}
 
 def verify():
     expected = source()
@@ -40,10 +41,25 @@ def verify():
         with zipfile.ZipFile(apk) as z:
             if json.loads(z.read('assets/source-binding.json')) != expected:
                 raise SystemExit('APK source binding differs')
-            for license_name in ['llama.cpp-LICENSE.txt', 'SmolLM2-APACHE-2.0.txt']:
+            for license_name in ['llama.cpp-LICENSE.txt', 'SmolLM2-APACHE-2.0.txt', 'LastCore-LICENSE.txt']:
                 p = ROOT / 'app/src/main/assets/licenses' / license_name
                 if p.exists() and z.read('assets/licenses/' + license_name) != p.read_bytes():
                     raise SystemExit('shipped license mismatch')
+        if (ROOT / 'Model.lock.json').exists():
+            with zipfile.ZipFile(apk) as z:
+                libs = [n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+                if set(libs) != {'lib/arm64-v8a/liblastcore_local.so', 'lib/arm64-v8a/libc++_shared.so'}:
+                    raise SystemExit('unexpected native library closure: ' + str(libs))
+                elf_dir = ROOT / 'verification' / variant; elf_dir.mkdir(parents=True, exist_ok=True)
+                host = 'darwin-x86_64' if os.uname().sysname == 'Darwin' else 'linux-x86_64'
+                readelf = sdk / 'ndk/28.2.13676358/toolchains/llvm/prebuilt' / host / 'bin/llvm-readelf'
+                for name in libs:
+                    elf = elf_dir / Path(name).name; elf.write_bytes(z.read(name))
+                    headers = subprocess.check_output([str(readelf), '-h', '-lW', str(elf)], text=True)
+                    if 'AArch64' not in headers or 'ELF64' not in headers: raise SystemExit('wrong ELF architecture')
+                    loads = [line.split()[-1] for line in headers.splitlines() if line.strip().startswith('LOAD ')]
+                    if not loads or any(int(a, 16) < 16384 for a in loads): raise SystemExit('native ELF is not 16 KiB aligned')
+            subprocess.run([str(sdk / 'build-tools/35.0.0/zipalign'), '-c', '-P', '16', '4', str(apk)], check=True)
         badging = subprocess.check_output([str(tool), 'dump', 'badging', str(apk)], text=True)
         permissions = [l for l in badging.splitlines() if l.startswith('uses-permission:')]
         if permissions != ["uses-permission: name='android.permission.INTERNET'"]: raise SystemExit('unexpected permission')

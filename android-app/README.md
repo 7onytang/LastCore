@@ -1,42 +1,39 @@
-# LastCore native Android bootstrap
+# LastCore Android native preview
 
-This separate native application is a buildable diagnostics/credential foundation, not a distributed inference node. Start is disabled and admission fails closed because real model export, runtime and transport are not integrated. Existing android-node Python and Controller contracts remain untouched.
+Native Java application with a pinned official llama.cpp JNI backend for **local whole-model CPU inference**. Distributed node admission stays disabled: Controller registration, transport and pretrained multi-device layer execution are not integrated. The existing Python android-node and Controller contracts are untouched.
 
 ## Build
 
-Pinned AGP8.13.0 / Gradle8.13 / JDK17 / compile+target API35 / min API29. Set JAVA_HOME to an isolated JDK17, ANDROID_HOME to the isolated SDK, add isolated Gradle8.13 to PATH. Run `./build-apk.sh`; debug output is `app/build/outputs/apk/debug/app-debug.apk`. The first dependency resolution needs network. SDK auto-download is disabled; Google SDK terms must be accepted by the user before installing SDK packages. No automatic acceptance script is provided.
+Pinned AGP8.13.0 / Gradle8.13 / JDK17 / compile+target API35 / min API29 / arm64-v8a. NDK28.2.13676358 and CMake3.22.1 compile the native library; r28 supports 16 KiB ELF alignment. `SDK-APPROVAL.json` records the user's explicit approval of Android SDK terms. Official repository metadata confirms NDK and CMake use the same `android-sdk-license`; unrelated licenses are not accepted. Project-local tools/caches are ignored, no global installation or emulator is required. NDK + CMake downloads total 990,718,426 bytes; local NDK installation uses about 2.8 GiB.
 
-Project-local caches, SDK and toolchain downloads are ignored. No global installation, no emulator or model download is needed for shell compilation. Required SDK packages: platforms;android-35, build-tools;35.0.0, platform-tools. NDK is only needed once a real native backend is integrated. SDK licenses and release signing remain separate human-controlled actions.
+Set JAVA_HOME to an isolated JDK17, ANDROID_HOME to an SDK with platforms;android-35, build-tools;35.0.0, platform-tools, ndk;28.2.13676358 and cmake;3.22.1. Put Gradle8.13 on PATH (the local `.toolchain/gradle-8.13` is automatically used). Commit source changes, then run:
 
-## Current behavior and security
+```sh
+./build-apk.sh
+```
 
-Activity reads Android ActivityManager memory, PowerManager thermal state, BatteryManager battery/charging APIs. It requests INTERNET only; no foreground service, boot receiver, sensitive permissions or background task is enabled. HTTP cleartext is disabled. Startup does not contact Controller or accept work.
+`bootstrap-native.py` verifies and extracts official llama.cpp source commit `8345f333951c661d166b00e6f9362e553768f292`, archive SHA-256 `84050e783dbd0c4a4678f90f253b0881df04e90a98c20f73ae3709751c4a4850`. It downloads only sources, with a 50 MiB bound. Each build re-extracts the verified archive so cached edits cannot silently compile. The build produces debug APK, unsigned release APK and compiled instrumentation APK. `artifact-binding.py` requires clean committed Android sources, embeds exact source SHA + tracked-source hashes and checks compiled manifest/native ABI/licenses/artifact hashes. `verification/artifact-manifest.json` identifies the exact artifacts and separates build evidence from device execution. No publishing, real release signing or store submission occurs.
 
-CredentialVault is an unused integration component: AES-GCM key generated within AndroidKeyStore, encrypted envelope written atomically to app-private no-backup storage; `clear()` deletes encrypted file and key. Manifest disables backups; secrets are never displayed/logged. No plaintext node credentials are stored. On-device encryption/tamper/clear behavior must be instrumented before integrating account registration. The current Activity never asks for credentials.
+## Local model flow
 
-Pure Java admission checks reject missing backend, unavailable metadata, severe thermal state, battery constraints and missing measured model metadata. They do not validate actual inference or true device policy. Device checks must additionally cover Keystore tamper, credential deletion, process death, sleep, cancel, listener release and native memory limits.
+Obtain the pinned `SmolLM2-135M-Instruct-Q4_K_M.gguf` from [the fixed Hugging Face revision](https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/tree/04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b). The app does not download weights or open a server. Choose **Import model** using Android's document picker. It copies at most 105,454,144 bytes into app-private no-backup storage, checks exact size and SHA-256 `bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169`, and atomically commits only the valid model. Invalid/cancelled import preserves any existing model. Verify integrity again before each inference. **Delete imported model** removes this private copy while idle.
 
-## Backend path
+Enter a short prompt and choose **Generate locally**. A single worker calls JNI and official llama.cpp C APIs; ChatML formatting follows the pinned SmolLM2 model. CPU only, 2 threads, 256-token context, prompt at most192 tokens, output at most64 tokens /16 KiB, cooperative90-second deadline. Java/native boundaries use UTF-8 byte arrays. Shared native-session ownership prevents concurrent close/cancel from freeing active state; every run frees model/context/sampler on completion or failure. Sessions are single use and limited to four. Cancel, leaving the screen and Activity destruction request abort. No foreground service, boot receiver or background scheduling is added. Actual cancellation latency, native peak memory and Android inference quality still require the selected physical device.
 
-Prefer official ONNX Runtime Android AAR for the existing proposed per-segment ONNX path, once real engine export and native communication are approved and implemented. Official llama.cpp Android/CMake/NDK is a maintained MIT whole-GGUF reference, but cannot be treated as the current LastCore assignment fragment executor without a separately reviewed adapter. No library, JNI implementation, weights, server daemon or protocol change is included here.
+Local generation checks ActivityManager memory/low-memory, PowerManager thermal and BatteryManager battery state. It rejects less than512 MiB available memory, severe/unavailable thermal metadata and low/non-measured battery. These are conservative gates, not measured model memory proof. Native logging is suppressed; the UI does not display provider exception paths or credentials. It never contacts Controller or accepts assignments. The disabled distributed-node button makes this boundary explicit.
 
-Keep initial inference screen-bound. Android foreground service types/permissions and time limits must be selected based on the actual approved use case; dataSync is not unlimited generic compute. No background/foreground-service permission is preemptively added.
+## Security and licenses
 
-## Sources
+Manifest requests INTERNET only, disables backups and HTTP cleartext; launcher Activity is the only exported component. CredentialVault is an unused integration component: AndroidKeyStore AES-GCM, app-private no-backup AtomicFile, non-exportable key, no plaintext credential journal; no account enrollment is included. Device execution must verify Keystore tamper/clear, process death/sleep, lifecycle abort, listener absence and memory limits before integrating registration.
 
-- https://developer.android.com/build/releases/agp-8-13-0-release-notes
-- https://developer.android.com/studio/terms
-- https://developer.android.com/privacy-and-security/keystore
-- https://developer.android.com/develop/background-work/services/fgs/service-types
-- https://onnxruntime.ai/docs/tutorials/mobile/
-- https://github.com/ggml-org/llama.cpp/blob/master/docs/android.md
+`app/src/main/assets/licenses/` ships complete llama.cpp MIT, model Apache-2.0 and LastCore MIT texts, plus exact upstream license provenance. Model cards of the pinned GGUF and original model declare Apache-2.0. This preview does not bundle or redistribute weights. llama.cpp C++/GGML code implements the transformer; the project only adds a bounded JNI/lifecycle adapter. Optional KleidiAI/OpenMP/RPC/OpenSSL/dynamic backends are disabled; no extra acceleration dependencies are downloaded.
 
-## Verification status
+## Verification and CI
 
-Actual isolated build completed: `assembleDebug assembleDebugAndroidTest`, 62 tasks, BUILD SUCCESSFUL, exit0. Seven pure Java fail-closed admission checks passed. aapt inspected the compiled manifest: INTERNET only, backup=false, cleartext=false, min29/target35. APK is a debug diagnostics bootstrap; no native inference or distributed work is enabled. See BUILD-VERIFICATION.md for hashes and limits. Instrumentation tests were compiled, not executed; no real Android device result is available.
+`android-native.yml` builds APKs, verifies debug signature, checks seven pure Java distributed-admission denials and stores source/artifact evidence. Instrumentation compilation is not execution. Physical-device tests compile under `CredentialSecurityTest` and `NativeRuntimeTest`; run `gradle connectedDebugAndroidTest` only after root selects and authorizes the device. Tests cover Keystore ciphertext/tamper/clear/non-exportability, manifest policy, closed/cancelled native handles, missing model refusal and invalid imports. They do not establish real-model inference automatically; select/import the pinned model and exercise actual UI generation/cancel/background/restart on the device.
 
-Instrumented security tests compile into a separate APK and must run only on an explicitly selected device: `gradle connectedDebugAndroidTest`. They cover Keystore roundtrip/non-exportability, ciphertext tamper refusal, clear, backup/cleartext manifest behavior and missing-backend denial. They were not run in the current environment.
+Prior bootstrap fixed-source independent rebuild passed62 tasks and seven Java checks; compiled DEX and manifest matched original artifact bytes. See BUILD-VERIFICATION.md for that checkpoint. Current native build/device results are recorded separately and must not be inferred from the earlier bootstrap.
 
-## Artifact CI
+The separate macOS workflow builds a real bundle, checks full manifest files, frozen project code objects and own/third-party license texts, and executes real local tiny CPU cancel/restart. Neither CI nor local whole-GGUF inference proves pretrained multi-device inference or product launch.
 
-`android-native.yml` builds debug APK, unsigned release APK and instrumentation APK with JDK17/Gradle8.13. `artifact-binding.py` requires a committed clean Android checkout, embeds the source SHA and tracked-source hashes, then checks the compiled manifest, shipped licenses and APK hashes. Instrumentation compilation is not device execution. `verification/artifact-manifest.json` distinguishes debug-key signing from the unsigned release. No upload to an app store or release signing happens. The macOS workflow independently builds a real bundle, checks all manifest files and frozen project code against checkout source, verifies full license texts, and exercises real local tiny CPU cancellation/restart; it does not establish pretrained distributed LLM support.
+Sources: [official Android build](https://developer.android.com/build/releases/agp-8-13-0-release-notes), [SDK terms](https://developer.android.com/studio/terms), [Keystore](https://developer.android.com/privacy-and-security/keystore), [llama.cpp Android](https://github.com/ggml-org/llama.cpp/blob/8345f333951c661d166b00e6f9362e553768f292/docs/android.md), [16 KiB pages](https://developer.android.com/guide/practices/page-sizes).

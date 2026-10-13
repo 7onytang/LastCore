@@ -34,7 +34,7 @@ jobs:
           p.parent.mkdir(parents=True,exist_ok=True)
           p.write_text('\n'.join(a['sdkmanager_recorded_license_hashes'])+'\n')
           PY
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools' 'ndk;28.2.13676358' 'cmake;3.22.1'
       - name: Real APK build and pure Java fail-closed checks
         run: android-app/build-apk.sh > android-app/verification-build.log 2>&1
       - name: Check debug signature
