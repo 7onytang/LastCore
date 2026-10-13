@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import re
@@ -38,6 +39,8 @@ def main():
     parser.add_argument('--bundle',required=True);parser.add_argument('--output',required=True)
     args=parser.parse_args();bundle=Path(args.bundle).resolve();output=Path(args.output).resolve();output.mkdir(parents=True,exist_ok=True)
     commit=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip()
+    if os.environ.get('EDGE_SOURCE_SHA')!=commit:
+        raise RuntimeError('Actual checkout does not match the explicitly reviewed CI source head')
     target='windows-x86_64' if sys.platform=='win32' else 'linux-x86_64'
     extension='.exe' if sys.platform=='win32' else ''
     binaries={name:inspect_binary(bundle/(name+extension)) for name in ('LastCoreEdge','LastCoreLinearEdge')}
@@ -59,15 +62,36 @@ def main():
             glibc.update(re.findall(r'GLIBC_(\d+\.\d+)',versions))
             dynamic=subprocess.check_output(['readelf','--dynamic',str(path)],text=True)
             external.update(re.findall(r'\(NEEDED\).*?\[(.*?)\]',dynamic))
-    sources={}
-    for directory in ('edge-client','node-agent/lastcore_node_agent'):
-        for path in sorted((ROOT/directory).rglob('*')):
-            if path.is_file() and '__pycache__' not in path.parts and 'build' not in path.parts:
-                relative=path.relative_to(ROOT).as_posix()
-                try:original=subprocess.check_output(['git','-C',str(ROOT),'show',commit+':'+relative],stderr=subprocess.DEVNULL)
-                except subprocess.CalledProcessError:continue
-                if path.read_bytes()!=original:raise RuntimeError('Build source differs from fixed Git: '+relative)
-                sources[relative]=sha(path)
+    runtime_inputs=['edge-client/linear_edge.py','edge-client/gui.py','edge-client/view_state.py',
+                    'node-agent/desktop/env_file.py']+[
+                    'node-agent/lastcore_node_agent/'+name for name in
+                    ('__init__.py','agent.py','config.py','controller.py','credentials.py','executor.py')]
+    build_inputs=['LICENSE','.github/workflows/edge-portable-build.yml',
+                  'node-agent/desktop/collect_licenses.py',
+                  'edge-client/packaging/prepare_licenses.py','edge-client/packaging/portable.spec',
+                  'edge-client/packaging/static_manifest.py',
+                  f'edge-client/packaging/locks/{target}.txt',f'edge-client/packaging/locks/{target}.json',
+                  'edge-client/packaging/vendor-licenses/sources.json',
+                  'edge-client/packaging/vendor-licenses/tcl-8.6.15-license.terms',
+                  'edge-client/packaging/vendor-licenses/tk-8.6.15-license.terms']
+    sources={};git_blobs={}
+    for relative in runtime_inputs+build_inputs:
+        path=ROOT/relative
+        if not path.is_file() or path.is_symlink():raise RuntimeError('Missing regular required input: '+relative)
+        try:
+            original=subprocess.check_output(['git','-C',str(ROOT),'show',commit+':'+relative],stderr=subprocess.DEVNULL)
+            blob=subprocess.check_output(['git','-C',str(ROOT),'rev-parse',commit+':'+relative],text=True).strip()
+        except subprocess.CalledProcessError:raise RuntimeError('Untracked required input: '+relative) from None
+        if path.read_bytes()!=original:raise RuntimeError('Required input differs from fixed Git: '+relative)
+        sources[relative]=sha(path);git_blobs[relative]=blob
+    if sys.platform=='win32':
+        import pefile
+        for component in ('tcl','tk'):
+            dll=bundle/'_internal'/(component+'86t.dll')
+            pe=pefile.PE(str(dll));info=pe.VS_FIXEDFILEINFO[0]
+            version=(info.FileVersionMS>>16,info.FileVersionMS&65535,info.FileVersionLS>>16,info.FileVersionLS&65535)
+            if version[:3]!=(8,6,15):raise RuntimeError('Native Tcl/Tk does not match pinned vendor license version')
+            pe.close()
     maximum=max(glibc,key=lambda v:tuple(map(int,v.split('.')))) if glibc else None
     manifest={'schema_version':1,'source_commit':commit,'target':target,'python_version':platform.python_version(),
               'python_abi':sys.implementation.cache_tag,'os':platform.system(),'architecture':platform.machine(),
@@ -76,6 +100,7 @@ def main():
               'gui_launched':False,'controller_registration_or_jobs_created':0,
               'binary_headers':binaries,'linux_glibc_required_at_least':maximum,
               'linux_required_shared_libraries':sorted(external),'source_files':sources,'files':files,
+              'source_git_blobs':git_blobs,'runtime_inputs':runtime_inputs,'build_inputs':build_inputs,
               'license_manifest':license_data,'lock_sha256':sha(ROOT/'edge-client/packaging/locks'/f'{target}.txt')}
     manifest['ca_bundle']={'relative_path':'_internal/certifi/cacert.pem','sha256':sha(ca)}
     if any(v.get('authenticode_certificate_present') for v in binaries.values()):

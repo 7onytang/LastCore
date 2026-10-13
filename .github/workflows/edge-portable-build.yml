@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: edge-portable-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   portable:
     strategy:
@@ -22,6 +25,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -48,6 +54,8 @@ jobs:
         shell: bash
         run: '"$EDGE_PY" -m PyInstaller --clean --noconfirm --distpath edge-client/dist --workpath edge-client/build/pyinstaller edge-client/packaging/portable.spec'
       - name: Static native headers, license transport, hashes and source manifest
+        env:
+          EDGE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: '"$EDGE_PY" edge-client/packaging/static_manifest.py --bundle edge-client/dist/LastCoreEdge --output edge-client/release-output'
       - uses: actions/upload-artifact@v4

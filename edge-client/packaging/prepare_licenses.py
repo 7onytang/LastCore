@@ -41,7 +41,9 @@ def main():
         candidates = list((Path(sys.base_prefix) / "tcl").glob(component+"*/license.terms"))
         candidates += [Path("/usr/share/doc") / (component+"8.6") / "copyright"]
         source = next((p for p in candidates if p.is_file()), None)
-        if source is None:raise RuntimeError("Missing installed full Tcl/Tk notice: " + component)
+        if source is None and sys.platform=='win32' and sys.version_info[:3]==(3,13,16):
+            source=ROOT / f"edge-client/packaging/vendor-licenses/{component}-8.6.15-license.terms"
+        if source is None or not source.is_file():raise RuntimeError("Missing full Tcl/Tk notice: " + component)
         shutil.copyfile(source, out / (component.upper()+"-LICENSE.txt"))
     # TLS backend notice tracks the actual build interpreter's OpenSSL version.
     openssl_version=ssl.OPENSSL_VERSION.split()[1]
