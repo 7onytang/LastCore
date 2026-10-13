@@ -119,6 +119,6 @@ def test_cli_json_and_exit_codes(database, tmp_path, capsys):
 
 def test_module_entrypoint(database):
     process = subprocess.run([sys.executable, "-m", "app.diagnostics", "--database", str(database[0])],
-                             capture_output=True, text=True, timeout=10)
+                             cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=10)
     assert process.returncode == 0, process.stderr
     assert json.loads(process.stdout)["status"] == "ok"
