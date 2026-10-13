@@ -14,10 +14,10 @@
 | --- | --- | --- |
 | 源代码 | 已有；最终打包应固定提交 | 仓库各模块；公开 Alpha 源码为 `85ddad92758d072097de87857f7ed1a229c8f76e` |
 | README 项目说明 | 已有运行说明；本次补充提交核对 | 根 `README.md`；功能和核心文件见下表 |
-| AI 使用说明 | 已新增，历史使用待各开发聊天核实 | `AI_USAGE.md` |
-| AI 对话记录 | 本聊天片段已记录；开发主线记录待协作补入 | `ai-logs/` |
+| AI 使用说明 | 已有并对照两条主线节选更新；完整历史不作推断 | `AI_USAGE.md` |
+| AI 对话记录 | 三个聊天相关节选已记录；完整开发覆盖仍待补充 | `ai-logs/`；优化主线 41 条原文已逐条核对 |
 | 3–8 张实际运行截图 | 待 Demo 主线交付并核对 | 根 `screenshots/`；不能用设计图或示意图充数 |
-| Demo 链接或不超过 3 分钟视频 | 另一开发聊天正在制作，待核验 | 最终须写入根 README；API 文档不代替完整演示 |
+| Demo 链接或不超过 3 分钟视频 | 草稿保留；最终制作等项目完成 | 最终须写入根 README；API 文档不代替完整演示 |
 | 同一 ZIP 压缩包 | 等截图、Demo、最终提交齐备后生成 | 应包含上述材料；排除凭据、缓存和私有数据库 |
 | 开发时间证明 | 本地历史已检查；赛事时间与平台创建时间未核验 | `submission/git-history.txt` |
 | 邮件提交 | 未发送 | `seproject@yeah.net`，主题为队伍名 + 赛题 |
@@ -28,15 +28,15 @@
 
 | 功能 | 状态与边界 | 核心实现 / 验证依据 |
 | --- | --- | --- |
-| Controller API、鉴权、节点注册/心跳 | 已实现 | `controller-server/app/main.py`、`models.py`、`store.py`；`controller-server/tests/test_controller.py` |
+| Controller API、鉴权、节点注册/心跳 | 已实现 | `controller-server/app/main.py`、`controller-server/app/models.py`、`controller-server/app/store.py`；`controller-server/tests/test_controller.py` |
 | 连续分层调度与容量约束 | 已实现；内存仍按每层估算 | `controller-server/app/scheduler.py`；`controller-server/tests/test_controller.py` |
-| 节点轮询、去重、取消/超时停止 | 已实现；停止依赖节点遵守协议 | `node-agent/lastcore_node_agent/agent.py`、`executor.py`、`inference_adapter.py`；`node-agent/tests/` |
-| tiny 分层推理与 TCP activation 传输 | 已实现，本机多进程验证路径；不是预训练大模型多设备分片 | `inference-engine/inference_engine/model.py`、`stage.py`、`pipeline.py`；`communication/communication/channel.py`、`protocol.py`；`integration/run_two_node_local.sh` |
-| 固定 SmolLM2 单设备真实模型 | 已实现；CPU 整模型，与 tiny 路径分开 | `real-model-runtime/runtime.py`、`bootstrap.py`；`real-model-runtime/evidence/verification.json` |
-| 云端整模型任务与 macOS CLI worker | 已实现；部署验收记录来自其他开发主线 | `controller-server/app/inference_jobs.py`、`REAL_JOBS.md`；`real-model-runtime/worker.py`、`job_guardian.py`；`submission/evidence/ACCEPTANCE.txt` |
-| Android 前台工作节点/JNI | 已实现并有构建和主机 JVM/JNI 证据；Android 真机未验收 | `android-app/app/src/main/java/ai/lastcore/android/MainActivity.java`、`CloudWorker.java`、`JniBackend.java`、`CredentialVault.java`；`android-app/app/src/main/cpp/local_runtime.cpp`；`android-app/BUILD-VERIFICATION.md` |
-| SQLite 诊断、在线备份与恢复验证 | 已实现 | `controller-server/app/diagnostics.py`、`backup.py`；`controller-server/tests/test_diagnostics.py`、`test_backup.py`；`integration/verify_backup_recovery.py` |
-| 部署与固定来源归档 | 已实现；公开 Alpha 有独立来源记录 | `ops/public-ip-https/`、`ops/staging/prepare_release.py`、`integration-sources.json`；`submission/evidence/` |
+| 节点轮询、去重、取消/超时停止 | 已实现；停止依赖节点遵守协议 | `node-agent/lastcore_node_agent/agent.py`、`node-agent/lastcore_node_agent/executor.py`、`node-agent/lastcore_node_agent/inference_adapter.py`；`node-agent/tests/` |
+| tiny 分层推理与 TCP activation 传输 | 已实现，本机多进程验证路径；不是预训练大模型多设备分片 | `inference-engine/inference_engine/model.py`、`inference-engine/inference_engine/stage.py`、`inference-engine/inference_engine/pipeline.py`；`communication/communication/channel.py`、`communication/communication/protocol.py`；`integration/run_two_node_local.sh` |
+| 固定 SmolLM2 单设备真实模型 | 已实现；CPU 整模型，与 tiny 路径分开 | `real-model-runtime/runtime.py`、`real-model-runtime/bootstrap.py`；`real-model-runtime/evidence/verification.json` |
+| 云端整模型任务与 macOS CLI worker | 已实现；部署验收记录来自其他开发主线 | `controller-server/app/inference_jobs.py`、`controller-server/REAL_JOBS.md`；`real-model-runtime/worker.py`、`real-model-runtime/job_guardian.py`；`submission/evidence/ACCEPTANCE.txt` |
+| Android 前台工作节点/JNI | 已实现并有构建和主机 JVM/JNI 证据；Android 真机未验收 | `android-app/app/src/main/java/ai/lastcore/android/MainActivity.java`、`android-app/app/src/main/java/ai/lastcore/android/CloudWorker.java`、`android-app/app/src/main/java/ai/lastcore/android/JniBackend.java`、`android-app/app/src/main/java/ai/lastcore/android/CredentialVault.java`；`android-app/app/src/main/cpp/local_runtime.cpp`；`submission/evidence/ACCEPTANCE.txt` |
+| SQLite 诊断、在线备份与恢复验证 | 已实现 | `controller-server/app/diagnostics.py`、`controller-server/app/backup.py`；`controller-server/tests/test_diagnostics.py`、`controller-server/tests/test_backup.py`；`integration/verify_backup_recovery.py` |
+| 部署与固定来源归档 | 已实现；公开 Alpha 有独立来源记录 | `ops/public-ip-https/`、`ops/staging/prepare_release.py`、`ops/staging/integration-sources.json`；`submission/evidence/` |
 | 预训练大模型跨设备分层、KV cache、NAT 穿透、自动迁移 | 未实现 | 根 README 已列局限，不列为已完成功能 |
 | Android 真机运行、生产签名/公证、Windows 发布 | 未验收 / 未交付 | 不把 APK 构建、主机 JNI 或未签名 bundle 当作这些能力的证明 |
 
