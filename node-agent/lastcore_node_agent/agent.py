@@ -15,6 +15,7 @@ from .credentials import (
     StateError,
     clear_pending_report,
     load_credentials,
+    load_pending_report_results,
     load_pending_reports,
     load_settled,
     record_pending_report,
@@ -48,6 +49,7 @@ class _ActiveRun:
     assignment_id: str
     task_id: str
     result: tuple[str, str | None] | None = None
+    result_payload: object | None = None
 
 
 class NodeAgent:
@@ -66,6 +68,7 @@ class NodeAgent:
         self._active_lock = threading.Lock()
         self._settled: dict[str, str] = {}
         self._pending: dict[str, tuple[str, str | None]] = {}
+        self._pending_results: dict[str, object] = {}
         self._heartbeat_lock = threading.Lock()
         self._last_heartbeat_ok = 0.0
         self._credential_error: str | None = None
@@ -90,6 +93,7 @@ class NodeAgent:
         joined = self._join_controller()
         self._settled = load_settled(self.config.state_dir)
         self._pending = load_pending_reports(self.config.state_dir)
+        self._pending_results = load_pending_report_results(self.config.state_dir)
         heartbeat_thread = None
         if joined:
             heartbeat_thread = threading.Thread(target=self._heartbeat_loop,
@@ -271,8 +275,9 @@ class NodeAgent:
 
     def _execute(self, context: ExecutionContext, executor: Executor) -> None:
         status, error = "completed", None
+        payload = None
         try:
-            executor.run(context)
+            payload = executor.run(context)
         except ExecutionCancelled as exc:
             status, error = "cancelled-local", exc.reason
         except Exception as exc:
@@ -281,6 +286,7 @@ class NodeAgent:
         run = self._current_run()
         if run is not None and run.context is context:
             run.result = (status, error)
+            run.result_payload = payload if status == "completed" else None
         else:
             LOG.error("no active run for finished assignment %s", context.assignment_id)
 
@@ -300,9 +306,10 @@ class NodeAgent:
             self.stats.stopped.append(run.assignment_id)
             LOG.info("assignment %s stopped locally (%s)", run.assignment_id, error)
             return
-        if self._record_pending(run.assignment_id, status, error):
+        if self._record_pending(run.assignment_id, status, error, getattr(run, "result_payload", None)):
             self._settle(run.assignment_id, status)
-        self._attempt_terminal_report(run.assignment_id, status, error)
+        self._attempt_terminal_report(run.assignment_id, status, error,
+                                      getattr(run, "result_payload", None))
         if status == "completed":
             self.stats.completed.append(run.assignment_id)
             LOG.info("assignment %s completed", run.assignment_id)
@@ -319,14 +326,17 @@ class NodeAgent:
 
     def _flush_pending_reports(self) -> None:
         for assignment_id, (status, error) in sorted(self._pending.items()):
-            self._attempt_terminal_report(assignment_id, status, error)
+            self._attempt_terminal_report(assignment_id, status, error,
+                                          self._pending_results.get(assignment_id))
 
-    def _record_pending(self, assignment_id: str, status: str, error: str | None) -> bool:
+    def _record_pending(self, assignment_id: str, status: str, error: str | None, result=None) -> bool:
         # Durable pending handoff must precede the settle journal: a crash between
         # the two writes must leave the terminal report replayable, never lost.
         self._pending[assignment_id] = (status, error)
+        if result is not None:
+            self._pending_results[assignment_id] = result
         try:
-            record_pending_report(self.config.state_dir, assignment_id, status, error)
+            record_pending_report(self.config.state_dir, assignment_id, status, error, result)
         except (OSError, StateError) as exc:
             LOG.error("could not persist pending terminal report for %s; "
                       "settle deferred so the assignment stays re-executable: %s",
@@ -336,18 +346,20 @@ class NodeAgent:
 
     def _clear_pending(self, assignment_id: str) -> None:
         self._pending.pop(assignment_id, None)
+        self._pending_results.pop(assignment_id, None)
         try:
             clear_pending_report(self.config.state_dir, assignment_id)
         except (OSError, StateError) as exc:
             LOG.error("could not clear pending terminal report for %s: %s", assignment_id, exc)
 
-    def _attempt_terminal_report(self, assignment_id: str, status: str, error: str | None) -> None:
+    def _attempt_terminal_report(self, assignment_id: str, status: str, error: str | None,
+                                 result=None) -> None:
         assert self.credentials is not None
         for _ in range(max(1, self.config.report_retries)):
             try:
                 self._guarded(self.client.report)(
                     self.credentials.node_id, self.credentials.node_token,
-                    assignment_id, status, error)
+                    assignment_id, status, error, result)
             except ControllerError as exc:
                 if exc.status_code in (404, 409):
                     LOG.info("terminal report for %s not accepted: %s", assignment_id, exc)

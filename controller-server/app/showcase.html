@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef2f0">
+  <title>LastCore | Controller 看板</title>
+  <style>
+    :root { color-scheme: light; --ink:#18231f; --muted:#68756f; --line:#d8e1dc; --paper:#fff; --canvas:#eef2f0; --green:#14724e; --green-soft:#e4f2ea; --blue:#2c6d9b; --blue-soft:#e5f0f8; --amber:#9b670c; --amber-soft:#fbf1d8; --red:#a9463e; --red-soft:#fae8e5; --gray-soft:#e9eeeb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--canvas); color:var(--ink); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    button,input,textarea { font:inherit; }
+    button { cursor:pointer; }
+    .shell { max-width:1400px; margin:auto; padding:25px 30px 50px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:24px; padding-bottom:19px; border-bottom:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:12px; font-size:19px; font-weight:760; letter-spacing:.01em; }
+    .mark { width:35px; height:35px; display:grid; place-items:center; border-radius:8px; color:#d7fa82; background:var(--green); }
+    .brand small { display:block; margin-top:1px; color:var(--muted); font-size:11px; font-weight:500; }
+    .health { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }
+    .health i { width:8px; height:8px; border-radius:50%; background:#a8b5ae; }
+    .health.ok i { background:#22a267; }
+    .layout { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:30px; padding-top:28px; }
+    h1 { margin:0; font-size:25px; line-height:1.2; }
+    h2 { margin:0; font-size:15px; }
+    .lead { margin:7px 0 23px; color:var(--muted); }
+    .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin-bottom:26px; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--paper); }
+    .metric { min-width:0; padding:14px 17px; border-right:1px solid var(--line); }
+    .metric:last-child { border-right:0; }
+    .metric span { display:block; color:var(--muted); font-size:12px; }
+    .metric strong { display:block; margin-top:3px; font-size:22px; font-variant-numeric:tabular-nums; }
+    .section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 10px; }
+    .quiet { color:var(--muted); font-size:12px; }
+    .nodes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .node { min-width:0; padding:13px; border:1px solid var(--line); border-radius:7px; background:var(--paper); }
+    .node-head { display:flex; align-items:center; justify-content:space-between; gap:7px; }
+    .node-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:680; }
+    .badge { display:inline-block; flex:none; padding:2px 7px; border-radius:99px; color:var(--green); background:var(--green-soft); font-size:11px; white-space:nowrap; }
+    .badge.busy { color:var(--amber); background:var(--amber-soft); }
+    .badge.offline { color:#65716b; background:var(--gray-soft); }
+    .badge.draining { color:var(--blue); background:var(--blue-soft); }
+    .node-meta { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:11px; color:var(--muted); font-size:12px; }
+    .node-meta span:last-child { text-align:right; }
+    .node-id { margin-top:8px; overflow:hidden; color:#86928c; font:10px ui-monospace,SFMono-Regular,Menlo,monospace; text-overflow:ellipsis; white-space:nowrap; }
+    .empty { grid-column:1/-1; padding:25px; border:1px dashed #b9c6be; border-radius:7px; color:var(--muted); text-align:center; background:#f8faf8; }
+    .task-area { margin-top:29px; }
+    .task-list { overflow:hidden; border-top:1px solid var(--line); background:var(--paper); }
+    .task { border-bottom:1px solid var(--line); }
+    .task:last-child { border-bottom:0; }
+    .task-summary { display:grid; grid-template-columns:minmax(130px,1.4fr) 120px 110px 100px 90px; gap:12px; align-items:center; padding:12px 13px; font-size:12px; }
+    .task-summary:hover { background:#f7faf8; }
+    .task-id { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:11px ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .task-kind { color:var(--muted); }
+    .status { color:var(--blue); }
+    .status.completed,.status.succeeded { color:var(--green); }
+    .status.failed,.status.cancelled { color:var(--red); }
+    .status.running,.status.leased { color:var(--amber); }
+    .detail-toggle { border:0; padding:3px 0; color:var(--blue); background:transparent; font-size:11px; text-align:right; }
+    .assignments { display:none; padding:0 13px 13px; }
+    .task.open .assignments { display:block; }
+    .assignment-grid { display:grid; grid-template-columns:minmax(110px,1fr) 92px 92px minmax(130px,1.2fr) 120px; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:5px; background:#f8faf8; color:var(--muted); font-size:11px; }
+    .assignment-grid + .assignment-grid { margin-top:5px; }
+    .assignment-grid strong { color:var(--ink); font-weight:620; }
+    .result-line { margin-top:9px; padding:9px 10px; border-left:3px solid var(--green); color:var(--muted); font-size:12px; background:var(--green-soft); }
+    aside { padding-left:26px; border-left:1px solid var(--line); }
+    .panel-title { margin-bottom:10px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    .token { width:100%; height:38px; padding:0 10px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--paper); }
+    .token:focus,input:focus,textarea:focus { outline:2px solid #98c9ae; outline-offset:1px; }
+    .mode { display:grid; grid-template-columns:1fr 1fr; gap:3px; margin:20px 0 17px; padding:3px; border-radius:7px; background:#e2e9e4; }
+    .mode button { padding:8px 5px; border:0; border-radius:5px; color:var(--muted); background:transparent; }
+    .mode button.selected { color:var(--ink); background:var(--paper); box-shadow:0 1px 3px #15251a18; font-weight:650; }
+    .field { margin:14px 0; }
+    .field label { display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; color:var(--muted); font-size:12px; }
+    .field input,.field textarea { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--paper); }
+    .field textarea { min-height:104px; resize:vertical; font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    input[type=range] { height:20px; padding:0; accent-color:var(--green); }
+    .run { width:100%; height:40px; margin-top:7px; border:0; border-radius:6px; color:white; background:var(--green); font-weight:680; }
+    .run:hover { background:#105f40; }
+    .run:disabled { cursor:wait; opacity:.65; }
+    .error { min-height:19px; margin-top:9px; color:var(--red); font-size:12px; }
+    .result { display:none; margin-top:16px; padding-top:15px; border-top:1px solid var(--line); }
+    .result.show { display:block; }
+    .result-label { color:var(--muted); font-size:12px; }
+    .result-value { margin:4px 0; overflow-wrap:anywhere; font-size:24px; font-weight:720; }
+    .result-detail { color:var(--muted); font-size:12px; }
+    .foot { margin-top:21px; color:var(--muted); font-size:11px; }
+    @media (max-width:980px) { .layout { grid-template-columns:1fr; } aside { padding:23px 0 0; border-top:1px solid var(--line); border-left:0; } }
+    @media (max-width:700px) { .shell { padding:18px 15px 35px; } header { align-items:flex-start; } .metrics { grid-template-columns:repeat(2,1fr); } .metric:nth-child(2) { border-right:0; } .metric:nth-child(-n+2) { border-bottom:1px solid var(--line); } .nodes { grid-template-columns:repeat(2,minmax(0,1fr)); } .task-summary { grid-template-columns:minmax(120px,1fr) 80px 70px; } .task-summary > :nth-child(4),.task-summary > :nth-child(5) { display:none; } .assignment-grid { grid-template-columns:1fr 75px 75px; } .assignment-grid > :nth-child(4),.assignment-grid > :nth-child(5) { display:none; } }
+    @media (max-width:450px) { .nodes { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><div class="mark">L</div><div>LastCore<small>Controller / Distributed Compute Lab</small></div></div>
+      <div class="health" id="health"><i></i><span id="healthText">等待管理员授权</span></div>
+    </header>
+    <div class="layout">
+      <main>
+        <h1>分布式计算看板</h1>
+        <p class="lead">查看 Worker 心跳与任务分片，观察 Controller 如何把计算派发到多台设备。</p>
+        <div class="metrics">
+          <div class="metric"><span>在线设备</span><strong id="onlineCount">—</strong></div>
+          <div class="metric"><span>正在计算</span><strong id="busyCount">—</strong></div>
+          <div class="metric"><span>活动任务</span><strong id="activeCount">—</strong></div>
+          <div class="metric"><span>已完成任务</span><strong id="doneCount">—</strong></div>
+        </div>
+        <div class="section-head"><h2>设备状态</h2><span class="quiet" id="nodeRefresh">输入管理员令牌查看</span></div>
+        <div class="nodes" id="nodes"><div class="empty">输入管理员令牌后查看已注册 Worker</div></div>
+        <section class="task-area">
+          <div class="section-head"><h2>任务与分片</h2><span class="quiet" id="taskRefresh">—</span></div>
+          <div class="task-list" id="tasks"><div class="empty">暂无任务</div></div>
+        </section>
+      </main>
+      <aside>
+        <div class="panel-title">Controller 管理员令牌</div>
+        <input class="token" id="token" type="password" autocomplete="off" placeholder="粘贴 CONTROLLER_ADMIN_TOKEN">
+        <div class="mode" role="tablist" aria-label="演示任务类型">
+          <button class="selected" data-mode="pi">圆周率估算</button>
+          <button data-mode="logs">日志级别统计</button>
+        </div>
+        <div id="piFields">
+          <div class="field"><label for="samples">总采样点 <strong id="sampleLabel">300,000</strong></label><input id="samples" type="range" min="30000" max="1200000" step="30000" value="300000"></div>
+          <p class="quiet">每台 Worker 处理独立采样区间，Controller 汇总圆内点数并计算 π。</p>
+        </div>
+        <div id="logFields" hidden>
+          <div class="field"><label for="logLines">日志内容</label><textarea id="logLines" spellcheck="false">2026-10-13T09:00:01Z INFO api request accepted
+2026-10-13T09:00:02Z INFO node registered name=worker-01
+2026-10-13T09:00:03Z WARN heartbeat delayed node=worker-02
+2026-10-13T09:00:04Z INFO task queued id=demo-001
+2026-10-13T09:00:05Z ERROR worker timeout node=worker-03
+2026-10-13T09:00:06Z INFO assignment completed id=assignment-12
+2026-10-13T09:00:07Z WARN memory pressure node=worker-02</textarea></div>
+        </div>
+        <div class="field"><label for="workers">最多使用设备 <strong id="workerLabel">3</strong></label><input id="workers" type="range" min="1" max="8" value="3"></div>
+        <button class="run" id="run">运行圆周率估算</button>
+        <div class="error" id="error"></div>
+        <div class="result" id="result"><div class="result-label" id="resultLabel">计算结果</div><div class="result-value" id="resultValue">—</div><div class="result-detail" id="resultDetail"></div></div>
+        <div class="foot">Worker 主动向 Controller 轮询领取任务，不需要开放公网入站端口。看板只使用当前 Controller API，不保存管理员令牌。</div>
+      </aside>
+    </div>
+  </div>
+<script>
+  const $ = id => document.getElementById(id);
+  let mode = "pi", running = false, knownTasks = new Set();
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  const auth = () => ({ Authorization: `Bearer ${$("token").value.trim()}` });
+  const stateLabel = { available:"在线", busy:"计算中", draining:"暂停接单", offline:"离线" };
+  const taskLabel = { queued:"排队中", running:"执行中", completed:"已完成", failed:"失败", cancelled:"已取消" };
+  const assignmentLabel = { pending:"待领取", running:"执行中", completed:"已完成", failed:"失败", cancelled:"已取消" };
+  function ago(epoch) { if (!epoch) return "—"; const seconds = Math.max(0, Math.round(Date.now()/1000 - Number(epoch))); return seconds < 5 ? "刚刚" : `${seconds < 60 ? seconds + " 秒" : Math.round(seconds/60) + " 分钟"}前`; }
+  function api(path, options = {}) { return fetch(path, { ...options, headers: { ...auth(), ...(options.headers || {}) } }).then(async response => { if (!response.ok) throw new Error((await response.text()).slice(0, 260) || `HTTP ${response.status}`); return response.status === 204 ? null : response.json(); }); }
+  function renderNodes(nodes) {
+    $("nodes").innerHTML = nodes.length ? nodes.map(node => { const status = node.status || "offline"; const memory = Number(node.available_memory_mb || 0).toLocaleString(); return `<article class="node"><div class="node-head"><span class="node-name" title="${esc(node.name)}">${esc(node.name)}</span><span class="badge ${status}">${stateLabel[status] || esc(status)}</span></div><div class="node-meta"><span>${esc(node.platform)}</span><span>${memory} MB 可用</span></div><div class="node-meta"><span>算力权重 ${esc(node.compute_weight)}</span><span>心跳 ${ago(node.last_seen)}</span></div><div class="node-id" title="${esc(node.id)}">${esc(node.id)}</div></article>`; }).join("") : '<div class="empty">尚无 Worker 注册并发送心跳</div>';
+  }
+  function resultText(task) {
+    if (task.status !== "completed" || !task.result) return "";
+    const value = task.result, workload = task.request?.workload;
+    if (workload === "pi") return `<div class="result-line"><strong>π = ${Number(value.pi_estimate).toFixed(6)}</strong> · ${Number(value.samples).toLocaleString()} 个采样点 · ${Number(value.inside).toLocaleString()} 个落在圆内</div>`;
+    if (workload === "log_stats") { const levels = value.levels || {}; return `<div class="result-line"><strong>日志统计</strong> · ERROR ${levels.ERROR || 0} · WARN ${levels.WARN || 0} · INFO ${levels.INFO || 0} · 共 ${value.total_lines || 0} 行</div>`; }
+    return "";
+  }
+  function renderTasks(tasks) {
+    $("tasks").innerHTML = tasks.length ? tasks.map(task => { const request = task.request || {}, workload = request.workload === "pi" ? "圆周率估算" : request.workload === "log_stats" ? "日志统计" : request.model_id || "任务"; const assignments = task.assignments || []; return `<article class="task" data-task="${esc(task.id)}"><div class="task-summary"><span class="task-id" title="${esc(task.id)}">${esc(task.id)}</span><span class="task-kind">${esc(workload)}</span><span class="status ${esc(task.status)}">${taskLabel[task.status] || esc(task.status)}</span><span>${assignments.length} 个分片</span><button class="detail-toggle" type="button">查看分片</button></div><div class="assignments">${assignments.length ? assignments.map((assignment, index) => { const previous = assignment.previous_node?.node_id ? `上游 ${assignment.previous_node.node_id.slice(0, 10)}` : "起点"; const next = assignment.next_node?.node_id ? `下游 ${assignment.next_node.node_id.slice(0, 10)}` : "终点"; return `<div class="assignment-grid"><span><strong>Worker ${index + 1}</strong><br>${esc(assignment.node_id)}</span><span>区间<br><strong>[${assignment.layer_start}, ${assignment.layer_end})</strong></span><span>状态<br><strong class="status ${esc(assignment.status)}">${assignmentLabel[assignment.status] || esc(assignment.status)}</strong></span><span>分片链路<br><strong>${esc(previous)}</strong><br>${esc(next)}</span><span>派发 ID<br><strong>${esc(assignment.id).slice(0, 16)}</strong>${assignment.error ? `<br>${esc(assignment.error)}` : ""}</span></div>`; }).join("") : '<div class="quiet">尚未生成分片</div>'}${resultText(task)}</div></article>`; }).join("") : '<div class="empty">暂无任务</div>';
+    document.querySelectorAll(".detail-toggle").forEach(button => button.addEventListener("click", () => { const task = button.closest(".task"); task.classList.toggle("open"); button.textContent = task.classList.contains("open") ? "收起分片" : "查看分片"; }));
+  }
+  async function refresh() {
+    if (!$("token").value.trim()) return;
+    try {
+      const [nodeData, taskData] = await Promise.all([api("/v1/nodes"), api("/v1/tasks")]);
+      const nodes = nodeData.nodes || [], tasks = taskData.tasks || [];
+      $("health").classList.add("ok"); $("healthText").textContent = "Controller 已连接";
+      $("onlineCount").textContent = nodes.filter(node => node.status !== "offline").length;
+      $("busyCount").textContent = nodes.filter(node => node.status === "busy").length;
+      $("activeCount").textContent = tasks.filter(task => ["queued", "running"].includes(task.status)).length;
+      $("doneCount").textContent = tasks.filter(task => task.status === "completed").length;
+      $("nodeRefresh").textContent = `${nodes.length} 台已注册 · ${new Date().toLocaleTimeString()}`;
+      $("taskRefresh").textContent = `最近 ${tasks.length} 条 · ${new Date().toLocaleTimeString()}`;
+      renderNodes(nodes); renderTasks(tasks);
+      knownTasks = new Set(tasks.map(task => task.id));
+    } catch (error) { $("health").classList.remove("ok"); $("healthText").textContent = "授权失败或 Controller 不可达"; $("nodeRefresh").textContent = error.message; }
+  }
+  function showResult(task) {
+    if (task.status === "failed") { $("error").textContent = task.error || "任务执行失败"; return; }
+    if (task.status !== "completed" || !task.result) return;
+    const result = task.result;
+    $("result").classList.add("show");
+    if (task.request?.workload === "pi") { $("resultLabel").textContent = "多设备圆周率估算"; $("resultValue").textContent = Number(result.pi_estimate).toFixed(6); $("resultDetail").textContent = `${Number(result.samples).toLocaleString()} 个采样点 · ${Number(result.inside).toLocaleString()} 个落在圆内`; }
+    else { const levels = result.levels || {}; $("resultLabel").textContent = "日志级别统计"; $("resultValue").textContent = `ERROR ${levels.ERROR || 0} · WARN ${levels.WARN || 0}`; $("resultDetail").textContent = `${result.total_lines || 0} 行 · INFO ${levels.INFO || 0} · OTHER ${levels.OTHER || 0}`; }
+  }
+  async function runTask() {
+    $("error").textContent = ""; if (!$("token").value.trim()) { $("error").textContent = "请先输入管理员令牌"; return; }
+    running = true; $("run").disabled = true; $("run").textContent = "正在派发…"; $("result").classList.remove("show");
+    const lines = $("logLines").value.split(/\r?\n/).filter(Boolean), body = mode === "pi" ? { model_id:"lastcore/pi-monte-carlo-v1", workload:"pi", num_layers:24, layer_memory_mb:1, max_nodes:Number($("workers").value), timeout_seconds:180, total_samples:Number($("samples").value), weight_seed:20261013 } : { model_id:"lastcore/log-statistics-v1", workload:"log_stats", num_layers:lines.length, layer_memory_mb:1, max_nodes:Number($("workers").value), timeout_seconds:120, log_lines:lines };
+    try {
+      const created = await api("/v1/tasks", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+      $("run").textContent = `任务已派发 · ${(created.assignments || []).length} 个分片`;
+      const deadline = Date.now() + body.timeout_seconds * 1000;
+      while (Date.now() < deadline) { await new Promise(resolve => setTimeout(resolve, 900)); const task = await api(`/v1/tasks/${created.id}`); await refresh(); if (["completed", "failed", "cancelled"].includes(task.status)) { showResult(task); break; } }
+      if (!$("result").classList.contains("show") && !$("error").textContent) $("error").textContent = "等待超时，请检查 Worker 心跳和任务分片状态";
+    } catch (error) { $("error").textContent = error.message; }
+    finally { running = false; $("run").disabled = false; $("run").textContent = mode === "pi" ? "运行圆周率估算" : "运行日志统计"; await refresh(); }
+  }
+  document.querySelectorAll(".mode button").forEach(button => button.addEventListener("click", () => { document.querySelectorAll(".mode button").forEach(item => item.classList.toggle("selected", item === button)); mode = button.dataset.mode; $("piFields").hidden = mode !== "pi"; $("logFields").hidden = mode !== "logs"; if (!running) $("run").textContent = mode === "pi" ? "运行圆周率估算" : "运行日志统计"; }));
+  $("samples").addEventListener("input", () => $("sampleLabel").textContent = Number($("samples").value).toLocaleString());
+  $("workers").addEventListener("input", () => $("workerLabel").textContent = $("workers").value);
+  $("run").addEventListener("click", runTask); $("token").addEventListener("change", refresh); $("token").addEventListener("keydown", event => { if (event.key === "Enter") refresh(); });
+  setInterval(refresh, 5000); refresh();
+</script>
+</body>
+</html>

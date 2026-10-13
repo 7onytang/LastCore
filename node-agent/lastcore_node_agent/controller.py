@@ -66,10 +66,10 @@ class ControllerClient:
         return response.json().get("assignments", [])
 
     def report(self, node_id: str, node_token: str, assignment_id: str, status: str,
-               error: str | None = None) -> dict:
+               error: str | None = None, result=None) -> dict:
         response = self._client.post(
             f"/v1/nodes/{node_id}/assignments/{assignment_id}/report",
-            json={"status": status, "error": error},
+            json={"status": status, "error": error, "result": result},
             headers=self._headers(node_token),
         )
         self._check(response)
