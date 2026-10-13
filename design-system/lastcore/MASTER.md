@@ -34,3 +34,5 @@ Checked Material Components Android (maintenance mode) and pywebview (BSD-3-Clau
 
 ## Verification
 Run Controller console/auth regressions and desktop loopback security tests. Exercise the browser at 390/768/1440px, keyboard navigation, real API connection, error/disconnect states and empty data. Exercise a real local demo-node process for launch/stop; label demo mode as simulation. Compile native Android resources and Java with the pinned API35/JDK17 toolchain; full APK/lint/device verification must be reported separately. Physical Android verification remains deferred.
+
+Source work is isolated on `codex/unified-ui` at `/private/tmp/lastcore-unified-ui`; it is not a deployed update. The project skill is included in that branch. The shared main checkout was restored after verifying a binary diff backup plus SHA256 matches for all 94 migrated files; unrelated files were left intact.

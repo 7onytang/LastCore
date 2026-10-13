@@ -38,7 +38,7 @@ async function refresh() {
     if (ticket !== generation) return;
     const nodes = nodesData.nodes, tasks = tasksData.tasks;
     if (!Array.isArray(nodes) || !Array.isArray(tasks) || (workers !== null && !Array.isArray(workers))) throw new Error('Controller 返回了无法读取的数据，请检查服务状态。');
-    $('node-count').textContent = nodes.length; $('online-count').textContent = nodes.filter(n => n.status && n.status !== 'offline').length;
+    $('node-count').textContent = nodes.length; $('online-count').textContent = nodes.filter(n => ['available','busy','draining'].includes(n.status)).length;
     $('active-count').textContent = tasks.filter(t => ['queued','running'].includes(t.status)).length;
     $('worker-count').textContent = workers === null ? '未启用' : workers.length;
     $('worker-note').textContent = workers === null ? '整模型 API 当前不可用' : '已声明整模型能力的 worker';
@@ -57,7 +57,7 @@ async function refresh() {
   } catch (error) { if (ticket === generation) { message(error instanceof TypeError || error.name === 'TimeoutError' ? '连接超时或网络不可达，请检查 Controller。' : error.message, true); $('connection').textContent = '查询失败 · 数据可能过期'; $('connection').className = 'badge bad'; } }
   finally { loading = false; $('refresh').disabled = !admin; }
 }
-$('connect-form').addEventListener('submit', event => { event.preventDefault(); if (loading) return; admin = $('admin-token').value.trim(); $('admin-token').value = ''; generation++; clearData(); $('disconnect').hidden = false; refresh(); });
+$('connect-form').addEventListener('submit', event => { event.preventDefault(); if (loading) return; if (location.protocol !== 'https:' && !['127.0.0.1','localhost','[::1]'].includes(location.hostname)) { message('请通过 HTTPS 打开 Controller，再输入管理员凭据。', true); return; } admin = $('admin-token').value.trim(); $('admin-token').value = ''; generation++; clearData(); $('disconnect').hidden = false; refresh(); });
 $('refresh').addEventListener('click',refresh); $('disconnect').addEventListener('click',disconnect);
 window.addEventListener('pagehide', () => {admin = ''; generation++;});
 for (const a of document.querySelectorAll('nav a')) a.addEventListener('click', () => { for (const b of document.querySelectorAll('nav a')) b.removeAttribute('aria-current'); a.setAttribute('aria-current','page'); });
