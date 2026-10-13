@@ -19,5 +19,7 @@ jobs:
           node-version: "22"
       - name: Adapter contract unit tests
         run: node --test tests/adapter.test.mjs
-      - name: Browser prototype E2E (headless Chrome, skips if unavailable)
+      - name: Browser prototype E2E (headless Chrome required)
+        env:
+          E2E_REQUIRE_CHROME: "1"
         run: node tests/e2e_browser.mjs

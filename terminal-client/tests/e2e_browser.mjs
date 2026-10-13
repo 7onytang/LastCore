@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { mkdtempSync, existsSync } from "node:fs";
+import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,10 @@ const CHROME_CANDIDATES = [
   "/Applications/Chromium.app/Contents/MacOS/Chromium",
   "/usr/bin/google-chrome",
   "/usr/bin/chromium",
-];
+  process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, "Google/Chrome/Application/chrome.exe") : null,
+  process.env["PROGRAMFILES(X86)"] ? join(process.env["PROGRAMFILES(X86)"], "Google/Chrome/Application/chrome.exe") : null,
+  process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Google/Chrome/Application/chrome.exe") : null,
+].filter(Boolean);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -40,8 +43,10 @@ function startStaticServer(port = 0) {
 }
 
 function findChrome() {
-  for (const candidate of CHROME_CANDIDATES) {
-    if (existsSync(candidate)) {
+  const override = process.env.E2E_CHROME_PATH;
+  const candidates = override ? [override] : CHROME_CANDIDATES;
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
       return candidate;
     }
   }
@@ -51,7 +56,7 @@ function findChrome() {
 function launchChrome() {
   const chromePath = findChrome();
   if (!chromePath) {
-    return Promise.resolve(null);
+    return Promise.resolve({ status: "missing" });
   }
   const userDir = mkdtempSync(join(tmpdir(), "lc14-chrome-"));
   const child = spawn(chromePath, [
@@ -62,16 +67,30 @@ function launchChrome() {
     "--remote-debugging-port=0",
     "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"] });
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("chrome devtools endpoint timeout")), 15000);
+  return new Promise((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      try { child.kill("SIGKILL"); } catch {}
+      try { rmSync(userDir, { recursive: true, force: true }); } catch {}
+    };
+    const fail = (reason) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      resolve({ status: "failed", reason });
+    };
+    const timer = setTimeout(() => fail("chrome devtools endpoint timeout after 15s"), 15000);
     child.stderr.on("data", (chunk) => {
       const match = String(chunk).match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
-      if (match) {
+      if (match && !settled) {
+        settled = true;
         clearTimeout(timer);
-        resolve({ child, port: Number(match[1]) });
+        resolve({ status: "ready", child, userDir, port: Number(match[1]) });
       }
     });
-    child.on("exit", () => reject(new Error("chrome exited early")));
+    child.on("exit", (code, signal) => fail(`chrome exited before devtools was ready (code=${code}, signal=${signal})`));
+    child.on("error", (error) => fail(`chrome failed to spawn: ${error.message}`));
   });
 }
 
@@ -208,43 +227,59 @@ const checks = {
 async function main() {
   const server = await startStaticServer();
   const httpPort = server.address().port;
-  const chrome = await launchChrome().catch(() => null);
-  if (!chrome) {
-    console.log("SKIP: no Chrome available");
-    server.close();
-    return;
-  }
-  let cdp;
+  let chrome;
   try {
+    const launch = await launchChrome();
+    if (launch.status === "missing") {
+      if (process.env.E2E_REQUIRE_CHROME === "1") {
+        console.error("E2E FAILED: no Chrome/Chromium found and E2E_REQUIRE_CHROME=1");
+        process.exitCode = 1;
+        return;
+      }
+      console.log("SKIP: no Chrome available (set E2E_REQUIRE_CHROME=1 to require)");
+      return;
+    }
+    if (launch.status === "failed") {
+      console.error("E2E FAILED: " + launch.reason);
+      process.exitCode = 1;
+      return;
+    }
+    chrome = launch;
     await new Promise((resolve) => setTimeout(resolve, 500));
-    cdp = await Cdp.connect(chrome.port);
-    await cdp.send("Page.enable");
-    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${httpPort}/index.html` });
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const out = await cdp.evaluate(FLOW);
-    let failed = 0;
-    for (const [name, check] of Object.entries(checks)) {
-      let ok;
-      try {
-        ok = Boolean(check(out));
-      } catch {
-        ok = false;
+    const cdp = await Cdp.connect(chrome.port);
+    try {
+      await cdp.send("Page.enable");
+      await cdp.send("Page.navigate", { url: `http://127.0.0.1:${httpPort}/index.html` });
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const out = await cdp.evaluate(FLOW);
+      let failed = 0;
+      for (const [name, check] of Object.entries(checks)) {
+        let ok;
+        try {
+          ok = Boolean(check(out));
+        } catch {
+          ok = false;
+        }
+        console.log(`${ok ? "PASS" : "FAIL"} ${name}`);
+        if (!ok) {
+          failed += 1;
+        }
       }
-      console.log(`${ok ? "PASS" : "FAIL"} ${name}`);
-      if (!ok) {
-        failed += 1;
+      if (failed > 0 || !out.pill) {
+        console.log("DETAILS " + JSON.stringify(out, null, 2));
       }
+      console.log(failed === 0 ? "E2E OK" : `E2E FAILED: ${failed}`);
+      process.exitCode = failed === 0 ? 0 : 1;
+    } finally {
+      cdp.close();
     }
-    if (failed > 0 || !out.pill) {
-      console.log("DETAILS " + JSON.stringify(out, null, 2));
-    }
-    console.log(failed === 0 ? "E2E OK" : `E2E FAILED: ${failed}`);
-    process.exitCode = failed === 0 ? 0 : 1;
   } finally {
-    cdp?.close();
-    chrome.child.kill("SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    chrome.child.kill("SIGKILL");
+    if (chrome) {
+      try { chrome.child.kill("SIGTERM"); } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      try { chrome.child.kill("SIGKILL"); } catch {}
+      try { rmSync(chrome.userDir, { recursive: true, force: true }); } catch {}
+    }
     server.close();
   }
 }
