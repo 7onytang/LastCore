@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import math
 import os
 import secrets
+import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,13 +26,19 @@ class Settings:
     registration_token: str
     database_path: str = "data/controller.sqlite3"
     heartbeat_ttl_seconds: int = 30
+    expiry_interval_seconds: float = 1.0
+    real_jobs_enabled: bool = False
 
     @classmethod
     def from_env(cls):
+        flag = os.environ.get("CONTROLLER_REAL_JOBS_ENABLED", "false").lower()
+        if flag not in ("true", "false", "1", "0"):
+            raise ValueError("CONTROLLER_REAL_JOBS_ENABLED must be true or false")
         return cls(os.environ.get("CONTROLLER_ADMIN_TOKEN", ""),
                    os.environ.get("CONTROLLER_REGISTRATION_TOKEN", ""),
                    os.environ.get("CONTROLLER_DATABASE_PATH", "data/controller.sqlite3"),
-                   int(os.environ.get("CONTROLLER_HEARTBEAT_TTL_SECONDS", "30")))
+                   int(os.environ.get("CONTROLLER_HEARTBEAT_TTL_SECONDS", "30")),
+                   float(os.environ.get("CONTROLLER_EXPIRY_INTERVAL_SECONDS", "1")), flag in ("true", "1"))
 
 
 def create_app(settings: Settings | None = None, store: Store | None = None):
@@ -41,38 +49,50 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
         raise ValueError("Admin and registration credentials must be different")
     if not 5 <= settings.heartbeat_ttl_seconds <= 3600:
         raise ValueError("Heartbeat TTL must be between 5 and 3600 seconds")
+    if not math.isfinite(settings.expiry_interval_seconds) or not 0.1 <= settings.expiry_interval_seconds <= 60:
+        raise ValueError("Expiry interval must be between 0.1 and 60 seconds")
     store = store or Store(settings.database_path, settings.heartbeat_ttl_seconds)
+    jobs = None
+    if settings.real_jobs_enabled:
+        from .inference_jobs import Jobs
+        jobs = Jobs(store)
+
+    def expire_all():
+        store.expire()
+        if jobs is not None:
+            jobs.expire()
 
     @asynccontextmanager
-    async def lifespan(_app):
-        # Reconcile persisted deadlines before accepting requests. SQLite work
-        # runs off the event loop so startup does not block async handlers.
-        await asyncio.to_thread(store.expire_stale)
+    async def lifespan(app):
+        # Reject startup if persisted state cannot be reconciled. SQLite work
+        # runs off the event loop and uses the same locking as API transactions.
+        await asyncio.to_thread(expire_all)
         stop = asyncio.Event()
-        interval = max(1.0, min(settings.heartbeat_ttl_seconds / 2, 30.0))
 
-        async def expiry_loop():
+        async def sweep():
             while True:
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=interval)
+                    await asyncio.wait_for(stop.wait(), timeout=settings.expiry_interval_seconds)
                     return
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     try:
-                        await asyncio.to_thread(store.expire_stale)
-                    except Exception:
-                        logger.exception("background task expiry sweep failed")
+                        await asyncio.to_thread(expire_all)
+                    except sqlite3.Error:
+                        logger.exception("Controller expiry sweep failed; retrying on next interval")
 
-        sweep = asyncio.create_task(expiry_loop())
+        worker = asyncio.create_task(sweep(), name="controller-expiry")
         try:
             yield
         finally:
             stop.set()
-            await sweep
+            # Do not cancel a SQLite thread mid-transaction or leave it writing
+            # after shutdown. An idle worker wakes immediately on this event.
+            await worker
 
     app = FastAPI(title="LastCore Controller", version="0.2.0", lifespan=lifespan)
     bearer = HTTPBearer(auto_error=False)
 
-    @app.get("/", include_in_schema=False)
+    @app.get("/showcase", include_in_schema=False)
     def showcase():
         return FileResponse(Path(__file__).with_name("showcase.html"))
 
@@ -83,13 +103,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
 
     def require_admin(token: Annotated[str, Depends(credential)]):
         if not secrets.compare_digest(token.encode(), settings.admin_token.encode()):
-            raise HTTPException(401, "invalid admin credential",
-                                headers={"WWW-Authenticate": "Bearer"})
+            raise HTTPException(401, "invalid admin credential", headers={"WWW-Authenticate": "Bearer"})
 
     def require_registration(token: Annotated[str, Depends(credential)]):
         if not secrets.compare_digest(token.encode(), settings.registration_token.encode()):
-            raise HTTPException(401, "invalid registration credential",
-                                headers={"WWW-Authenticate": "Bearer"})
+            raise HTTPException(401, "invalid registration credential", headers={"WWW-Authenticate": "Bearer"})
 
     @app.get("/healthz")
     def health():
@@ -132,4 +150,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     def cancel(task_id: str):
         return store.cancel(task_id)
 
+    if jobs is not None:
+        from .inference_jobs import router
+        app.include_router(router(jobs, credential, require_admin))
     return app
