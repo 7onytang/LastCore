@@ -41,7 +41,7 @@ def validate_url(value, allow_loopback_http=False):
 
 def private_json(path):
     metadata=path.stat()
-    if path.is_symlink() or not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077 or metadata.st_size > 16384:
+    if path.is_symlink() or not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077 or metadata.st_size > 524288:
         raise WorkerFailure('configuration/state must be a private regular JSON file')
     return json.loads(path.read_text())
 
@@ -150,12 +150,12 @@ class Worker:
                             # Do not extend the local deadline from an unconfirmed renewal.
                             pass
                         next_renew=time.monotonic()+.25
-                    if out.tell()>131072 or err.tell()>131072:
+                    if out.tell()>524288 or err.tell()>524288:
                         raise WorkerFailure('guardian output budget exceeded')
                     time.sleep(.02)
                 process.wait(timeout=5)
-                out.seek(0);raw=out.read(131073)
-                if len(raw)>131072 or process.returncode!=0:
+                out.seek(0);raw=out.read(524289)
+                if len(raw)>524288 or process.returncode!=0:
                     raise WorkerFailure('guardian failed without verified cleanup')
                 full=json.loads(raw)
                 if not full.get('backend_reaped'):raise WorkerFailure('native cleanup was not confirmed')

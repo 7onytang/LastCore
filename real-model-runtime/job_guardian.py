@@ -51,7 +51,7 @@ def supervise(fd, emit, factory=None):
                         return
                     break
                 buffer += data
-                if len(buffer) > 16384:
+                if len(buffer) > 65536:
                     raise ValueError('guardian command exceeds byte budget')
                 while b'\n' in buffer:
                     line, buffer = buffer.split(b'\n', 1)
