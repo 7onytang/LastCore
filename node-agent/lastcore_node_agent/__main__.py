@@ -109,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, handle_signal)
     try:
         agent.run_forever()
     except CredentialRejected as exc:

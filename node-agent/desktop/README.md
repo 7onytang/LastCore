@@ -135,3 +135,9 @@ python desktop/preflight.py --env-file <私有配置文件> [--min-memory-mb 204
 | 阶段二 Windows 打包 | **未验证** | PyInstaller 不支持交叉编译，需真实 Windows 主机 |
 | 真实整机休眠唤醒恢复 | **未验证** | 无权让共享设备休眠；语义经源码核对，待真机 |
 | Windows 全部路径（安装/入网/任务/停止/重启） | **未验证** | 无 Windows 真机；锁分支有单测与源码核对 |
+
+## Shared browser UI (source launcher)
+
+Run `python desktop/ui.py --env-file /absolute/private/node.env` from `node-agent/` after installing its runtime requirements. This adds a source-only macOS/Windows/Linux local panel using the same assets as the Controller console. It automatically opens a randomized loopback URL with a session fragment, removes that fragment from the visible address, and requires the in-memory session header plus matching Host/Origin for process operations. Reloading the cleaned URL loses the session; reopen the original session URL or restart the panel. `--no-browser` prints the private session URL for headless/local verification; do not share it.
+
+The configured tiny/demo process starts only after a click. Process output and env-file credentials never enter the browser. Start is serialized; stop requests SIGINT on Unix or CTRL_BREAK for a dedicated process group on Windows (the CLI maps SIGBREAK to its existing shutdown handler). Waiting expires after six seconds without force-killing or pretending cleanup completed. The UI reports only process state, not cloud registration. Closing the browser does not stop the node; stopping the launcher requests shutdown. This source panel is separate from the existing frozen binary bundle, and Windows native execution still requires verification.

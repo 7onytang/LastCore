@@ -22,6 +22,18 @@
 @media(min-width:1500px){.edge-development{top:138px}}
 @media(max-width:600px){.edge-development{top:126px;right:0;width:109px;min-height:34px;padding:8px 6px;gap:4px;border-radius:6px}.edge-development strong{font-size:8px}.edge-development span{font-size:6px;padding-left:4px}.edge-route-wide{display:none}.edge-route-mobile{display:block}.route-second{display:none}}
 
+/* Shared LastCore interaction tokens: marketing uses paper; control surfaces use ink. */
+:root{--lc-accent:#d7ecb4;--lc-ink:#1d2e27;--lc-touch:48px;--lc-focus:#5a7846}
+.site-header nav a,.nav-release{min-height:var(--lc-touch);display:inline-flex;align-items:center}
+.button,.replay-tabs button,.replay-steps button,.play-button,.reset-button,.service-check button{min-height:var(--lc-touch)}
+.reset-button{min-width:var(--lc-touch)}
+.replay-tabs button{font-size:12px}.service-check button{font-size:12px}.play-button{font-size:12px}
+.hero-note,.visual-caption,.site-footer,.verification-title span,.verification-matrix p,.verification-matrix a{color:#53644f}
+.verification-matrix p,.verification-matrix a{font-size:12px}.verification-title span{font-size:10px}
+.service-check span{font-size:11px;color:#53644f}.replay-footer{font-size:11px}
+.button:hover{transform:none}.button:active,.play-button:active,.reset-button:active{filter:brightness(.94)}
+@media(max-width:600px){.site-header nav{gap:14px}.replay-tabs{flex-wrap:wrap}.replay-tabs button{padding:8px 10px;font-size:12px}.service-check{max-width:190px}.service-check span{font-size:10px}.site-footer{font-size:10px}.replay-footer,.replay-footer span:last-child{font-size:10px}.verification-matrix p{font-size:12px}.verification-matrix a{font-size:11px}}
+
 </style></head>
 <body><a class="skip-link" href="#main">跳到主要内容</a>
 <header class="site-header wrap"><a class="brand" href="#overview" aria-label="LastCore 首页"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 23V9l7-4v14l-7 4Zm10 5V8l7-4v20l-7 4Zm10-5V9l6-3v14l-6 3Z" fill="currentColor"/></svg><strong>LastCore</strong><span class="brand-caption">LOCAL COMPUTE. REAL RESULTS.</span></a><nav aria-label="主导航"><a href="#flow">工作方式</a><a href="#replay">实测回放</a><a href="#download">开始体验</a></nav><a class="nav-release" href="https://github.com/7onytang/LastCore/releases/tag/v0.1.0-alpha.1" target="_blank" rel="noopener">v0.1.0-alpha.1 <svg aria-hidden="true" focusable="false" class="icon "
