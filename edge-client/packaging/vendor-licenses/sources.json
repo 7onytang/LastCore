@@ -1,0 +1,18 @@
+[
+  {
+    "component": "tcl",
+    "version": "8.6.15",
+    "source": "https://raw.githubusercontent.com/tcltk/tcl/core-8-6-15/license.terms",
+    "relative_path": "edge-client/packaging/vendor-licenses/tcl-8.6.15-license.terms",
+    "sha256": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+    "native_source_reference": "https://raw.githubusercontent.com/python/cpython/v3.13.16/PCbuild/tcltk.props"
+  },
+  {
+    "component": "tk",
+    "version": "8.6.15",
+    "source": "https://raw.githubusercontent.com/tcltk/tk/core-8-6-15/license.terms",
+    "relative_path": "edge-client/packaging/vendor-licenses/tk-8.6.15-license.terms",
+    "sha256": "2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198",
+    "native_source_reference": "https://raw.githubusercontent.com/python/cpython/v3.13.16/PCbuild/tcltk.props"
+  }
+]

@@ -29,3 +29,8 @@ data/
 
 # Generated unified competition archive; publish as a release asset, not source.
 /submission-output/
+# Independent portable build outputs; never commit runtime/user state or native artifacts.
+.edge-build-venv/
+edge-client/build/
+edge-client/dist/
+edge-client/release-output/
