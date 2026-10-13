@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "time_zone": "Asia/Shanghai",
+  "screenshots": [
+    {
+      "file": "01-demo-desktop.png",
+      "url": "http://127.0.0.1:8766/",
+      "captured_at_beijing": "2026-10-13T15:10:51.722+08:00",
+      "source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
+      "scope": "Actual local Demo UI; device art is architectural illustration; Paris is public historical summary, not a new model run or Android device proof.",
+      "sha256": "c6e0945d9eb1a1af442ae33d2bdbc204230cacc74771c57703ce9ceb29ad97f5",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "02-demo-history-replay.png",
+      "url": "http://127.0.0.1:8766/",
+      "captured_at_beijing": "2026-10-13T15:11:01.683+08:00",
+      "source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
+      "scope": "Actual Demo interaction: generation/timeout/cancel tabs, replay/reset tested; selected Paris is previously published historical summary. No task is created or rerun.",
+      "sha256": "7947048f7571825085843099161b9be6771ab19795a9848886e156f547c1b567",
+      "width": 1440,
+      "height": 1320
+    },
+    {
+      "file": "03-demo-mobile-browser.png",
+      "url": "http://127.0.0.1:8766/",
+      "captured_at_beijing": "2026-10-13T15:11:03.765+08:00",
+      "source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
+      "scope": "Actual mobile-size browser rendering at390px; this is responsive web UI with illustrative devices, not an Android hardware screenshot.",
+      "sha256": "5a04c1d0f45215c9422c8c74e5051478a90e95adfd5d73898e82f98b8675da92",
+      "width": 390,
+      "height": 920
+    },
+    {
+      "file": "04-live-swagger-health.png",
+      "url": "https://8.134.161.123/docs#/default/health_healthz_get",
+      "captured_at_beijing": "2026-10-13T15:11:48.146+08:00",
+      "source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+      "source_attribution": "Previously verified public deployed Controller receipt; health response alone does not attest source version.",
+      "scope": "Actual public Swagger Execute GET /healthz, HTTP200 and status ok; no authentication or write request; does not prove worker/model/device readiness.",
+      "sha256": "8a5bb6fde11e5dc8e059612ee772b4a282f56f94a4f41cd0ad0605df84d927cc",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "file": "05-live-health-response.png",
+      "url": "https://8.134.161.123/healthz",
+      "captured_at_beijing": "2026-10-13T15:11:49.013+08:00",
+      "source_commit": "85ddad92758d072097de87857f7ed1a229c8f76e",
+      "source_attribution": "Previously verified public deployed Controller receipt; health response alone does not attest source version.",
+      "scope": "Actual public HTTPS /healthz browser response status ok; service reachability only, not source attestation or new inference.",
+      "sha256": "dabe6aaa758b751e80dc471a1495d17ca5b88e3d318038f27f0a51191bc5b446",
+      "width": 1024,
+      "height": 420
+    }
+  ],
+  "demo_source_commit": "027aefe5252528c80dc7cb03b9374a4ed24b0a4e",
+  "core_source_commit": "09a02efa3569057d7a5ed0b2df5b817c13e77bb5",
+  "capture_tool": "ego-browser, existing TaskSpace13/p1, actual rendered page PNG, no image composition",
+  "public_demo_deployed_at_capture": false,
+  "qa": "Desktop1440, mobile390 and375 overflow0; generation/timeout/cancel tabs, playback/reset/reduced-motion verified; live public Swagger Execute GET health returned200 statusok without Authorization; no model/task created."
+}

@@ -4,6 +4,14 @@ LastCore 将日常设备接入统一的 AI 任务调度服务，探索利用闲�
 
 技术栈：Python 3.12+、FastAPI、SQLite、NumPy/TCP、llama.cpp，以及 Android Java/JNI。项目业务时间统一使用 `Asia/Shanghai`；协议存储可使用 UTC。
 
+## Demo 与实际截图
+
+在线地址预留为 `https://8.134.161.123/demo/`，当前等待静态部署验收。也可直接打开 [离线展示页面](demo/offline.html)，按[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt)展示；页面提供历史结果回放、下载和公开证据入口，不创建新的模型任务。
+
+[5 张实际截图及采集范围](screenshots/README.md)包含桌面网页、历史回放、移动浏览器，以及线上 Swagger 和健康响应。设备画面为架构示意，移动截图不是 Android 真机证明。
+
+![实际运行的 Demo 桌面页面，设备图为示意](screenshots/01-demo-desktop.png)
+
 ## 当前功能与验证范围
 
 | 功能 | 实现状态 | 验证与限制 |
@@ -27,6 +35,21 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 上述修复后验收是本地测试，不代表新的云端模型运行或 Android 真机验证；云端 Controller 仍沿用原 Alpha 源码。**旧版无 origin 的 worker 凭据需先独立确认原服务器地址，再按[显式迁移说明](real-model-runtime/README.md#worker-credential-and-recovery-corrections)离线绑定**，不能删除状态目录或盲目绑定当前地址来绕过恢复。最终参赛提交与展示材料仍待项目完成后统一固定。
 
 **两种任务的结果语义不同：** legacy `/v1/tasks` 完成表示各分片上报完成，Controller 不存储该路径的模型输出；整模型 `/v1/inference/jobs` 保存有界文本结果和停止确认。单设备 SmolLM2 成功不能证明真实预训练模型已跨设备分层。
+
+## 评分依据与评审入口
+
+以下按赛事六个维度提供具体文件，供评审核验，不作自评分。优先展示可运行的功能和使用路径，验证范围见各证据原文。
+
+| 维度 / 分值 | 可核验内容 | 具体文件 |
+| --- | --- | --- |
+| 完成度 / 25 | tiny 分层闭环；真实整模型结果与停止确认；修复后本地恢复和真实模型验收 | [双节点脚本](integration/run_two_node_local.sh)、[Alpha 验收](submission/evidence/ACCEPTANCE.txt)、[修复后本地证据](submission/evidence/mac-worker-30b9efc-local.json) |
+| 实用性 / 20 | 本地生成、工作节点安装、固定模型校验、旧凭据迁移 | [当前 CLI 指南](real-model-runtime/README.md)、[Android 指南](android-app/README.md)、[tiny bundle 指南](node-agent/desktop/README.md) |
+| 创新性 / 15 | 资源约束下连续分层与逐跳 activation；整模型任务的结果和停止收敛 | [scheduler.py](controller-server/app/scheduler.py)、[pipeline.py](inference-engine/inference_engine/pipeline.py)、[任务协议](controller-server/REAL_JOBS.md)；不宣称算法首创或预训练模型跨设备已完成 |
+| 代码实现 / 15 | 恢复/凭据边界回归、事务及容量扩展、固定 Git 归档检查 | [恢复测试](real-model-runtime/tests/test_worker_recovery.py)、[容量测试](controller-server/tests/test_capacity_expiry_scaling.py)、[真实 Git 归档测试](ops/staging/tests/test_prepare_release.py) |
+| 项目架构 / 15 | 控制面与执行面分离、两种任务协议隔离、执行所有权与停止确认 | [Node Agent 协议](node-agent/PROTOCOL.md)、[通信协议](communication/PROTOCOL.md)、[整模型 API](controller-server/REAL_JOBS.md)、[guardian](real-model-runtime/job_guardian.py) |
+| 展示效果 / 10 | 实际运行的桌面/移动网页、交互回放、线上 Swagger 与健康响应 | [Demo 源码](demo/index.html)、[5 张实际截图及范围](screenshots/README.md)、[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt) |
+
+完整材料核对见 [submission/README.md](submission/README.md)。健康响应只证明采集时可达；回放是历史结果说明，移动浏览器截图不是 Android 真机验收。
 
 ## 核心文件清单
 
@@ -64,7 +87,7 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 - [AI_USAGE.md](AI_USAGE.md)与[真实 AI 对话记录索引](ai-logs/README.md)
 - [本地提交历史快照](submission/git-history.txt)：保留原始时间偏移，不单独证明平台仓库创建时间或赛事合规。
 
-按用户要求，**最终 Demo、3–8 张实际运行截图和统一 ZIP 等项目完成后再制作**。当前尚未定稿这些材料，也未发送邮件。最终应将源代码、README、AI 使用说明/日志、截图和 Demo 入口放入同一压缩包，发送至 `seproject@yeah.net`；主题为 `【Tibo重置了吗 + 赛题全称】`。
+本次最小核心已完成，现按用户要求进入最终交付阶段：Demo 源码与离线页面在 `demo/`；5 张实际截图在 `screenshots/`，每张均有原始来源、时间、尺寸和 SHA256。截图中的设备图是示意、交互是历史回放，线上健康截图仅证明当时服务可达。统一 ZIP 将基于最后云端 main 打包，公开 Demo 部署结果待主线验收确认。邮件尚未发送；最终提交地址为 `seproject@yeah.net`，主题为 `【Tibo重置了吗 + 赛题全称】`。
 
 ## 本地运行
 

@@ -4,7 +4,7 @@
 
 本文件是提交材料索引，不是赛事官方 README 模板。赛题全称、官方开赛时间、官方模板和评分等级描述尚待提供；不得据此自行宣称满足全部赛事要求。
 
-用户已明确要求：**最终 Demo、图片和压缩包等项目完成后再制作**。因此本目录当前保留文档草稿和已有 Alpha 证据；最终截图、Demo、ZIP 与发送步骤暂停，等待核心项目完成并固定源码版本后继续。
+用户要求的顺序已执行：最小核心完成并冻结后，再制作最终展示。Demo 源码已由 PR #62 合入；本批补入 5 张原始实际截图、采集元数据和三分钟讲稿。公开静态部署仍待主线验收，统一 ZIP 等全部材料与部署记录进入最后云端 main 后生成一次；邮件未发送。
 
 Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc22c5db9f351d304604e65743ca02ccda3`，核心合并提交 `7a9cd4910ee41d3b27fdc8c1d02c08f8487bc331`。23 项相关测试（8 项新增回归）、真实本地 Controller 的三个恢复场景和一次真实固定 GGUF 任务通过；证据见 `submission/evidence/mac-worker-30b9efc-review.md` 与 `submission/evidence/mac-worker-30b9efc-local.json`。这是本地修复验收，不是新云部署或 Android 真机证明；最终参赛提交和展示材料仍待统一固定。
 
@@ -12,12 +12,12 @@ Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc
 
 | 材料 | 当前状态 | 位置 / 待办 |
 | --- | --- | --- |
-| 源代码 | 已有；最终打包应固定提交 | 仓库各模块；公开 Alpha 源码为 `85ddad92758d072097de87857f7ed1a229c8f76e` |
+| 源代码 | 最小核心及 Demo 已合入；打包固定最后云端提交 | 各模块和 `demo/`；原 Alpha `85ddad9` 与修复源 `30b9efc` 的验证范围分开 |
 | README 项目说明 | 已有运行说明；本次补充提交核对 | 根 `README.md`；功能和核心文件见下表 |
 | AI 使用说明 | 已有并对照两条主线节选更新；完整历史不作推断 | `AI_USAGE.md` |
 | AI 对话记录 | 三个聊天相关节选已记录；完整开发覆盖仍待补充 | `ai-logs/`；优化主线 41 条原文已逐条核对 |
-| 3–8 张实际运行截图 | 待 Demo 主线交付并核对 | 根 `screenshots/`；不能用设计图或示意图充数 |
-| Demo 链接或不超过 3 分钟视频 | 草稿保留；最终制作等项目完成 | 最终须写入根 README；API 文档不代替完整演示 |
+| 3–8 张实际运行截图 | 已有 5 张原始 PNG，摘要与尺寸核对通过 | `screenshots/README.md`、`screenshots/capture-manifest.json`；3 张网页、2 张实际 HTTPS 服务截图 |
+| Demo 链接或不超过 3 分钟视频 | 页面与离线展示已合入；公开部署待验收 | `demo/index.html`、`demo/offline.html`、`demo/DEMO-SCRIPT-3MIN.txt`；讲稿不冒充已录制视频 |
 | 同一 ZIP 压缩包 | 等截图、Demo、最终提交齐备后生成 | 应包含上述材料；排除凭据、缓存和私有数据库 |
 | 开发时间证明 | 本地历史已检查；赛事时间与平台创建时间未核验 | `submission/git-history.txt` |
 | 邮件提交 | 未发送 | `seproject@yeah.net`，主题为队伍名 + 赛题 |
@@ -42,16 +42,16 @@ Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc
 
 ## 评分依据索引
 
-仅使用用户提供的六个维度和分值，未收到公开等级描述，不给出虚构等级或自评分。
+以下按提供的六个维度和分值整理实际证据，不给出没有证据支持的等级或自评分。
 
 | 维度 | 分值 | 供评审引用的具体文件 | 评估限制 |
 | --- | --- | --- | --- |
-| 完成度 | 25 | `integration/run_two_node_local.sh`、`controller-server/REAL_JOBS.md`、`submission/evidence/ACCEPTANCE.txt` | 明确区分 tiny 分层与整模型；真机延期 |
-| 实用性 | 20 | `node-agent/desktop/README.md`、`android-app/README.md`、`submission/evidence/QUICKSTART.txt` | 用户接入仍需部署操作员提供私有凭据 |
+| 完成度 | 25 | `integration/run_two_node_local.sh`、`controller-server/REAL_JOBS.md`、`submission/evidence/ACCEPTANCE.txt`、`submission/evidence/mac-worker-30b9efc-local.json` | 原云验收、本机 tiny、修复后本地真实模型分别记录；真机延期 |
+| 实用性 | 20 | `real-model-runtime/README.md`、`node-agent/desktop/README.md`、`android-app/README.md` | 当前 CLI 与旧凭据迁移按最新指南；生产接入需私下配置凭据，本地自建不需生产 token |
 | 创新性 | 15 | `controller-server/app/scheduler.py`、`inference-engine/PROTOCOL.md`、`node-agent/PROTOCOL.md` | 分层和异构资源组织是实现依据，不宣称算法首创 |
-| 代码实现 | 15 | `controller-server/app/store.py`、`controller-server/tests/test_capacity_expiry_scaling.py`、`node-agent/tests/test_agent.py` | 测试覆盖不等于生产吞吐证明 |
+| 代码实现 | 15 | `controller-server/app/store.py`、`controller-server/tests/test_capacity_expiry_scaling.py`、`real-model-runtime/tests/test_worker_recovery.py`、`ops/staging/tests/test_prepare_release.py` | 23 项相关恢复测试含 8 项新增；9 项真实 Git 归档测试；不等于生产吞吐证明 |
 | 项目架构 | 15 | `communication/PROTOCOL.md`、`controller-server/REAL_JOBS.md`、`ops/staging/integration-sources.json` | 两类任务协议独立，不能混淆产物范围 |
-| 展示效果 | 10 | 待最终 `demo/` 与 `screenshots/` 实际文件补齐 | 尚不作完成声明 |
+| 展示效果 | 10 | `demo/index.html`、`demo/offline.html`、`demo/DEMO-SCRIPT-3MIN.txt`、`screenshots/01-demo-desktop.png`、`screenshots/02-demo-history-replay.png`、`screenshots/03-demo-mobile-browser.png`、`screenshots/04-live-swagger-health.png`、`screenshots/05-live-health-response.png` | 网页实际渲染与 HTTPS 服务响应；回放不等于新推理，390px 浏览器不等于 Android 真机 |
 
 ## 开发时间与最终打包
 
