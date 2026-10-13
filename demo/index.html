@@ -17,7 +17,7 @@
 </svg>
 </a></header>
 <main id="main">
-<section class="hero wrap" id="overview"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> 最小核心预发布 <span class="eyebrow-slash">/</span> OPEN SOURCE</div><h1>把 AI 计算，<br>交给<span class="word-accent">你的设备<span class="accent-line"></span></span>。</h1><p class="hero-intro">一台云端 Controller，连接 macOS 与 Android 的本地推理能力。让任务流转可见，让每次停止有据可查。</p><div class="hero-actions"><a class="button primary" href="#replay"><svg aria-hidden="true" focusable="false" class="icon "
+<section class="hero wrap" id="overview"><div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> 最小核心预发布 <span class="eyebrow-slash">/</span> OPEN SOURCE</div><h1>把 AI 计算，<br>交给<span class="word-accent">你的设备<span class="accent-line"></span></span>。</h1><p class="hero-intro">面向多类型边缘设备的计算网络。macOS 与 Android 是当前实现路径，其他边缘设备适配正在开发；任务流转与停止确认都有据可查。</p><div class="hero-actions"><a class="button primary" href="#replay"><svg aria-hidden="true" focusable="false" class="icon "
   xmlns="http://www.w3.org/2000/svg"
   width="24"
   height="24"
@@ -45,7 +45,7 @@
   <path d="M7 17 17 7" />
 </svg>
 </a></div><div class="hero-note"><span class="tiny-line"></span> 固定 SmolLM2 GGUF · 设备侧 CPU 整模型执行</div></div>
-<div class="compute-visual" role="img" aria-label="架构示意：云端Controller把整模型任务交给Mac或Android设备，设备生成结果并回传。Android画面是示意，真机验收暂跳过。"><div class="visual-grid"></div><div class="visual-topline"><span>COMPUTE TOPOLOGY</span><span>01 — 03</span></div><svg class="routes" viewBox="0 0 600 510" aria-hidden="true"><path d="M304 139V216H169V287M304 216H520V286" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="4 5"/><path class="route-highlight" d="M304 139V216H169V287" fill="none" stroke="#5a8852" stroke-width="1.8"/><circle cx="304" cy="216" r="5" fill="#e8ecd9" stroke="#5a8852"/><circle cx="169" cy="284" r="4" fill="#5a8852"/><circle cx="520" cy="284" r="4" fill="#a7b8a6"/></svg>
+<div class="compute-visual" role="img" aria-label="架构示意：云端Controller面向多类型边缘设备。Mac与Android是当前实现路径，其他边缘节点适配正在开发。Android画面是示意，真机验收暂跳过。"><div class="visual-grid"></div><div class="visual-topline"><span>COMPUTE TOPOLOGY</span><span>CORE → EDGE</span></div><svg class="routes" viewBox="0 0 600 510" aria-hidden="true"><path d="M304 139V216H169V287M304 216H520V286" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="4 5"/><path class="edge-route-wide" d="M304 139H485" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="3 5"/><path class="edge-route-mobile" d="M304 202H420" fill="none" stroke="#a7b8a6" stroke-width="1.3" stroke-dasharray="3 5"/><path class="route-highlight" d="M304 139V216H169V287" fill="none" stroke="#5a8852" stroke-width="1.8"/><circle cx="304" cy="216" r="5" fill="#e8ecd9" stroke="#5a8852"/><circle cx="169" cy="284" r="4" fill="#5a8852"/><circle cx="520" cy="284" r="4" fill="#a7b8a6"/></svg>
 <div class="controller-device"><div class="controller-icon"><svg aria-hidden="true" focusable="false" class="icon "
   xmlns="http://www.w3.org/2000/svg"
   width="24"
@@ -63,7 +63,7 @@
   <line x1="6" x2="6.01" y1="18" y2="18" />
 </svg>
 </div><div><span class="device-overline">CLOUD / COORDINATOR</span><strong>Controller</strong><span class="controller-address">8.134.161.123 · HTTPS</span></div><span class="device-chip">调度与租约</span></div>
-<div class="route-label route-first">领取 → 执行 → 回传</div><div class="route-label route-second">同一任务协议</div>
+<div class="edge-development"><strong>其他边缘节点</strong><span>开发中</span></div><div class="route-label route-first">领取 → 执行 → 回传</div><div class="route-label route-second">同一任务协议</div>
 <div class="mac-device"><div class="mac-screen"><div class="window-bar"><span class="window-dots"><b></b><b></b><b></b></span><span>lastcore / whole-model</span><svg aria-hidden="true" focusable="false" class="icon "
   xmlns="http://www.w3.org/2000/svg"
   width="24"
@@ -151,7 +151,7 @@
   <rect x="4" y="4" width="16" height="16" rx="2" />
   <rect x="8" y="8" width="8" height="8" rx="1" />
 </svg>
-</div><h3>在设备侧生成</h3><p>macOS CLI 或 Android 前台 Worker，<br>使用固定模型与 CPU 原生后端。</p><span class="flow-tag">整模型执行</span></article><span class="flow-arrow"><svg aria-hidden="true" focusable="false" class="icon "
+</div><h3>在设备侧生成</h3><p>当前实现 macOS CLI / Android 前台 Worker，<br>其他边缘设备适配正在开发。</p><span class="flow-tag">整模型执行</span></article><span class="flow-arrow"><svg aria-hidden="true" focusable="false" class="icon "
   xmlns="http://www.w3.org/2000/svg"
   width="24"
   height="24"
@@ -179,7 +179,7 @@
   <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
   <path d="m9 12 2 2 4-4" />
 </svg>
-</div><h3>带着证据回来</h3><p>生成结果与终态保存到 Controller。<br>取消和超时，也等待真实清理。</p><span class="flow-tag">停止确认</span></article></div><p class="scope-note">当前范围是单个设备的整模型任务；预训练模型跨设备分层推理不在此预发布范围。</p></section>
+</div><h3>带着证据回来</h3><p>生成结果与终态保存到 Controller。<br>取消和超时，也等待真实清理。</p><span class="flow-tag">停止确认</span></article></div><p class="scope-note">LastCore 面向多类型边缘设备；当前实证为单设备整模型与本地 tiny 链路，其他边缘设备适配正在开发。预训练模型跨设备分层推理不在已证明范围。</p></section>
 <section class="replay-section section-space" id="replay"><div class="wrap"><div class="section-heading"><div><span class="eyebrow muted">RECORDED & VERIFIED / 实测回放</span><h2>从一个问题，<br>到一个真实的答案。</h2></div><p>下面重放已完成的真实任务记录。<br>点击步骤或播放，查看生成与停止如何收敛。</p></div><div class="replay-shell"><div class="replay-top"><div class="history-label"><span class="status-dot"></span> 历史实测回放 <span>非实时推理</span></div><div class="replay-tabs" role="tablist" aria-label="实测场景"><button id="tab-generation" role="tab" aria-selected="true" aria-controls="replay-panel" data-case="generation">生成结果</button><button id="tab-timeout" role="tab" aria-selected="false" aria-controls="replay-panel" data-case="timeout">超时停止</button><button id="tab-cancel" role="tab" aria-selected="false" aria-controls="replay-panel" data-case="cancel">取消清理</button></div></div><div class="replay-layout" id="replay-panel" role="tabpanel" aria-labelledby="tab-generation"><div class="replay-sidebar"><span class="small-label">说明性步骤 / 非逐帧日志</span><ol class="replay-steps" id="replay-steps"></ol><div class="play-controls"><button id="play-replay" class="play-button"><svg aria-hidden="true" focusable="false" class="icon "
   xmlns="http://www.w3.org/2000/svg"
   width="24"
@@ -249,7 +249,7 @@
   <path d="m9 12 2 2 4-4" />
 </svg>
  使用固定 SmolLM2-135M-Instruct-Q4_K_M</span><p>Android 同源码的主机 JNI 实测，与 Android 手机实测是两种证据。手机推理、Keystore、生命周期与设备 TLS 验收暂跳过。</p></div><div class="verification-matrix" aria-label="不同来源的验证范围"><article><div class="verification-title"><span>HISTORICAL CLOUD</span><strong>原云端整模型链路</strong></div><p>生成、原生超时、运行中取消与停止确认。<br>沿用已公开的历史实测，不发起新任务。</p><a href="https://github.com/7onytang/LastCore/releases/download/v0.1.0-alpha.1/ACCEPTANCE.txt" target="_blank" rel="noopener">Controller 21c5d4b ↗</a></article><article><div class="verification-title"><span>REPAIRED MAC / LOCAL</span><strong>最新 Mac 恢复修复</strong></div><p>23 项回归、3 个本地恢复场景、1 次真实本地 GGUF 验证。<br>本地修复验收与原云端实测分别记录。</p><a href="https://github.com/7onytang/LastCore/blob/09a02efa3569057d7a5ed0b2df5b817c13e77bb5/submission/evidence/mac-worker-30b9efc-local.json" target="_blank" rel="noopener">Worker 30b9efc ↗</a></article></div></div></section>
-<section class="download-section wrap section-space" id="download"><div class="section-heading"><div><span class="eyebrow muted">GET THE PREVIEW / 开始体验</span><h2>把下一步，<br>交给你的设备。</h2></div><p>v0.1.0-alpha.1 · 开源预发布<br>选择适合你的路径，先完成最小闭环。</p></div><div class="download-grid"><article class="download-card"><div class="download-platform"><svg aria-hidden="true" focusable="false" class="icon "
+<section class="download-section wrap section-space" id="download"><div class="section-heading"><div><span class="eyebrow muted">GET THE PREVIEW / 开始体验</span><h2>把下一步，<br>交给你的设备。</h2></div><p>v0.1.0-alpha.1 · 开源预发布<br>当前提供以下实现路径；其他边缘适配开发中。</p></div><div class="download-grid"><article class="download-card"><div class="download-platform"><svg aria-hidden="true" focusable="false" class="icon "
   xmlns="http://www.w3.org/2000/svg"
   width="24"
   height="24"
