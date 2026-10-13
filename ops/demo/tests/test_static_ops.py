@@ -21,7 +21,7 @@ class StaticOps(unittest.TestCase):
   (self.site/'public.json').write_text('{"node_token":"fake-test-secret"}')
   with self.assertRaises(ValueError):p.files(self.site)
  def test_zip_escape_and_self(self):
-  for name in ['../secret.txt','lastcore-demo-kit.zip','weights.gguf']:
+  for name in ['../secret.txt','lastcore-demo-kit.zip','weights.gguf','state.sqlite3']:
    with zipfile.ZipFile(self.zip,'w') as z:z.writestr(name,'bad')
    with self.assertRaises(ValueError):p.files(self.site)
  def test_exact_caddy_route(self):

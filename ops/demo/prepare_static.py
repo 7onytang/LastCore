@@ -34,7 +34,7 @@ def check_zip(path):
    if info.is_dir():continue
    parts=Path(info.filename).parts
    if Path(info.filename).is_absolute() or '..' in parts or any(v.lower() in DENY or v in {'.git','.cache','.native-cache','.toolchain'} for v in parts):raise ValueError('private/unsafe unified ZIP path')
-   if Path(info.filename).suffix.lower() in {'.apk','.gguf','.key','.pem','.zip'}:raise ValueError('private/model/recursive ZIP content')
+   if Path(info.filename).suffix.lower() in {'.apk','.gguf','.key','.pem','.zip','.sqlite','.sqlite3','.db','.jks','.keystore'}:raise ValueError('private/model/recursive ZIP content')
    if stat.S_ISLNK(info.external_attr>>16) or info.flag_bits&1:raise ValueError('encrypted/symlink zip entry')
    total+=info.file_size
    if total>50*1024*1024:raise ValueError('demo zip exceeds bound')
