@@ -281,6 +281,9 @@ class Store:
             if assignment is None:
                 raise HTTPException(404, "assignment not found")
             task = self._task_view(db, assignment["task_id"])
+            if (task["request"].get("model_id") == "lastcore/linear-demo-v1"
+                    and report.status == "completed" and report.result is None):
+                raise HTTPException(422, "completed linear result must contain every assigned row")
             if report.result is not None:
                 request = task["request"]
                 workload = request.get("workload", "linear")
@@ -303,9 +306,7 @@ class Store:
                                      for key, value in report.result.items())
                              and sum(report.result.values()) == assignment["layer_end"] - assignment["layer_start"])
                 else:
-                    expected = assignment["layer_end"] - assignment["layer_start"]
-                    valid = (valid and isinstance(report.result, list)
-                             and len(report.result) == expected)
+                    valid = False
                 if not valid:
                     raise HTTPException(422, "completed result does not match the assigned workload")
             if assignment["status"] == report.status:
