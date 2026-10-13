@@ -6,9 +6,10 @@ import numpy as np
 import pytest
 
 from communication.channel import Channel, ChannelListener
-from communication.errors import (ChannelClosed, ChannelTimeout, PeerError,
+from communication.errors import (ChannelClosed, ChannelTimeout, NetworkError, PeerError,
                                   ProtocolError, TaskCancelled)
-from communication.protocol import MAGIC, PREFIX, VERSION, FrameType
+from communication.protocol import MAGIC, PREFIX, VERSION, FrameType, encode_tensor
+from communication.channel import RetryPolicy
 
 
 @pytest.fixture
@@ -22,19 +23,76 @@ def pair():
 def test_hello_tensor_result_roundtrip(pair):
     client, server = pair
     client.send_hello(role="client", model_id="m", layer_end=0)
-    assert server.recv_hello()["role"] == "client"
+    client_session = client.session_id
+    server_hello = server.recv_hello()
+    assert server_hello["role"] == "client"
+    assert server_hello["session_id"] == client_session
     server.send_hello(role="first", layer_start=0, layer_end=2)
     assert client.recv_hello()["layer_end"] == 2
     hidden = np.arange(8, dtype=np.float32).reshape(1, 2, 4)
     client.send_tensor("hidden", hidden, task_id="t1", assignment_id="a1")
     received, header = server.recv_tensor()
     assert np.array_equal(received, hidden)
+    assert header["session_id"] == client_session
+    assert header["seq"] == 0
     assert header["task_id"] == "t1"
     server.send_result("logits", received * 2, task_id="t1")
     logits, _ = client.recv_result()
     assert np.array_equal(logits, hidden * 2)
     client.send_bye()
     assert server.recv_frame().type is FrameType.BYE
+
+
+def test_tensor_sequence_increments_and_rejects_replay(pair):
+    client, server = pair
+    client.send_hello(role="client")
+    server.recv_hello()
+    server.send_hello(role="server")
+    client.recv_hello()
+    values = np.array([1], dtype=np.float32)
+    client.send_tensor("hidden", values)
+    client.send_tensor("hidden", values)
+    assert server.recv_tensor()[1]["seq"] == 0
+    assert server.recv_tensor()[1]["seq"] == 1
+    header, payload = encode_tensor("hidden", values)
+    client.send_frame(FrameType.TENSOR, {**header, "session_id": client.session_id, "seq": 1}, payload)
+    with pytest.raises(ProtocolError, match="seq 1.*expected 2"):
+        server.recv_tensor()
+
+
+def test_cross_session_tensor_is_rejected(pair):
+    client, server = pair
+    client.send_hello(role="client")
+    server.recv_hello()
+    server.send_hello(role="server")
+    client.recv_hello()
+    header, payload = encode_tensor("hidden", np.array([1], dtype=np.float32))
+    server.send_frame(FrameType.TENSOR, {**header, "session_id": "00000000-0000-0000-0000-000000000000",
+                                         "seq": 0}, payload)
+    with pytest.raises(ProtocolError, match="session_id"):
+        client.recv_tensor()
+
+
+def test_send_tensor_rejects_a_non_monotonic_sequence(pair):
+    client, server = pair
+    client.send_hello(role="client")
+    server.recv_hello()
+    with pytest.raises(ProtocolError, match="seq 1.*expected 0"):
+        client.send_tensor("hidden", np.array([1], dtype=np.float32), seq=1)
+
+
+def test_connect_retries_are_bounded_and_classified_as_network_errors(monkeypatch):
+    attempts = []
+
+    def fail(*_args, **_kwargs):
+        attempts.append(1)
+        raise OSError("network down")
+
+    monkeypatch.setattr("communication.channel.socket.create_connection", fail)
+    with pytest.raises(ChannelClosed, match="after 3 attempts") as error:
+        Channel.connect("127.0.0.1:9", retry_policy=RetryPolicy(3, 0, 0))
+    assert isinstance(error.value, NetworkError)
+    assert len(attempts) == 3
 
 
 def test_error_frame_becomes_peer_error(pair):

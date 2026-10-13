@@ -53,6 +53,9 @@
 1. `model_id` 一致；
 2. 上游 `layer_end` == 本地 `layer_start`（层区间必须首尾相接）；
 3. `task_id` 一致（若双方都携带）。
+4. 每次前向推理有一个 canonical UUID `session_id`。首次发送 HELLO 的一方生成它，另一方校验并沿后续各跳原样转发；同一 TCP 连接内两端 HELLO 的 session 必须相同。
+
+每个 `TENSOR` / `RESULT` 帧头都必须包含 `session_id` 和 `seq`。收发方向分别从 `seq=0` 开始严格递增；重复、跳号或跨 session 帧以 `ProtocolError` 拒绝。张量数据只在 HELLO 成功后可发送。序号由 `Channel` 自动维护，调用方不能跳号。
 
 ## 超时、取消与资源回收
 
@@ -62,6 +65,9 @@
 | `deadline` | 任务的绝对截止时间到达（**epoch 秒**，与 Controller 的 `assignment.deadline`、node-agent 的 `context.deadline` 同基准） | `ChannelTimeout`，连接关闭 |
 | `cancel`（`threading.Event`） | 操作者在本地调用 `runtime.cancel()` | `TaskCancelled`，连接关闭 |
 | 上游 `CANCEL` 帧 / 上游断开 | 对端取消或崩溃 | `TaskCancelled` / `ChannelClosed` |
+| 传输超时 | 某一跳读写或阶段等待超时 | 阶段尽力向上游发送 `CANCEL`；客户端/阶段收到后停止该任务 |
+
+TCP 建连失败最多重试 3 次，退避 100 ms、200 ms；重试仅发生在连接/任务执行开始前。最终失败抛出 `ChannelClosed`（`NetworkError` 子类），远端 `ERROR` 仍抛出 `PeerError`，不会把模型执行错误当作网络故障重试。已经开始执行的任务不会因断链而自动重放；失败的节点不得由同一任务再次选用。
 
 cancel 事件与 deadline 在**每次收/发迭代**都会重新检查（发送按 0.25 s 分片写出，而不是一次阻塞式 `sendall`），而不是只在阻塞读写超时时检查：对端持续发包（哪怕是恶意或异常的超长帧）或停止读取都无法推迟取消、无法越过 deadline。`timeout` 是单次读写操作的预算，`timeout=None` 表示只要还在推进就一直等，取消与 deadline 仍然按 0.25 s 粒度生效。
 
@@ -105,7 +111,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-45 项测试覆盖：编解码往返（全部 dtype）、非连续数组、截断/篡改/形状不符、必填 `name`/`sha256` 缺失、magic/版本/未知帧类型、超大 header、非 JSON header、握手往返、`ERROR`→`PeerError`、`CANCEL`→`TaskCancelled`、对端关闭、读超时、绝对 deadline、阻塞读中的 cancel 事件、阻塞写中的 cancel 与 deadline（对端停止读取也不得推迟）、**持续收包中的 cancel 与 deadline（对端一直发包也不得推迟）**、监听端口与端口占用后的连接拒绝。
+测试覆盖：编解码往返（全部 dtype）、非连续数组、截断/篡改/形状不符、必填 `name`/`sha256` 缺失、magic/版本/未知帧类型、超大 header、非 JSON header、握手往返、session/seq 校验、有限建连重试、`ERROR`→`PeerError`、`CANCEL`→`TaskCancelled`、对端关闭、读超时、绝对 deadline、阻塞读中的 cancel 事件、阻塞写中的 cancel 与 deadline（对端停止读取也不得推迟）、持续收包中的 cancel 与 deadline、监听端口与端口占用后的连接拒绝。
 
 ## 已知限制
 

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import socket
 import time
+import uuid
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 from .errors import (ChannelClosed, ChannelTimeout, PeerError, ProtocolError,
@@ -26,6 +28,24 @@ from .protocol import (PREFIX_SIZE, Frame, FrameType, decode_header,
 
 CANCEL_POLL_SECONDS = 0.25
 DEFAULT_CONNECT_TIMEOUT = 10.0
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """Bounded retry for TCP connection establishment (before task execution)."""
+
+    max_attempts: int = 3
+    initial_backoff: float = 0.1
+    max_backoff: float = 0.5
+
+    def __post_init__(self):
+        if self.max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        if self.initial_backoff < 0 or self.max_backoff < 0:
+            raise ValueError("retry backoff values must be non-negative")
+
+
+DEFAULT_RETRY_POLICY = RetryPolicy()
 
 
 def _remaining(deadline: float | None) -> float | None:
@@ -122,15 +142,29 @@ class Channel:
         self.cancel = cancel
         self.peer: Mapping[str, Any] | None = peer
         self.closed = False
+        self.session_id: str | None = None
+        self._send_seq = 0
+        self._recv_seq = 0
 
     @classmethod
     def connect(cls, address: tuple[str, int] | str, *, connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
-                **kwargs) -> "Channel":
+                retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY, **kwargs) -> "Channel":
         host, port = _split_address(address)
-        try:
-            sock = socket.create_connection((host, port), timeout=connect_timeout)
-        except OSError as exc:
-            raise ChannelClosed(f"cannot connect to {host}:{port}: {exc}") from exc
+        for attempt in range(retry_policy.max_attempts):
+            try:
+                sock = socket.create_connection((host, port), timeout=connect_timeout)
+                break
+            except OSError as exc:
+                if attempt + 1 == retry_policy.max_attempts:
+                    raise ChannelClosed(
+                        f"cannot connect to {host}:{port} after {retry_policy.max_attempts} "
+                        f"attempts: {exc}") from exc
+                delay = min(retry_policy.initial_backoff * (2 ** attempt),
+                            retry_policy.max_backoff)
+                if delay:
+                    time.sleep(delay)
+        else:  # pragma: no cover - loop either breaks or raises
+            raise ChannelClosed(f"cannot connect to {host}:{port}")
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         return cls(sock, **kwargs)
 
@@ -153,20 +187,55 @@ class Channel:
         return Frame(kind, header, payload)
 
     def send_hello(self, **fields: Any) -> None:
-        self.send_frame(FrameType.HELLO, {"kind": "hello", **fields})
+        supplied = fields.pop("session_id", None)
+        if supplied is not None:
+            _validate_session_id(supplied)
+            if self.session_id is not None and supplied != self.session_id:
+                raise ProtocolError("HELLO session_id does not match this channel")
+            self.session_id = supplied
+        elif self.session_id is None:
+            self.session_id = str(uuid.uuid4())
+        self.send_frame(FrameType.HELLO, {"kind": "hello", **fields,
+                                          "session_id": self.session_id})
 
     def recv_hello(self) -> Mapping[str, Any]:
         frame = self.expect(FrameType.HELLO)
+        session_id = frame.header.get("session_id")
+        _validate_session_id(session_id)
+        if self.session_id is not None and session_id != self.session_id:
+            raise ProtocolError("HELLO session_id does not match this channel")
+        self.session_id = session_id
         return frame.header
 
     def send_tensor(self, name: str, array, *, kind: FrameType = FrameType.TENSOR, **fields: Any) -> int:
+        if self.session_id is None:
+            raise ProtocolError("send HELLO before sending tensor data")
+        supplied_session = fields.pop("session_id", self.session_id)
+        if supplied_session != self.session_id:
+            raise ProtocolError("tensor session_id does not match this channel")
+        supplied_seq = fields.pop("seq", self._send_seq)
+        if type(supplied_seq) is not int or supplied_seq != self._send_seq:
+            raise ProtocolError(f"tensor seq {supplied_seq!r} does not match expected "
+                                f"{self._send_seq}")
         header, payload = encode_tensor(name, array)
-        self.send_frame(kind, {**fields, **header}, payload)
+        self.send_frame(kind, {**fields, **header, "session_id": self.session_id,
+                               "seq": self._send_seq}, payload)
+        self._send_seq += 1
         return len(payload)
 
     def recv_tensor(self, expected: FrameType | tuple[FrameType, ...] = FrameType.TENSOR):
         frame = self.expect(expected)
-        return decode_tensor(frame.header, frame.payload), frame.header
+        if self.session_id is None:
+            raise ProtocolError("receive HELLO before receiving tensor data")
+        session_id = frame.header.get("session_id")
+        if session_id != self.session_id:
+            raise ProtocolError("tensor session_id does not match this channel")
+        seq = frame.header.get("seq")
+        if type(seq) is not int or seq != self._recv_seq:
+            raise ProtocolError(f"tensor seq {seq!r} does not match expected {self._recv_seq}")
+        tensor = decode_tensor(frame.header, frame.payload)
+        self._recv_seq += 1
+        return tensor, frame.header
 
     def send_result(self, name: str, array, **fields: Any) -> int:
         return self.send_tensor(name, array, kind=FrameType.RESULT, **fields)
@@ -272,3 +341,14 @@ def _split_address(address: tuple[str, int] | str) -> tuple[str, int]:
     if not host or not port.isdigit():
         raise TransportError(f"invalid address {address!r}; expected host:port")
     return host, int(port)
+
+
+def _validate_session_id(value: Any) -> None:
+    if not isinstance(value, str):
+        raise ProtocolError("HELLO is missing a valid session_id")
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError) as exc:
+        raise ProtocolError(f"invalid session_id {value!r}; expected UUID") from exc
+    if str(parsed) != value:
+        raise ProtocolError(f"invalid session_id {value!r}; expected canonical UUID")

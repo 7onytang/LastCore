@@ -20,8 +20,8 @@ from typing import Callable
 
 import numpy as np
 
-from communication import (Channel, ChannelListener, ChannelTimeout, PeerError,
-                           TaskCancelled)
+from communication import (Channel, ChannelClosed, ChannelListener, ChannelTimeout,
+                           PeerError, ProtocolError, TaskCancelled)
 from communication.errors import TransportError
 
 from .errors import ShardError
@@ -44,6 +44,7 @@ class StageServer:
         self.listener = ChannelListener(host if address is None else address[0],
                                         port if address is None else address[1])
         self.processed = 0
+        self._failed_tasks: set[str] = set()
 
     @property
     def address(self) -> tuple[str, int]:
@@ -113,11 +114,11 @@ class StageServer:
         self._validate_peer_hello(hello, expected_layer_end=self.runtime.layer_start,
                                   peer_name="upstream")
 
-    def _forward(self, hidden: np.ndarray) -> np.ndarray:
+    def _forward(self, hidden: np.ndarray, session_id: str) -> np.ndarray:
         link = Channel.connect(self.downstream, timeout=self.timeout, deadline=self.deadline,
                                cancel=self.cancel)
         try:
-            link.send_hello(**self._hello())
+            link.send_hello(**self._hello(), session_id=session_id)
             self._validate_peer_hello(link.recv_hello(),
                                       expected_layer_start=self.runtime.layer_end,
                                       peer_name="downstream")
@@ -126,18 +127,35 @@ class StageServer:
             result, _ = link.recv_result()
             link.send_bye()
             return result
+        except ChannelTimeout:
+            try:
+                link.send_cancel("stage timed out waiting for downstream")
+            except TransportError:
+                pass
+            raise
+        except (ChannelClosed, PeerError, ProtocolError):
+            raise
         finally:
             link.close()
 
     def handle(self, conn: Channel) -> dict:
         hello = conn.recv_hello()
         self._validate_upstream(hello)
+        task_key = self.runtime.task_id or hello.get("task_id")
+        if task_key is not None and task_key in self._failed_tasks:
+            raise ShardError(f"task {task_key!r} already lost a downstream node; it cannot be "
+                             "replayed on this stage")
         conn.send_hello(**self._hello())
         batch, _ = conn.recv_tensor()
         started = time.monotonic()
         output = self.runtime.execute(batch)
         local_seconds = time.monotonic() - started
-        result = self._forward(output) if self.downstream is not None else output
+        try:
+            result = self._forward(output, conn.session_id) if self.downstream is not None else output
+        except (ChannelClosed, ChannelTimeout, PeerError, ProtocolError):
+            if task_key is not None:
+                self._failed_tasks.add(task_key)
+            raise
         conn.send_result("logits", result, task_id=self.runtime.task_id,
                          assignment_id=self.runtime.assignment_id)
         conn.send_bye()
@@ -158,6 +176,12 @@ class StageServer:
         except TaskCancelled:
             try:
                 conn.send_cancel("upstream cancelled the task")
+            except TransportError:
+                pass
+            raise
+        except ChannelTimeout:
+            try:
+                conn.send_cancel("stage timed out while processing the task")
             except TransportError:
                 pass
             raise
@@ -242,5 +266,11 @@ class PipelineClient:
             result, _ = link.recv_result()
             link.send_bye()
             return result
+        except ChannelTimeout:
+            try:
+                link.send_cancel("client timed out waiting for pipeline result")
+            except TransportError:
+                pass
+            raise
         finally:
             link.close()

@@ -2,6 +2,10 @@ class TransportError(Exception):
     """Base class for every transport failure."""
 
 
+class NetworkError(TransportError):
+    """A connection-level failure, distinct from a remote execution error."""
+
+
 class ProtocolError(TransportError):
     """A peer sent a frame that violates the protocol."""
 
@@ -10,7 +14,7 @@ class ChannelTimeout(TransportError):
     """A frame did not arrive before the socket timeout or task deadline."""
 
 
-class ChannelClosed(TransportError):
+class ChannelClosed(NetworkError):
     """The peer closed the connection before the exchange finished."""
 
 
