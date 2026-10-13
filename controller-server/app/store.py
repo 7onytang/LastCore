@@ -172,10 +172,15 @@ class Store:
         task_ids = [task["id"] for task in tasks]
         placeholders = ",".join("?" for _ in task_ids)
         by_task = {task_id: [] for task_id in task_ids}
+        result_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='assignment_results'"
+        ).fetchone()
+        result_join = "LEFT JOIN assignment_results ar ON ar.assignment_id=a.id" if result_table else ""
+        result_column = ", ar.result AS stored_result" if result_table else ", NULL AS stored_result"
         for row in db.execute(f"""
-            SELECT a.*, n.endpoint, ar.result AS stored_result
+            SELECT a.*, n.endpoint{result_column}
             FROM assignments a JOIN nodes n ON n.id=a.node_id
-            LEFT JOIN assignment_results ar ON ar.assignment_id=a.id
+            {result_join}
             WHERE a.task_id IN ({placeholders}) ORDER BY a.task_id, a.position
         """, task_ids):
             by_task[row["task_id"]].append(dict(row))
@@ -303,6 +308,10 @@ class Store:
             db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
                        (report.status, report.error if report.status == "failed" else None, assignment_id))
             if report.result is not None:
+                db.execute("""CREATE TABLE IF NOT EXISTS assignment_results (
+                    assignment_id TEXT PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
+                    result TEXT NOT NULL
+                )""")
                 db.execute("INSERT INTO assignment_results (assignment_id, result) VALUES (?, ?) "
                            "ON CONFLICT(assignment_id) DO UPDATE SET result=excluded.result",
                            (assignment_id, json.dumps(report.result)))
