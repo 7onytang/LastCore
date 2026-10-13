@@ -133,3 +133,7 @@ pytest -q
 - 接入真实 Node Agent 和推理引擎，在两个节点验证模型加载、tensor 传输及输出。
 - 为云端部署配置 SSH 身份、目标服务器、域名/TLS 和允许的访问范围。
 - 后续增加模型元数据、非均匀内存估算、可靠命令队列、取消确认、结果存储、自动恢复和调度性能优化。
+
+## 多端节点客户端规划
+
+macOS、Windows 与 Android 节点客户端的产品目标、MVP 范围、验收标准及 issue 拆分见 [`docs/CLIENT_AGENT_TASKS.md`](docs/CLIENT_AGENT_TASKS.md)。该文档是待确认的开发任务草案；客户端当前尚未实现。
