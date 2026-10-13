@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from linear_edge import Session, VERSION
+from view_state import device_status
 
 
 def main():
@@ -19,7 +20,7 @@ def main():
     node = tk.StringVar(value="未加载")
     task = tk.StringVar(value="空闲")
     result = tk.StringVar(value="尚无云端确认的计算结果")
-    state = {"session": None, "thread": None, "error": None}
+    state = {"session": None, "thread": None, "error": None, "stopping": False}
     panel = ttk.Frame(root, padding=20)
     panel.pack(fill="both", expand=True)
     ttk.Label(panel, text="本机任务与连接状态", font=("", 16)).pack(anchor="w")
@@ -52,13 +53,14 @@ def main():
         except Exception as exc:
             status.set("启动失败：" + type(exc).__name__ + "；请核对配置/状态目录/原 HTTPS 源")
             return
-        state.update(session=session, error=None)
+        state.update(session=session, error=None, stopping=False)
         state["thread"] = threading.Thread(target=work, args=(session,), daemon=True)
         state["thread"].start()
         node.set(session.node_id)
         status.set("连接中，等待真实心跳")
 
     def stop():
+        state["stopping"] = True
         session = state["session"]
         if session is not None:
             session.agent.shutdown()
@@ -69,9 +71,8 @@ def main():
         if session is not None and thread is not None:
             alive = thread.is_alive()
             age = time.monotonic() - session.client.last_heartbeat
-            status.set("已停止" if not alive else "已连接 · 接收线性任务" if age < 25 else "连接中/心跳中断")
-            if state["error"]:
-                status.set("已停止：" + state["error"])
+            status.set(device_status(alive,age,session.config.accepting_tasks,state['stopping'],
+                                     state['error'],session.client.recovery_required))
             run = session.agent._current_run()
             task.set(run.task_id if run else session.client.last_task or "空闲")
             if session.client.last_result is not None:

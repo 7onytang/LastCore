@@ -22,7 +22,7 @@ for directory in (ROOT / "node-agent", ROOT / "node-agent/desktop"):
 from env_file import read_env_file
 from lastcore_node_agent.agent import NodeAgent
 from lastcore_node_agent.config import AgentConfig
-from lastcore_node_agent.controller import ControllerClient
+from lastcore_node_agent.controller import ControllerClient, ControllerError
 from lastcore_node_agent.credentials import _atomic_write_json, acquire_state_lock, load_credentials
 from lastcore_node_agent.executor import Executor, ExecutionCancelled
 
@@ -89,7 +89,7 @@ class LinearExecutor(Executor):
         if context.cancel.is_set() or time.time() >= context.deadline:
             raise ExecutionCancelled(context.cancel_reason or "deadline")
         _atomic_write_json(target, {"binding": binding, "task_id": context.task_id,
-                                    "assignment_id": context.assignment_id, "result": values})
+                                    "assignment_id": context.assignment_id, "model_id": MODEL, "result": values})
 
 
 class LinearController(ControllerClient):
@@ -100,6 +100,50 @@ class LinearController(ControllerClient):
         self.last_heartbeat = 0.0
         self.last_task = None
         self.last_result = None
+        self.recovery_required = False
+        self.on_recovery_required = lambda: None
+
+    def _recovery_error(self):
+        self.recovery_required = True
+        self.on_recovery_required()
+        # 503 is deliberately not the terminal 404/409 that NodeAgent uses to
+        # discard a pending record. Stop new work and retain it for recovery.
+        return ControllerError(503, "Linear result recovery requires operator attention; pending record retained")
+
+    def _completed_payload(self, node_id, node_token, assignment_id):
+        path = result_file(self.state, assignment_id)
+        if path.exists():
+            try:
+                cached = json.loads(path.read_text())
+                values = cached['result']
+                if (cached['assignment_id'] != assignment_id or not isinstance(cached.get('task_id'),str)
+                        or not cached['task_id'] or cached.get('model_id',MODEL) != MODEL or not isinstance(values, list)
+                        or not 1 <= len(values) <= 4096
+                        or any(type(v) not in (int, float) or not math.isfinite(v) or abs(v)>1 for v in values)):
+                    raise ValueError('Invalid cached linear values')
+                if 'model_id' not in cached:
+                    rows=super().assignments(node_id,node_token)
+                    matches=[r for r in rows if r.get('id')==assignment_id and r.get('task_id')==cached['task_id']
+                             and (r.get('request') or {}).get('model_id')==MODEL]
+                    if len(matches)!=1:raise self._recovery_error()
+                return cached
+            except (OSError, ValueError, KeyError, TypeError):
+                raise self._recovery_error() from None
+        rows = super().assignments(node_id, node_token)
+        matching = [row for row in rows if row.get('id') == assignment_id]
+        if len(matching) != 1:
+            raise self._recovery_error()
+        row = matching[0]
+        model = (row.get('request') or {}).get('model_id')
+        if isinstance(model,str) and model and model != MODEL:
+            return None  # Positively identified old demo/stage status-only report.
+        values = row.get('result')
+        if (model == MODEL and row.get('status') == 'completed' and isinstance(values,list)
+                and 1 <= len(values) <= 4096
+                and len(values) == row.get('layer_end',0)-row.get('layer_start',0)
+                and all(type(v) in (int,float) and math.isfinite(v) and abs(v)<=1 for v in values)):
+            return {'task_id':row['task_id'],'assignment_id':assignment_id,'result':values}
+        raise self._recovery_error()
 
     def heartbeat(self, *args, **kwargs):
         value = super().heartbeat(*args, **kwargs)
@@ -110,8 +154,9 @@ class LinearController(ControllerClient):
         payload = {"status": status, "error": error}
         cached = None
         if status == "completed":
-            cached = json.loads(result_file(self.state, assignment_id).read_text())
-            payload["result"] = cached["result"]
+            cached = self._completed_payload(node_id, node_token, assignment_id)
+            if cached is not None:
+                payload["result"] = cached["result"]
         response = self._client.post(f"/v1/nodes/{node_id}/assignments/{assignment_id}/report",
                                      json=payload, headers=self._headers(node_token))
         self._check(response)
@@ -153,6 +198,7 @@ class Session:
             self.client = LinearController(current_origin, self.config.state_dir)
             self.agent = NodeAgent(self.config, self.client,
                                    executor_factory=lambda: LinearExecutor(self.config.state_dir))
+            self.client.on_recovery_required = self.agent.shutdown
         except Exception:
             self.lock.close()
             raise
