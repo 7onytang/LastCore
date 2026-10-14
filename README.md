@@ -14,7 +14,7 @@ LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI �
 
 ## 工作台、演示与实际截图
 
-公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。当前公开部署回执记录：北京时间 18:41:15，Controller 已对齐正式源 `bf5b82e`，默认入口及 `/console` 返回 200、页面 JS 与发布源字节一致，原数据库与认证保留；见[当前部署说明](submission/evidence/public-deployment-current.md)。18:04:30 的 `cc7c7ba` 部署及 18:08 截图保留为历史采样，见[历史部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
+公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。当前公开页面摘要记录：北京时间 2026-10-14 13:45:04，页面对应固定公开源 `eee330c`，本次运行差异仅为 HTML 下载入口；HTTPS 默认入口 GET/HEAD 302 到工作台，`/console` 与健康响应为 200，HTML 与固定源一致，无新增公开任务/计算/设备验收；见[当前部署说明](submission/evidence/public-deployment-current.md)。18:04:30 的 `cc7c7ba` 部署及 18:08 截图保留为历史采样，见[历史部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
 
 保留的历史展示地址：[LastCore Demo](https://8.134.161.123/demo/)。该地址与统一 ZIP 镜像的可达性、内容和摘要由最后交付验收核对。也可直接打开 [离线展示页面](demo/offline.html)，按[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt)展示；页面提供历史结果回放、下载和公开证据入口，不创建新的模型任务。
 

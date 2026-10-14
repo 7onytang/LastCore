@@ -1,0 +1,20 @@
+{
+  "deployed_at_beijing": "2026-10-14T13:45:04.318320+08:00",
+  "source_commit": "eee330cd2c572756dd46e1e6bc446df1b5d2bd7f",
+  "runtime_diff": [
+    "controller-server/app/ui/index.html"
+  ],
+  "html_sha256": "3abbc4779bc8d4c630cdf2b573177bd722c2b5fc1f291da8d176c8e8fe5dfd9c",
+  "js_sha256": "858d5896973197dd3e8168793a25c9e8a5d2ab6427b14e03aa0b3f4100f6597d",
+  "css_sha256": "fbab172b3b412da99b648df6e4275dfeda24b9d528e69383522de70f88f87aa2",
+  "html_equals_fixed_git_source": true,
+  "healthz_http": 200,
+  "https_root_redirect": 302,
+  "https_console_http": 200,
+  "http_https_redirect": 308,
+  "https_root_head_redirect": 302,
+  "https_console_head_http": 200,
+  "business_timezone": "Asia/Shanghai",
+  "scope": "public page source and HTTP endpoint observations only; no infrastructure or private state",
+  "no_new_public_task_compute_or_device_tests": true
+}
