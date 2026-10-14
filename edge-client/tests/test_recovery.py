@@ -58,6 +58,9 @@ def test_completed_linear_can_replay_positive_server_saved_values(tmp_path):
     agent._flush_pending_reports()
     assert json.loads(requests[-1].content)['result']==[.1,.2]
     assert not load_pending_reports(tmp_path) and client.last_result==[.1,.2]
+    assert client.acknowledged_result == ('task',(.1,.2))
+    client.last_result[0] = .9  # Compatibility list mutation cannot alter the view snapshot.
+    assert client.acknowledged_result == ('task',(.1,.2))
     client.close()
 
 
@@ -96,3 +99,17 @@ def test_device_labels_preserve_actual_lifecycle(kwargs,expected):
     options=dict(alive=True,heartbeat_age=1,accepting_tasks=True,stopping=False)
     options.update(kwargs)
     assert device_status(**options)==expected
+
+
+def test_rejected_result_ack_does_not_publish_view_snapshot(tmp_path):
+    row={'id':'old','task_id':'task','status':'completed','request':{'model_id':MODEL},
+         'layer_start':0,'layer_end':2,'result':[.1,.2]}
+    reply={'id':'task','assignments':[dict(row,result=[.3,.4])]}
+    agent,client,requests=fixture(tmp_path,[row],reply)
+    try:
+        assert client.acknowledged_result is None
+        with pytest.raises(RuntimeError,match='has not acknowledged'):
+            client.report('node','fixture-private','old','completed')
+        assert client.acknowledged_result is None
+    finally:
+        client.close()

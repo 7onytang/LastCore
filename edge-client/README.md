@@ -117,6 +117,8 @@ distribution exception). No new task broker or server protocol is introduced.
 ## Result display ownership
 
 The GUI separates the active/recent task from the last cloud-acknowledged result.
+After ACK validation, LinearController publishes one immutable task-ID/value
+tuple; the GUI reads that snapshot once rather than reading the old two fields.
 Every displayed value is prefixed with its completed task ID, so running task B
 cannot imply that the saved values of A belong to B. Starting a new Session and
 refreshing a session with no acknowledged result resets the result label instead

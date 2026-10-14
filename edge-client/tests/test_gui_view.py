@@ -22,7 +22,8 @@ def callback(name,context):
 
 
 def fixture(last_task=None,last_result=None,active=None):
-    client=SimpleNamespace(last_heartbeat=100,last_task=last_task,last_result=last_result,recovery_required=False)
+    client=SimpleNamespace(last_heartbeat=100,last_task=last_task,last_result=last_result,recovery_required=False,
+        acknowledged_result=(last_task,tuple(last_result)) if last_task and last_result is not None else None)
     session=SimpleNamespace(client=client,config=SimpleNamespace(accepting_tasks=True),
         agent=SimpleNamespace(_current_run=lambda:SimpleNamespace(task_id=active) if active else None))
     return {'state':{'session':session,'thread':SimpleNamespace(is_alive=lambda:True),'error':None,'stopping':False},
@@ -72,3 +73,17 @@ def test_missing_owner_or_values_cannot_reuse_acknowledged_text():
     task,result=task_result_labels(None,'A',[0]*17)
     assert task=='A' and result.startswith('已确认任务 A：')
     assert '前16/17项' in result
+
+
+def test_gui_reads_atomic_binding_despite_mixed_legacy_attributes():
+    view=fixture('A',[.125],active='B')
+    client=view['state']['session'].client
+    # Simulate B's old compatibility fields being published in separate steps.
+    client.last_task='A';client.last_result=[.75]
+    refresh=callback('refresh',view);refresh()
+    assert view['task'].value=='B'
+    assert view['result'].value=='已确认任务 A：0.12500000'
+    # One replacement publishes both B's identity and immutable values together.
+    client.acknowledged_result=('B',(.75,))
+    refresh()
+    assert view['result'].value=='已确认任务 B：0.75000000'

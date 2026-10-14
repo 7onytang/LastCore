@@ -76,8 +76,10 @@ def main():
             status.set(device_status(alive,age,session.config.accepting_tasks,state['stopping'],
                                      state['error'],session.client.recovery_required))
             run = session.agent._current_run()
+            confirmed = session.client.acknowledged_result
+            completed_task, completed_values = confirmed if confirmed is not None else (None, None)
             task_text, result_text = task_result_labels(
-                run.task_id if run else None, session.client.last_task, session.client.last_result)
+                run.task_id if run else None, completed_task, completed_values)
             task.set(task_text)
             result.set(result_text)
         else:
