@@ -94,16 +94,22 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     ui = Path(__file__).parent / "ui"
     app.mount("/ui", StaticFiles(directory=ui), name="ui")
 
+    page_headers = {
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+    }
+
     @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     @app.api_route("/console", methods=["GET", "HEAD"], include_in_schema=False)
     def console():
-        return FileResponse(ui / "index.html", headers={
-            "Cache-Control": "no-store",
-            "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
-            "Referrer-Policy": "no-referrer",
-            "X-Content-Type-Options": "nosniff",
-        })
+        return FileResponse(ui / "index.html", headers=page_headers)
     bearer = HTTPBearer(auto_error=False)
+
+    @app.api_route("/workloads", methods=["GET", "HEAD"], include_in_schema=False)
+    def showcase():
+        return FileResponse(Path(__file__).with_name("showcase.html"), headers=page_headers)
 
     def credential(auth: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
         if auth is None or auth.scheme.lower() != "bearer":

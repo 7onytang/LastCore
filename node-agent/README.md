@@ -156,3 +156,70 @@ curl -s http://127.0.0.1:8000/v1/tasks/<task_id> -H "Authorization: Bearer $CONT
 - 执行日志只防"已结束"的任务重复执行，进程崩溃窗口内的工作丢失后会重新执行（at-least-once）。
 - 执行器忽略取消超过 `stop_grace` 时，线程被遗弃（daemon），资源释放依赖执行器自身遵守契约。
 - `stage` 执行器的模型权重仍需手动/自动生成本地 checkpoint，模型下载与缓存属 `model-manager/`（LC-9）。
+
+## Explicit CPU-demo workload capability (source integration candidate)
+
+With `--executor demo`, the explicit new `pi` and `log_stats` workloads perform
+actual bounded CPU arithmetic (deterministic Monte Carlo shard counts and log
+level counts). Legacy demo assignments still simulate lifecycle slices; neither
+path is a language model or proves activation relay. No historical task/device
+acceptance is transferred to this source integration.
+
+Only the updated built-in `demo` executor advertises `pi` and `log_stats` in
+registration and authenticated heartbeats. Custom/injected factories default
+to no new capability; an OS name, online heartbeat or old linear client is not
+a capability claim. Existing identity credentials are retained. Deploy the
+compatible Controller before enabling the updated executor; an old Controller
+rejects the new strict heartbeat field. An old heartbeat clears stale capability
+claims, and new workload scheduling rejects an empty compatible pool.
+
+The Controller adds `node_workloads` and `workload_results` without changing
+the legacy nine-column nodes or eight-column assignments. Linear `result` stays
+list-or-null in its existing table; pi/log use the separate typed `workload_result`.
+Old servers do not display these typed results. Before any future downgrade,
+stop new admissions and complete/cancel all active pi/log tasks, then downgrade
+clients before the server so capability fields are not sent. Keep the same live
+database and its new tables; never restore an old snapshot over later writes. This branch does not perform rollout, migrate a live database or run a
+real task. Existing tiny and targeted-linear execution remain independent.
+
+Pi checks cancellation/deadline at entry, each 256 samples and before return;
+log checks each line and before return. New result reports persist the source
+binding and require matching assignment acknowledgements. Unknown ACKs retain
+pending outcomes and block new work; 404/409 numeric-result conflicts require
+recovery and are retained. Legacy status-only and the published linear override
+retain their five-argument report call. Use the pure compatibility regressions
+under `tests/test_workload_contract.py`; they do not launch a real worker or model.
+
+After stopping admissions, the authorized operator can run the read-only gate
+against the current live database (without copying/restoring any snapshot):
+`python -m app.workload_downgrade --database /absolute/path/controller.sqlite3`
+from `controller-server/`. Exit 0 means no active typed tasks in that snapshot;
+1 blocks downgrade and 2 means it could not be verified. Keep admissions stopped
+through downgrade; this snapshot gate cannot fence a separate running writer.
+Terminal typed records remain in `workload_results`, invisible to the old API;
+retain the live tables for re-upgrade. Do not claim full old-image typed support.
+
+The server gate checks only the database snapshot, not remote worker journals.
+Before downgrading an affected worker, stop it after cleanup and verify its
+pending typed outcome count is zero using the updated source/environment:
+
+```sh
+python - <<'PY'
+from pathlib import Path
+from lastcore_node_agent.credentials import StateError, load_pending_report_results
+try:
+    pending = load_pending_report_results(Path('/absolute/private/worker-state'))
+except (OSError, StateError):
+    print('recovery gate: unable to verify; preserve state')
+    raise SystemExit(2)
+print('pending typed outcomes:', len(pending))
+raise SystemExit(1 if pending else 0)
+PY
+```
+
+Exit 1 or 2 blocks worker downgrade: resolve the records under the updated client
+or preserve/quarantine that state without allowing an old client to replay it.
+An old client cannot validate the new journal and may discard unknown terminal
+records. Do not delete pending state to obtain a zero count. Keep admissions and
+workers stopped through the gate/downgrade window; no snapshot here fences an
+independent writer.

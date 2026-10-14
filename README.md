@@ -269,6 +269,12 @@ pytest -q
 python scripts/smoke_idle_expiry.py
 ```
 
+### 浏览器看板与多设备接力推理
+
+新增的源码演示看板位于 `/workloads`；当前根路径与 `/console` 保留现有工作台。独立审查并部署该分支后才可访问 `https://<controller>/workloads`，输入管理员令牌即可查看 Worker 的在线、忙碌、暂停接单和离线状态，以及任务分片、上下游节点和回报状态。看板还提供确定性圆周率分片估算和日志级别统计，仅调度显式声明对应执行器能力的节点；旧客户端默认不支持。这两项是并行分片与归并演示，不代表 activation 接力。本次仅源码兼容修复与纯 Fake/Mock/静态验证，尚未合并、部署或新增真实任务/设备验收。
+
+多设备接力推理的可复现验收步骤见 [`docs/RELAY_INFERENCE_DEMO.md`](docs/RELAY_INFERENCE_DEMO.md)。该路径使用 `inference-engine/` 与 Node Agent 的 StageExecutor，将连续模型层分配给多个 Worker，并让 activation 沿 `next_node` 逐跳传递；必须额外满足 Worker endpoint 互通。Controller 仍只接收 Worker 主动发起的心跳和 assignment 轮询，不主动连接 Worker。
+
 Controller 测试覆盖连续分层、算力与内存限制、鉴权、节点隔离、回报幂等、并发预留、断线/超时/取消/失败、重启持久化及输入校验。后台扫描测试直接读取 SQLite，验证无请求时 deadline/TTL 清理、启动失败、重试及正常停机；HTTP smoke 使用临时数据库和随机本机端口启动真实 Uvicorn，注册并建任务后停止 HTTP 请求，检查 TTL 终态落盘和资源清理。GitHub Actions 还执行 Compose 校验、镜像构建和容器健康检查。
 
 Controller 测试中的节点状态为模拟数据。`inference-engine/` 的验证覆盖两个或三个独立进程的 tiny 模型链路与单机结果逐字节一致；这与控制平面验证分开，也不代表生产规模模型或物理设备矩阵已验收。

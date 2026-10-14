@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef2f0">
+  <title>LastCore | Controller 看板</title>
+  <link rel="stylesheet" href="/ui/workloads.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><div class="mark">L</div><div>LastCore<small>Controller / Distributed Compute Lab</small></div></div>
+      <div class="health" id="health"><i></i><span id="healthText">等待管理员授权</span></div>
+    </header>
+    <div class="layout">
+      <main>
+        <h1>分布式计算看板</h1>
+        <p class="lead">管理员运算页面：仅向明确声明支持当前运算的可用 Worker 派活。边缘客户端不使用管理员令牌。</p>
+        <div class="metrics">
+          <div class="metric"><span>在线设备</span><strong id="onlineCount">—</strong></div>
+          <div class="metric"><span>正在计算</span><strong id="busyCount">—</strong></div>
+          <div class="metric"><span>活动任务</span><strong id="activeCount">—</strong></div>
+          <div class="metric"><span>已完成任务</span><strong id="doneCount">—</strong></div>
+        </div>
+        <div class="section-head"><h2>设备状态</h2><span class="quiet" id="nodeRefresh">输入管理员令牌查看</span></div>
+        <div class="nodes" id="nodes"><div class="empty">输入管理员令牌后查看已注册 Worker</div></div>
+        <section class="task-area">
+          <div class="section-head"><h2>任务与分片</h2><span class="quiet" id="taskRefresh">—</span></div>
+          <div class="task-list" id="tasks"><div class="empty">暂无任务</div></div>
+        </section>
+      </main>
+      <aside>
+        <div class="panel-title">Controller 管理员令牌</div>
+        <input class="token" id="token" type="password" autocomplete="off" placeholder="输入当前页面使用的管理员令牌" aria-label="Controller 管理员令牌">
+        <div class="auth-actions"><button id="connect" type="button">连接管理端</button><button id="disconnect" type="button" hidden>断开并清除</button><button id="refresh" type="button" disabled>刷新状态</button></div>
+        <p class="quiet" id="permissionNote">仅管理员可查看节点与派发任务。凭据只在当前页面内存使用。</p>
+        <div class="mode" role="tablist" aria-label="运算任务类型">
+          <button class="selected" data-mode="pi">圆周率估算</button>
+          <button data-mode="logs">日志级别统计</button>
+        </div>
+        <div id="piFields">
+          <div class="field"><label for="samples">总采样点 <strong id="sampleLabel">300,000</strong></label><input id="samples" type="range" min="1000" max="100000000" step="1000" value="300000"></div>
+          <p class="quiet">每台 Worker 处理独立采样区间，Controller 汇总圆内点数并计算 π。</p>
+        </div>
+        <div id="logFields" hidden>
+          <p class="quiet">每行最多4096个 Unicode 字符；最多10000行，总字符不超过1000000。</p>
+          <div class="field"><label for="logLines">日志内容（空行计入 OTHER）</label><textarea id="logLines" spellcheck="false">2026-10-13T09:00:01Z INFO api request accepted
+2026-10-13T09:00:02Z INFO node registered name=worker-01
+2026-10-13T09:00:03Z WARN heartbeat delayed node=worker-02
+2026-10-13T09:00:04Z INFO task queued id=demo-001
+2026-10-13T09:00:05Z ERROR worker timeout node=worker-03
+2026-10-13T09:00:06Z INFO assignment completed id=assignment-12
+2026-10-13T09:00:07Z WARN memory pressure node=worker-02</textarea></div>
+        </div>
+        <div class="field"><label for="workers">最多使用设备 <strong id="workerLabel">3</strong></label><input id="workers" type="range" min="1" max="8" value="3"></div>
+        <p class="quiet" id="capabilityNote" role="status">连接后查询可用节点的运算声明。</p>
+        <button class="run" id="run" type="button" disabled>运行圆周率估算</button>
+        <div class="error" id="error" role="status" aria-live="polite"></div>
+        <div class="result" id="result"><div class="result-label" id="resultLabel">计算结果</div><div class="result-value" id="resultValue">—</div><div class="result-detail" id="resultDetail"></div></div>
+        <div class="foot">Worker 主动向 Controller 轮询领取任务，不需要开放公网入站端口。此页只由管理员操作，令牌不写入存储。断开或离开仅停止页面等待，不取消已派发的服务端任务。</div>
+      </aside>
+    </div>
+  </div>
+<script src="/ui/workloads.js" defer></script>
+</body>
+</html>
