@@ -49,13 +49,27 @@ def _atomic_write_json(path: Path, data) -> None:
         tmp_path.unlink(missing_ok=True)
 
 
+def _json_object(pairs):
+    data = {}
+    for key, value in pairs:
+        if key in data:
+            raise StateError("state JSON contains duplicate object keys")
+        data[key] = value
+    return data
+
+
 def _read_json(path: Path):
     try:
         with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle, object_pairs_hook=_json_object)
+        # Every state format is an object. None is reserved for an absent file,
+        # never a parsed JSON null or another present-but-invalid top-level value.
+        if not isinstance(data, dict):
+            raise StateError("state JSON must contain an object")
+        return data
     except FileNotFoundError:
         return None
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, UnicodeError, RecursionError) as exc:
         raise StateError(f"cannot read {path}: {exc}") from exc
 
 
@@ -106,31 +120,17 @@ def load_settled(state_dir: Path) -> dict[str, str]:
     return settled
 
 
-def load_pending_reports(state_dir: Path) -> dict[str, tuple[str, str | None]]:
-    data = _read_json(Path(state_dir) / PENDING_REPORTS_FILE)
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise StateError("pending reports file must contain a JSON object")
-    pending: dict[str, tuple[str, str | None]] = {}
-    for assignment_id, entry in data.items():
-        if not isinstance(entry, dict) or not isinstance(entry.get("status"), str):
-            raise StateError(f"pending report for {assignment_id} is invalid")
-        error = entry.get("error")
-        pending[str(assignment_id)] = (entry["status"], error if isinstance(error, str) else None)
-    return pending
-
-
-def load_pending_report_results(state_dir: Path) -> dict[str, object]:
-    data = _read_json(Path(state_dir) / PENDING_REPORTS_FILE)
-    if data is None:
-        return {}
+def _validate_pending_data(data):
     if not isinstance(data, dict):
         raise StateError("pending reports file must contain a JSON object")
     results = {}
     for key, entry in data.items():
         if not isinstance(entry, dict):
             raise StateError("pending journal entry schema is invalid")
+        if not isinstance(entry.get("status"), str):
+            raise StateError("pending journal status must be a legacy string")
+        if "error" in entry and entry["error"] is not None and not isinstance(entry["error"], str):
+            raise StateError("pending journal error must be a string or null")
         if {"workload_result", "binding", "result"} & entry.keys():
             if not {"workload_result", "binding"}.issubset(entry):
                 raise StateError("incomplete typed journal marker; preserve for recovery")
@@ -157,7 +157,25 @@ def load_pending_report_results(state_dir: Path) -> dict[str, object]:
                         or sum(values.values()) != binding["layer_end"] - binding["layer_start"]))):
                 raise StateError("pending typed result is invalid; preserve for recovery")
             results[str(key)] = (values, binding)
+        elif not set(entry).issubset({"status", "error"}):
+            raise StateError("pending legacy journal has unknown fields")
     return results
+
+
+
+def load_pending_reports(state_dir: Path) -> dict[str, tuple[str, str | None]]:
+    data = _read_json(Path(state_dir) / PENDING_REPORTS_FILE)
+    if data is None:
+        return {}
+    _validate_pending_data(data)
+    return {assignment_id: (entry["status"], entry.get("error")) for assignment_id, entry in data.items()}
+
+
+def load_pending_report_results(state_dir: Path) -> dict[str, object]:
+    data = _read_json(Path(state_dir) / PENDING_REPORTS_FILE)
+    if data is None:
+        return {}
+    return _validate_pending_data(data)
 
 
 def record_pending_report(state_dir: Path, assignment_id: str, status: str,
@@ -166,17 +184,18 @@ def record_pending_report(state_dir: Path, assignment_id: str, status: str,
     data = _read_json(path)
     if data is None:
         data = {}
-    if not isinstance(data, dict):
-        raise StateError("pending reports file must contain a JSON object")
+    _validate_pending_data(data)
+    if binding is not None and result is None:
+        raise StateError("typed pending outcome requires its result")
     entry = {"status": status, "error": error}
     if result is not None:
         entry["workload_result"] = result
         entry["binding"] = binding
-    previous = data.get(assignment_id)
-    if previous is not None and not isinstance(previous, dict):
-        raise StateError("pending report schema is invalid")
-    if previous is not None and previous != entry and ({"workload_result", "binding", "result"} & previous.keys() or result is not None):
-        raise StateError("cannot replace a pending typed outcome")
+    _validate_pending_data({assignment_id: entry})
+    if assignment_id in data:
+        previous = data[assignment_id]
+        if previous != entry and ({"workload_result", "binding", "result"} & previous.keys() or result is not None):
+            raise StateError("cannot replace a pending typed outcome")
     data[assignment_id] = entry
     _atomic_write_json(path, data)
 
@@ -184,7 +203,10 @@ def record_pending_report(state_dir: Path, assignment_id: str, status: str,
 def clear_pending_report(state_dir: Path, assignment_id: str) -> None:
     path = Path(state_dir) / PENDING_REPORTS_FILE
     data = _read_json(path)
-    if not isinstance(data, dict) or assignment_id not in data:
+    if data is None:
+        return
+    _validate_pending_data(data)
+    if assignment_id not in data:
         return
     del data[assignment_id]
     _atomic_write_json(path, data)

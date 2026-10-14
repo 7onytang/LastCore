@@ -240,7 +240,7 @@ def test_incomplete_marker_detected_during_poll_never_posts_or_starts_new_work(t
         assert request.method=='GET'
         return httpx.Response(200,json={'assignments':[row]})
     agent,client=fixture(tmp_path,handler)
-    agent._pending=load_pending_reports(tmp_path)
+    agent._pending={'a':('completed',None)}  # A running process held a valid legacy snapshot before corruption.
     agent.executor_factory=lambda:pytest.fail('must not execute new work')
     with pytest.raises(StateError):agent._poll_once()
     assert calls and all(request.method=='GET' for request in calls)
@@ -301,4 +301,64 @@ def test_typed_executor_cannot_complete_without_its_result(tmp_path,cancelled):
         def run(self,context):return None
     agent._execute(run,MissingResultExecutor())
     assert active.result[0]==('cancelled-local' if cancelled else 'failed') and active.result_payload is None
+    client.close()
+
+
+@pytest.mark.parametrize('invalid',[None,False,0,[],"",1,[1],"not-an-object"])
+@pytest.mark.parametrize('where',['top','entry'])
+def test_present_invalid_json_grammar_is_not_missing_and_cannot_be_overwritten(tmp_path,invalid,where):
+    from lastcore_node_agent.credentials import clear_pending_report
+    data=invalid if where=='top' else {'a':invalid}
+    path=tmp_path/'pending-reports.json';path.write_text(json.dumps(data));before=path.read_bytes()
+    calls=[]
+    agent,client=fixture(tmp_path,lambda request:(calls.append(request) or pytest.fail('zero HTTP required')))
+    agent.executor_factory=lambda:pytest.fail('zero execution required')
+    for loader in (load_pending_reports,load_pending_report_results):
+        with pytest.raises(StateError):loader(tmp_path)
+    with pytest.raises(StateError):agent.run_forever()
+    assert agent.stop_event.is_set() and not calls and not agent.stats.started
+    with pytest.raises(StateError):record_pending_report(tmp_path,'a','completed',None)
+    with pytest.raises(StateError):record_pending_report(tmp_path,'new','completed',None,VALUES,binding())
+    with pytest.raises(StateError):clear_pending_report(tmp_path,'a')
+    assert path.read_bytes()==before
+    client.close()
+
+
+@pytest.mark.parametrize('entry',[{}, {'status':False}, {'status':'completed','error':False},
+                                   {'status':'completed','future':1}])
+def test_invalid_object_entry_grammar_is_preserved(tmp_path,entry):
+    path=tmp_path/'pending-reports.json';path.write_text(json.dumps({'a':entry}));before=path.read_bytes()
+    for loader in (load_pending_reports,load_pending_report_results):
+        with pytest.raises(StateError):loader(tmp_path)
+    with pytest.raises(StateError):record_pending_report(tmp_path,'a','completed',None)
+    assert path.read_bytes()==before
+
+
+def test_valid_empty_object_missing_file_and_legacy_string_statuses_are_preserved(tmp_path):
+    assert load_pending_reports(tmp_path)=={} and load_pending_report_results(tmp_path)=={}
+    path=tmp_path/'pending-reports.json';path.write_text('{}');before=path.read_bytes()
+    assert load_pending_reports(tmp_path)=={} and load_pending_report_results(tmp_path)=={}
+    assert path.read_bytes()==before
+    path.write_text(json.dumps({'a':{'status':'legacy-string'}}))
+    assert load_pending_reports(tmp_path)=={'a':('legacy-string',None)}
+    assert load_pending_report_results(tmp_path)=={}
+
+
+@pytest.mark.parametrize('raw',[ '{"a":{"status":"completed"},"a":null}',
+                                  '{"a":{"status":"completed","status":"failed"}}' ])
+def test_duplicate_json_keys_are_ambiguous_and_preserved(tmp_path,raw):
+    path=tmp_path/'pending-reports.json';path.write_text(raw);before=path.read_bytes()
+    with pytest.raises(StateError):load_pending_reports(tmp_path)
+    with pytest.raises(StateError):record_pending_report(tmp_path,'a','completed',None)
+    assert path.read_bytes()==before
+
+
+
+def test_invalid_utf8_state_is_a_controlled_error_before_any_http(tmp_path):
+    path=tmp_path/'pending-reports.json';path.write_bytes(b'\xff');before=path.read_bytes()
+    agent,client=fixture(tmp_path,lambda request:pytest.fail('zero HTTP required'))
+    with pytest.raises(StateError):agent.run_forever()
+    assert agent.stop_event.is_set() and not agent.stats.started
+    with pytest.raises(StateError):record_pending_report(tmp_path,'a','completed',None)
+    assert path.read_bytes()==before
     client.close()
