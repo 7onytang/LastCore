@@ -3,6 +3,7 @@
 import argparse
 from dataclasses import dataclass, field
 import datetime
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
@@ -119,25 +120,49 @@ def verify_signer(text, expected):
             'verified_v2': True, 'android_debug_certificate': False}
 
 
-def binding_module():
-    spec = importlib.util.spec_from_file_location('lastcore_apk_binding', ROOT / 'artifact-binding.py')
+def binding_module(root=ROOT):
+    spec = importlib.util.spec_from_file_location('lastcore_apk_binding', root / 'artifact-binding.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
+@contextmanager
+def fixed_snapshot(repo, env, runner):
+    commit = run_checked(['git', '-C', str(repo), 'rev-parse', 'HEAD'], env, runner).strip()
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        raise ProductionError('Fixed build source unavailable')
+    with tempfile.TemporaryDirectory(prefix='lastcore-owner-source-') as folder:
+        snapshot = Path(folder) / 'source'
+        run_checked(['git', 'clone', '--quiet', '--no-checkout', '--no-hardlinks', str(repo), str(snapshot)], env, runner)
+        run_checked(['git', '-C', str(snapshot), 'checkout', '--quiet', '--detach', commit], env, runner)
+        yield commit, snapshot / 'android-app'
+
+
 def build_production(config_path, output_dir=None, *, root=ROOT, repo=REPO,
-                     runner=subprocess.run, binding=None, environment=None):
+                     runner=subprocess.run, binding=None, environment=None, snapshot_factory=fixed_snapshot):
     config = load_config(config_path, repo)  # Must succeed before any subprocess/build.
-    binding = binding or binding_module()
     env = dict(os.environ if environment is None else environment)
     env.pop(STORE_PASS_ENV, None); env.pop(KEY_PASS_ENV, None)
     env['ORG_GRADLE_PROJECT_lastcoreVersionCode'] = str(config.version_code)
     env['ORG_GRADLE_PROJECT_lastcoreVersionName'] = config.version_name
+    destination = Path(output_dir or root / 'verification/production').resolve()
+    live_root, live_repo = root, repo
+    # The production script, Gradle inputs, binding assets, license bytes and hashes
+    # all come from one detached commit checkout, not the mutable caller tree.
+    with snapshot_factory(repo, env, runner) as (commit, snapshot_root):
+        snapshot_binding = binding(snapshot_root) if binding is not None else binding_module(snapshot_root)
+        return build_snapshot(config, destination, snapshot_root, live_root, live_repo, env,
+                              runner, snapshot_binding, commit)
+
+
+def build_snapshot(config, output_dir, root, live_root, live_repo, env, runner, binding, fixed_commit):
     sdk = Path(env.get('ANDROID_HOME', root / '.toolchain/sdk'))
     expected = binding.source()
-    output = Path(output_dir or root / 'verification/production').resolve()
-    if output.is_relative_to(repo.resolve()) and not output.is_relative_to((root / 'verification').resolve()):
+    if expected.get("source_commit") != fixed_commit:
+        raise ProductionError("Snapshot source identity mismatch")
+    output = Path(output_dir).resolve()
+    if output.is_relative_to(live_repo.resolve()) and not output.is_relative_to((live_root / 'verification').resolve()):
         raise ProductionError('Production outputs must be ignored verification files or outside the repository')
     output.mkdir(parents=True, exist_ok=True)
     stem = f"LastCore-Android-{config.version_name}-arm64-production-{expected['source_commit'][:8]}"

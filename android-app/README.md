@@ -66,7 +66,10 @@ The simplified workflow has a shared model preparation card, then mutually exclu
 
 The default no-argument build remains Debug + unsigned release + compiled
 instrumentation, with its existing version and checks. The opt-in path uses the
-same build/toolchain and then aligns a separate candidate before official
+same build/toolchain in an isolated detached fixed-HEAD Git checkout; Gradle,
+source binding, licenses and source hashes all use that snapshot, so live edits
+cannot change compiled bytes under an old provenance label. It then aligns a
+separate candidate before official
 apksigner signing and certificate verification:
 
 ```sh
@@ -89,7 +92,7 @@ Google Play upload identity. The owner chooses the version (positive signed
 Only public version properties reach Gradle. Passwords reach apksigner through
 named child environment variables, never command-line arguments, build logs,
 Git, APK assets or provenance. Sign/verify/tool errors are captured and reported
-with a fixed safe summary. Default Debug and unsigned files are retained:
+with a fixed safe summary. Existing live Debug and unsigned files are not changed:
 production never substitutes Debug when release/signing is missing. The SDK
 zipalign step precedes signing; the aligned/signed candidate is temporary.
 
@@ -123,7 +126,8 @@ logic dependency is added. Reused official APIs:
 Gradle and Android build tools retain their Apache-2.0 licenses; the project
 MIT license does not replace tool/upstream terms.
 
-Run the meaningful pure boundary fixtures with
-python -m pytest -q android-app/tests-python/test_production_signing.py.
+Run the meaningful standard-library boundary fixtures with
+python3 -m unittest discover -s android-app/tests-python -p 'test_*.py' -v.
+The existing Android workflow runs them explicitly before native builds.
 They use placeholder files that are not keystores and Fake SDK subprocesses;
 a fixture pass cannot establish real signing or device acceptance.
