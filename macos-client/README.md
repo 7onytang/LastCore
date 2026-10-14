@@ -113,7 +113,8 @@ swiftc -parse-as-library macos-client/Sources/LastCoreClient/ClientModel.swift m
 The harness uses production sources;
 no GUI, native calculation, Controller service or real network is started.
 These cover interrupted ACK replay after restart, origin/identity isolation,
-wrong/terminal ACKs, failed reports, corruption and stop/restart fencing. A
+wrong/terminal ACKs, failed reports, corruption, running-report outages,
+exact replay payloads and cancellation while awaiting completion ACK. A
 build or fixture pass does not establish real device or network acceptance.
 The implementation uses the existing system Foundation APIs, including
 [atomic file replacement](https://developer.apple.com/documentation/foundation/nsdata/writingoptions/atomic).

@@ -15,12 +15,15 @@ func XCTAssertThrowsError<T>(_ value: @autoclosure () throws -> T) {
 }
 
 private final class FixtureProtocol: URLProtocol {
+    static var holdCompletion = false
+    static var waiting: FixtureProtocol?
     static var handler: ((URLRequest) throws -> (Int, [String: Any]))!
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
             let (status, body) = try Self.handler(request)
+            if Self.holdCompletion && request.url!.path.hasSuffix("/report") { Self.waiting = self; return }
             let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: try JSONSerialization.data(withJSONObject: body))
@@ -28,6 +31,22 @@ private final class FixtureProtocol: URLProtocol {
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
+}
+
+private func requestBody(_ request: URLRequest) throws -> [String: Any] {
+    if let data = request.httpBody { return try JSONSerialization.jsonObject(with: data) as! [String: Any] }
+    let stream = request.httpBodyStream!
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    var bytes = [UInt8](repeating: 0, count: 1024)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&bytes, maxLength: bytes.count)
+        guard count >= 0 else { throw URLError(.cannotDecodeRawData) }
+        if count == 0 { break }
+        data.append(contentsOf: bytes.prefix(count))
+    }
+    return try JSONSerialization.jsonObject(with: data) as! [String: Any]
 }
 
 final class RecoveryTests {
@@ -73,6 +92,10 @@ final class RecoveryTests {
         FixtureProtocol.handler = { request in
             XCTAssertEqual(request.url?.host, "fixture.invalid")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-token")
+            let body = try requestBody(request)
+            XCTAssertEqual(Set(body.keys), Set(["status", "result"]))
+            XCTAssertEqual(body["status"] as? String, "completed")
+            XCTAssertEqual(body["result"] as? [Double], self.record.result)
             return (200, ack)
         }
         try await restarted.replayPendingReports(origin: record.origin, nodeID: record.nodeID, token: "fixture-token")
@@ -195,6 +218,67 @@ final class RecoveryTests {
     }
 
     @MainActor
+    func testStopDuringCompletionAwaitPreservesOutcomeThenReplays() async throws {
+        let (model, directory) = try fixture()
+        defer {
+            FixtureProtocol.holdCompletion = false
+            FixtureProtocol.waiting = nil
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try model.reports.put(record)
+        let original = try Data(contentsOf: model.reports.url)
+        var completionBodies: [[String: Any]] = []
+        let ack = acknowledgement(record)
+        FixtureProtocol.handler = { request in
+            switch request.url!.path {
+            case "/v1/nodes/register": return (200, ["node_id": "node", "node_token": "fixture-node"])
+            case "/v1/nodes/node/heartbeat": return (200, [:])
+            case "/v1/nodes/node/assignments": return (200, ["assignments": []])
+            default:
+                let body = try requestBody(request)
+                XCTAssertEqual(Set(body.keys), Set(["status", "result"]))
+                XCTAssertEqual(body["status"] as? String, "completed")
+                XCTAssertEqual(body["result"] as? [Double], self.record.result)
+                completionBodies.append(body)
+                return (200, ack)
+            }
+        }
+        FixtureProtocol.holdCompletion = true
+        model.controllerURL = record.origin
+        model.registrationToken = "fixture-registration"
+        model.start()
+        for _ in 0..<100 where FixtureProtocol.waiting == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(FixtureProtocol.waiting != nil, "Fixture must pause in completion ACK await")
+        model.stop()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(model.isRunning)
+        XCTAssertNil(model.lastResult)
+        try XCTAssertEqual(Data(contentsOf: model.reports.url), original)
+        FixtureProtocol.holdCompletion = false
+        FixtureProtocol.waiting = nil
+        model.registrationToken = "fixture-registration"
+        model.start()
+        for _ in 0..<100 where model.lastResult == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(model.lastResult, record.result)
+        XCTAssertEqual(completionBodies.count, 2)
+        XCTAssertEqual(completionBodies[0] as NSDictionary, completionBodies[1] as NSDictionary)
+        try XCTAssertTrue(model.reports.load().isEmpty)
+        model.stop()
+        try await Task.sleep(for: .milliseconds(50))
+        model.controllerURL = "https://other.invalid"
+        model.registrationToken = "fixture-registration"
+        model.start()
+        XCTAssertNil(model.lastResult)
+        XCTAssertNil(model.lastCompletedTaskID)
+        model.stop()
+        try await Task.sleep(for: .milliseconds(20))
+    }
+
+    @MainActor
     func testStopCannotStartAConcurrentOldLoop() async throws {
         let (model, directory) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -226,7 +310,8 @@ struct RecoveryFixtureRunner {
         try await tests.testFailedOutcomeRequiresAcknowledgement()
         try tests.testCorruptionAndInvalidRangeFailClosed()
         try await tests.testRunningReportOutageRetriesWithoutComputingOrFailing()
+        try await tests.testStopDuringCompletionAwaitPreservesOutcomeThenReplays()
         try await tests.testStopCannotStartAConcurrentOldLoop()
-        print("7 recovery fixture tests passed; no real network, GUI or calculation")
+        print("8 recovery fixture tests passed; no real network, GUI or calculation")
     }
 }
