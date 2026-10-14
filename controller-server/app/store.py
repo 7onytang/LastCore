@@ -21,6 +21,7 @@ class Store:
         self.path = path
         self.ttl = heartbeat_ttl
         self.clock = clock
+        self._result_storage_ready = False
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(path)) as db, db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -51,6 +52,9 @@ class Store:
                     assignment_id TEXT PRIMARY KEY REFERENCES assignments(id), result TEXT NOT NULL
                 );
             """)
+            self._result_storage_ready = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='assignment_results'"
+            ).fetchone() is not None
 
     @contextmanager
     def transaction(self):
@@ -171,9 +175,12 @@ class Store:
         task_ids = [task["id"] for task in tasks]
         placeholders = ",".join("?" for _ in task_ids)
         by_task = {task_id: [] for task_id in task_ids}
+        result_join = "LEFT JOIN assignment_results ar ON ar.assignment_id=a.id" if self._result_storage_ready else ""
+        result_column = ", ar.result AS stored_result" if self._result_storage_ready else ", NULL AS stored_result"
         for row in db.execute(f"""
-            SELECT a.*, n.endpoint, ar.result FROM assignments a JOIN nodes n ON n.id=a.node_id
-            LEFT JOIN assignment_results ar ON ar.assignment_id=a.id
+            SELECT a.*, n.endpoint{result_column}
+            FROM assignments a JOIN nodes n ON n.id=a.node_id
+            {result_join}
             WHERE a.task_id IN ({placeholders}) ORDER BY a.task_id, a.position
         """, task_ids):
             by_task[row["task_id"]].append(dict(row))
@@ -183,14 +190,29 @@ class Store:
             result["request"] = json.loads(result["request"])
             assignments = by_task[task["id"]]
             for assignment in assignments:
-                assignment["result"] = json.loads(assignment["result"]) if assignment["result"] else None
+                raw_result = assignment.pop("stored_result", None)
+                assignment["result"] = json.loads(raw_result) if raw_result else None
             for i, assignment in enumerate(assignments):
                 assignment["previous_node"] = self._peer(assignments[i-1]) if i else None
                 assignment["next_node"] = self._peer(assignments[i+1]) if i+1 < len(assignments) else None
             result["assignments"] = assignments
-            result["result"] = ([value for assignment in assignments for value in assignment["result"]]
-                                if result["status"] == "completed" and assignments
-                                and all(a["result"] is not None for a in assignments) else None)
+            result["result"] = None
+            if result["status"] == "completed" and all(a["result"] is not None for a in assignments):
+                workload = result["request"].get("workload", "linear")
+                if workload == "pi":
+                    inside = sum(a["result"]["inside"] for a in assignments)
+                    samples = sum(a["result"]["samples"] for a in assignments)
+                    result["result"] = {"inside": inside, "samples": samples,
+                                         "pi_estimate": 4 * inside / samples}
+                elif workload == "log_stats":
+                    levels = {}
+                    for assignment in assignments:
+                        for level, count in assignment["result"].items():
+                            levels[level] = levels.get(level, 0) + count
+                    result["result"] = {"levels": levels,
+                                         "total_lines": sum(levels.values())}
+                else:
+                    result["result"] = [value for a in assignments for value in a["result"]]
             results.append(result)
         return results
 
@@ -259,12 +281,34 @@ class Store:
             if assignment is None:
                 raise HTTPException(404, "assignment not found")
             task = self._task_view(db, assignment["task_id"])
-            linear = task["request"]["model_id"] == "lastcore/linear-demo-v1"
-            if linear and report.status == "completed":
-                if report.result is None or len(report.result) != assignment["layer_end"] - assignment["layer_start"]:
-                    raise HTTPException(422, "completed linear result must contain every assigned row")
-            elif report.result is not None:
-                raise HTTPException(422, "result is only accepted for completed linear assignments")
+            if (task["request"].get("model_id") == "lastcore/linear-demo-v1"
+                    and report.status == "completed" and report.result is None):
+                raise HTTPException(422, "completed linear result must contain every assigned row")
+            if report.result is not None:
+                request = task["request"]
+                workload = request.get("workload", "linear")
+                valid = report.status == "completed"
+                if request.get("model_id") == "lastcore/linear-demo-v1":
+                    expected = assignment["layer_end"] - assignment["layer_start"]
+                    valid = (valid and isinstance(report.result, list) and len(report.result) == expected)
+                elif workload == "pi":
+                    expected_samples = (request["total_samples"] * assignment["layer_end"] // request["num_layers"]
+                                        - request["total_samples"] * assignment["layer_start"] // request["num_layers"])
+                    valid = (valid and isinstance(report.result, dict)
+                             and set(report.result) == {"inside", "samples"}
+                             and all(type(value) is int and value >= 0 for value in report.result.values())
+                             and report.result["samples"] == expected_samples
+                             and report.result["inside"] <= expected_samples)
+                elif workload == "log_stats":
+                    valid = (valid and isinstance(report.result, dict)
+                             and set(report.result).issubset({"ERROR", "WARN", "INFO", "OTHER"})
+                             and all(isinstance(key, str) and type(value) is int and value >= 0
+                                     for key, value in report.result.items())
+                             and sum(report.result.values()) == assignment["layer_end"] - assignment["layer_start"])
+                else:
+                    valid = False
+                if not valid:
+                    raise HTTPException(422, "completed result does not match the assigned workload")
             if assignment["status"] == report.status:
                 previous = next(a["result"] for a in task["assignments"] if a["id"] == assignment_id)
                 if report.result != previous:
@@ -275,7 +319,14 @@ class Store:
             db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
                        (report.status, report.error if report.status == "failed" else None, assignment_id))
             if report.result is not None:
-                db.execute("INSERT INTO assignment_results VALUES (?,?)",
+                if not self._result_storage_ready:
+                    db.execute("""CREATE TABLE IF NOT EXISTS assignment_results (
+                        assignment_id TEXT PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
+                        result TEXT NOT NULL
+                    )""")
+                    self._result_storage_ready = True
+                db.execute("INSERT INTO assignment_results (assignment_id, result) VALUES (?, ?) "
+                           "ON CONFLICT(assignment_id) DO UPDATE SET result=excluded.result",
                            (assignment_id, json.dumps(report.result, allow_nan=False)))
             if report.status == "failed":
                 self._end_task(db, task["id"], "failed", report.error or "node reported failure")

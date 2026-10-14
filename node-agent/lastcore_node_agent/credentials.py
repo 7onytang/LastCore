@@ -121,13 +121,26 @@ def load_pending_reports(state_dir: Path) -> dict[str, tuple[str, str | None]]:
     return pending
 
 
+def load_pending_report_results(state_dir: Path) -> dict[str, object]:
+    data = _read_json(Path(state_dir) / PENDING_REPORTS_FILE)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise StateError("pending reports file must contain a JSON object")
+    return {str(key): entry.get("result") for key, entry in data.items()
+            if isinstance(entry, dict) and "result" in entry}
+
+
 def record_pending_report(state_dir: Path, assignment_id: str, status: str,
-                          error: str | None) -> None:
+                          error: str | None, result=None) -> None:
     path = Path(state_dir) / PENDING_REPORTS_FILE
     data = _read_json(path) or {}
     if not isinstance(data, dict):
         raise StateError("pending reports file must contain a JSON object")
-    data[assignment_id] = {"status": status, "error": error}
+    entry = {"status": status, "error": error}
+    if result is not None:
+        entry["result"] = result
+    data[assignment_id] = entry
     _atomic_write_json(path, data)
 
 
