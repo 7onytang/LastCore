@@ -1,0 +1,1 @@
+{"model_id":"lastcore/linear-demo-v1","num_layers":2,"layer_memory_mb":1,"max_nodes":1,"timeout_seconds":600,"input_vector":[1.0,2.0],"weight_seed":7,"target_node_id":"00000000-0000-0000-0000-000000000001"}

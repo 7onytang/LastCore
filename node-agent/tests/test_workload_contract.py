@@ -83,7 +83,7 @@ def test_lost_ack_restart_replays_exact_durable_typed_payload(tmp_path):
     client.close()
 
 
-@pytest.mark.parametrize('change',['task','node','assignment','range','request','result','bool-result','invalid-status','404','409'])
+@pytest.mark.parametrize('change',['task','node','assignment','range','request','result','bool-result','invalid-status','bool-layer','404','409'])
 def test_unknown_ack_or_terminal_numeric_conflict_preserves_immutable_pending(tmp_path,change):
     reply=json.loads(json.dumps(ack()))
     status=200
@@ -95,6 +95,7 @@ def test_unknown_ack_or_terminal_numeric_conflict_preserves_immutable_pending(tm
     elif change=='result':reply['assignments'][0]['workload_result']['inside']=1
     elif change=='bool-result':reply['assignments'][0]['workload_result']['inside']=True
     elif change=='invalid-status':reply['status']='unknown'
+    elif change=='bool-layer':reply['assignments'][0]['layer_end']=True
     else:status=int(change)
     agent,client=fixture(tmp_path,lambda r:httpx.Response(status,json=reply))
     assert agent._record_pending('a','completed',None,VALUES,binding())
@@ -189,11 +190,9 @@ def test_published_linear_override_and_five_arg_failed_reports_still_replay(tmp_
 def test_frozen_old_request_cache_replays_without_any_linear_calculation(tmp_path,monkeypatch):
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'edge-client'))
     import linear_edge
-    from app.models import TaskRequest
-    frozen_request={'model_id':'lastcore/linear-demo-v1','num_layers':2,'layer_memory_mb':1,'max_nodes':1,
-        'timeout_seconds':600,'input_vector':[1.0,2.0],'weight_seed':7,
-        'target_node_id':'00000000-0000-0000-0000-000000000001'}
-    current_request=json.loads(TaskRequest(**frozen_request).protocol_dump_json())
+    frozen_request=json.loads((Path(__file__).resolve().parents[2]/
+        'edge-client/tests/fixtures/linear-request-63d409a8.json').read_text())
+    current_request=dict(frozen_request)  # Wire fixture also checked by the isolated Controller suite.
     old_binding=hashlib.sha256(json.dumps(['task','a',frozen_request,0,2],sort_keys=True).encode()).hexdigest()
     path=linear_edge.result_file(tmp_path,'a');path.parent.mkdir()
     path.write_text(json.dumps({'binding':old_binding,'model_id':linear_edge.MODEL,'task_id':'task',
@@ -205,3 +204,73 @@ def test_frozen_old_request_cache_replays_without_any_linear_calculation(tmp_pat
         raw={'request':current_request})
     linear_edge.LinearExecutor(tmp_path).run(run)
     assert path.read_bytes()==original
+
+
+@pytest.mark.parametrize('marker',['binding','workload_result','result'])
+def test_incomplete_typed_marker_preserves_bytes_and_blocks_all_http_and_execution(tmp_path,marker):
+    entry={'status':'completed','error':None,marker:binding() if marker=='binding' else VALUES}
+    path=tmp_path/'pending-reports.json'
+    path.write_text(json.dumps({'a':entry}))
+    original=path.read_bytes()
+    calls=[]
+    def handler(request):
+        calls.append(request)
+        pytest.fail('corrupt journal must be rejected before any HTTP')
+    agent,client=fixture(tmp_path,handler)
+    agent.executor_factory=lambda:pytest.fail('must not execute new work')
+    with pytest.raises(StateError):
+        agent.run_forever()
+    assert agent.stop_event.is_set() and not calls and not agent.stats.started
+    assert path.read_bytes()==original
+    with pytest.raises(StateError):
+        record_pending_report(tmp_path,'a','completed',None)
+    assert path.read_bytes()==original
+    client.close()
+
+
+def test_incomplete_marker_detected_during_poll_never_posts_or_starts_new_work(tmp_path):
+    path=tmp_path/'pending-reports.json'
+    path.write_text(json.dumps({'a':{'status':'completed','error':None,'binding':binding()}}))
+    original=path.read_bytes()
+    calls=[]
+    row={'id':'new','task_id':'new-task','status':'pending','task_status':'queued','deadline':9999999999,
+         'layer_start':0,'layer_end':1,'request':{'model_id':'legacy-demo'}}
+    def handler(request):
+        calls.append(request)
+        assert request.method=='GET'
+        return httpx.Response(200,json={'assignments':[row]})
+    agent,client=fixture(tmp_path,handler)
+    agent._pending=load_pending_reports(tmp_path)
+    agent.executor_factory=lambda:pytest.fail('must not execute new work')
+    with pytest.raises(StateError):agent._poll_once()
+    assert calls and all(request.method=='GET' for request in calls)
+    assert agent.stop_event.is_set() and not agent.stats.started
+    assert path.read_bytes()==original
+    client.close()
+
+
+def test_disappeared_known_typed_journal_cannot_be_sent_as_legacy_status_only(tmp_path):
+    calls=[]
+    row={'id':'new','task_id':'new-task','status':'pending','task_status':'queued','deadline':9999999999,
+         'layer_start':0,'layer_end':1,'request':{'model_id':'legacy-demo'}}
+    def handler(request):
+        calls.append(request)
+        assert request.method=='GET'
+        return httpx.Response(200,json={'assignments':[row]})
+    agent,client=fixture(tmp_path,handler)
+    assert agent._record_pending('a','completed',None,VALUES,binding())
+    path=tmp_path/'pending-reports.json'
+    path.unlink()
+    agent.executor_factory=lambda:pytest.fail('must not execute after outcome disappearance')
+    with pytest.raises(StateError):agent._poll_once()
+    assert agent.stop_event.is_set() and not agent.stats.started
+    assert all(request.method=='GET' for request in calls)
+    assert agent._pending_results['a'][0]==VALUES and not path.exists()
+    client.close()
+
+
+@pytest.mark.parametrize('invalid',[[],0,False])
+def test_falsy_invalid_journal_is_not_overwritten(tmp_path,invalid):
+    path=tmp_path/'pending-reports.json';path.write_text(json.dumps(invalid));before=path.read_bytes()
+    with pytest.raises(StateError):record_pending_report(tmp_path,'a','completed',None,VALUES,binding())
+    assert path.read_bytes()==before

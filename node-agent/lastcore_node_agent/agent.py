@@ -107,10 +107,15 @@ class NodeAgent:
         return credentials
 
     def run_forever(self) -> None:
+        try:
+            self._settled = load_settled(self.config.state_dir)
+            self._pending = load_pending_reports(self.config.state_dir)
+            self._pending_results = load_pending_report_results(self.config.state_dir)
+        except (OSError, StateError):
+            self.stop_event.set()
+            self._notify(connection="recovery-required")
+            raise
         joined = self._join_controller()
-        self._settled = load_settled(self.config.state_dir)
-        self._pending = load_pending_reports(self.config.state_dir)
-        self._pending_results = load_pending_report_results(self.config.state_dir)
         heartbeat_thread = None
         if joined:
             heartbeat_thread = threading.Thread(target=self._heartbeat_loop,
@@ -376,6 +381,16 @@ class NodeAgent:
             LOG.error("could not persist settle journal: %s", exc)
 
     def _flush_pending_reports(self) -> None:
+        try:
+            loaded = load_pending_report_results(self.config.state_dir)
+            if any(assignment_id not in loaded or loaded[assignment_id] != saved
+                   for assignment_id, saved in self._pending_results.items()):
+                raise StateError("known typed outcome changed or disappeared; preserve for recovery")
+            self._pending_results = loaded
+        except (OSError, StateError):
+            self.stop_event.set()
+            self._notify(connection="recovery-required")
+            raise
         for assignment_id, (status, error) in sorted(self._pending.items()):
             self._attempt_terminal_report(assignment_id, status, error,
                                           *(self._pending_results.get(assignment_id) or (None, None)))

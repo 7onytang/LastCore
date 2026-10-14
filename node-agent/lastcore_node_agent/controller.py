@@ -97,6 +97,7 @@ class ControllerClient:
             matches = [row for row in task["assignments"] if isinstance(row, dict) and row.get("id") == assignment_id]
             if (task.get("id") != binding.get("task_id") or len(matches) != 1
                     or task.get("status") not in ("running", "completed", "failed", "cancelled")
+                    or any(type(matches[0].get(key)) is not int for key in ("layer_start", "layer_end"))
                     or any(matches[0].get(key) != binding.get(key)
                            for key in ("task_id", "node_id", "layer_start", "layer_end"))
                     or (task.get("request") or {}).get("model_id") != binding.get("model_id")

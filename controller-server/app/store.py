@@ -144,11 +144,17 @@ class Store:
             SELECT DISTINCT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
             WHERE t.status IN ('queued','running')
         """)}
-        capabilities = {}
-        for node_id, workload in db.execute("SELECT node_id, workload FROM node_workloads ORDER BY workload"):
-            capabilities.setdefault(node_id, []).append(workload)
+        nodes, capabilities = {}, {}
+        for row in db.execute("""SELECT n.*, w.workload AS supported_workload FROM nodes n
+                              LEFT JOIN node_workloads w ON w.node_id=n.id
+                              ORDER BY n.id, w.workload"""):
+            data = dict(row)
+            workload = data.pop("supported_workload")
+            nodes.setdefault(data["id"], data)
+            if workload is not None:
+                capabilities.setdefault(data["id"], []).append(workload)
         return [self._node_view(db, node, busy=node["id"] in busy, workloads=capabilities.get(node["id"], []))
-                for node in db.execute("SELECT * FROM nodes ORDER BY id").fetchall()]
+                for node in nodes.values()]
 
     def register(self, request):
         node_id, token = str(uuid4()), secrets.token_urlsafe(32)

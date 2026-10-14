@@ -129,7 +129,11 @@ def load_pending_report_results(state_dir: Path) -> dict[str, object]:
         raise StateError("pending reports file must contain a JSON object")
     results = {}
     for key, entry in data.items():
-        if isinstance(entry, dict) and "workload_result" in entry:
+        if not isinstance(entry, dict):
+            raise StateError("pending journal entry schema is invalid")
+        if {"workload_result", "binding", "result"} & entry.keys():
+            if not {"workload_result", "binding"}.issubset(entry):
+                raise StateError("incomplete typed journal marker; preserve for recovery")
             binding = entry.get("binding")
             if (not isinstance(binding, dict) or entry.get("status") != "completed"
                     or any(not isinstance(binding.get(field), str) or not binding[field]
@@ -159,7 +163,9 @@ def load_pending_report_results(state_dir: Path) -> dict[str, object]:
 def record_pending_report(state_dir: Path, assignment_id: str, status: str,
                           error: str | None, result=None, binding=None) -> None:
     path = Path(state_dir) / PENDING_REPORTS_FILE
-    data = _read_json(path) or {}
+    data = _read_json(path)
+    if data is None:
+        data = {}
     if not isinstance(data, dict):
         raise StateError("pending reports file must contain a JSON object")
     entry = {"status": status, "error": error}
@@ -169,7 +175,7 @@ def record_pending_report(state_dir: Path, assignment_id: str, status: str,
     previous = data.get(assignment_id)
     if previous is not None and not isinstance(previous, dict):
         raise StateError("pending report schema is invalid")
-    if previous is not None and previous != entry and ("workload_result" in previous or result is not None):
+    if previous is not None and previous != entry and ({"workload_result", "binding", "result"} & previous.keys() or result is not None):
         raise StateError("cannot replace a pending typed outcome")
     data[assignment_id] = entry
     _atomic_write_json(path, data)

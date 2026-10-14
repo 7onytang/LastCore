@@ -47,7 +47,9 @@ def test_frozen_legacy_request_shape_and_capability_defaults():
                 max_nodes=1, input_vector=[1, 2], weight_seed=7,
                 target_node_id="00000000-0000-0000-0000-000000000001")
     frozen = '{"model_id":"lastcore/linear-demo-v1","num_layers":2,"layer_memory_mb":1,"max_nodes":1,"timeout_seconds":600,"input_vector":[1.0,2.0],"weight_seed":7,"target_node_id":"00000000-0000-0000-0000-000000000001"}'
-    assert TaskRequest(**data).protocol_dump_json() == frozen
+    fixture=(Path(__file__).resolve().parents[2]/'edge-client/tests/fixtures/linear-request-63d409a8.json').read_text().strip()
+    assert fixture == frozen
+    assert TaskRequest(**data).protocol_dump_json() == fixture
     tiny = json.loads(TaskRequest(model_id="tiny", num_layers=2, layer_memory_mb=1).protocol_dump_json())
     assert set(tiny) == set(json.loads(frozen))
     assert Heartbeat(available_memory_mb=1).supported_workloads == []
@@ -119,7 +121,7 @@ def test_read_only_downgrade_gate_uses_metadata_fixture(tmp_path):
 
 
 def test_old_core_reader_sees_no_dict_in_legacy_result_storage(tmp_path):
-    import subprocess
+    import hashlib
     import types
     database=tmp_path/'compat.sqlite3'
     store=Store(str(database),30,clock=lambda:100)
@@ -136,7 +138,8 @@ def test_old_core_reader_sees_no_dict_in_legacy_result_storage(tmp_path):
     assert new['result'] is None and new['assignments'][0]['result'] is None
     assert new['workload_result']=={'inside':500,'samples':1000,'pi_estimate':2.0}
     old_module=types.ModuleType('app.frozen_old_store')
-    old_source=subprocess.check_output(['git','show','60c58831edaa4de06fd144b4e79f5df216900911:controller-server/app/store.py'])
+    old_source=(Path(__file__).parent/'fixtures/store-60c58831.py.txt').read_bytes()
+    assert hashlib.sha256(old_source).hexdigest() == '143a4af1fd9a42dfe33f61522b96c33815c753cd9e7d705e12e5756514f75f71'
     exec(compile(old_source,'frozen-public-old-store','exec'),old_module.__dict__)
     old=old_module.Store(str(database),30,clock=lambda:100).get_task('fixture-task')
     assert old['result'] is None and old['assignments'][0]['result'] is None
