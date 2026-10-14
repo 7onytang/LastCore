@@ -74,4 +74,4 @@ pytest -q tests/test_two_node_e2e.py tests/test_pipeline_over_tcp.py \
 - 引擎支持 tiny decoder-only 模型的分层接力，不是已适配的 Qwen 等生产预训练模型；
 - 当前一次请求一次连接，没有 batching、KV cache 或自动迁移/重试；
 - communication 层当前不提供加密和节点鉴权，公网部署必须使用 HTTPS/VPN，并限制 Worker endpoint 的网络范围；
-- 圆周率、日志统计若由后续看板分支加入，应展示为独立的 CPU 分片/归并演示，不能宣称它们验证了 activation 接力。
+- 圆周率、日志统计现已随 `73b3d1` 部署到 `/workloads`，仍是独立的 CPU 分片/归并路径；目前仅代码、CI 和页面/资源可达核验，未实际派发新任务或做新设备验收，不能宣称它们验证了 activation 接力或继承本页历史 tiny 证据。

@@ -14,7 +14,7 @@ LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI �
 
 ## 工作台、演示与实际截图
 
-公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。当前公开页面摘要记录：北京时间 2026-10-14 14:04:46，页面对应固定公开源 `67a0200`，本次运行差异仅为 HTML 的三个恢复修复预览入口（Mac `5a83c1d`、Windows/Linux `63d409a8`）；HTTPS 默认入口 GET/HEAD 302 到工作台，`/console` 与健康响应为 200，HTML 与固定源一致，无新增公开任务/计算/设备验收；见[当前部署说明](submission/evidence/public-deployment-current.md)。18:04:30 的 `cc7c7ba` 部署及 18:08 截图保留为历史采样，见[历史部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
+公网服务入口：[LastCore](https://8.134.161.123/)。实际工作台路径为 `/console`，提供管理员连接及节点/任务只读查看；管理员通过 `/docs` 或 API 派发任务。当前公开页面摘要记录：北京时间 2026-10-14 18:00:26，页面与 Controller 对应固定公开源 `73b3d1`；HTTPS 默认入口 GET/HEAD 302 到工作台，`/console` 与健康响应为 200，HTML 与固定源一致，`/workloads`、同源资源和 CSP 已由部署负责人核验可达。π/日志路径仅有代码、CI 和资源可达证据，未实际执行新任务或设备验收；见[当前部署说明](submission/evidence/public-deployment-current.md)。18:04:30 的 `cc7c7ba` 部署及 18:08 截图保留为历史采样，见[历史部署摘要](submission/evidence/formal-console-deployment-summary.json)。节点客户端只展示本机与自身任务，不提供全局派发权限。工作台源码见 [index.html](controller-server/app/ui/index.html) 和 [console.js](controller-server/app/ui/console.js)。
 
 保留的历史展示地址：[LastCore Demo](https://8.134.161.123/demo/)。该地址与统一 ZIP 镜像的可达性、内容和摘要由最后交付验收核对。也可直接打开 [离线展示页面](demo/offline.html)，按[三分钟讲稿](demo/DEMO-SCRIPT-3MIN.txt)展示；页面提供历史结果回放、下载和公开证据入口，不创建新的模型任务。
 
@@ -271,7 +271,7 @@ python scripts/smoke_idle_expiry.py
 
 ### 浏览器看板与多设备接力推理
 
-新增的源码演示看板位于 `/workloads`；当前根路径与 `/console` 保留现有工作台。独立审查并部署该分支后才可访问 `https://<controller>/workloads`，输入管理员令牌即可查看 Worker 的在线、忙碌、暂停接单和离线状态，以及任务分片、上下游节点和回报状态。看板还提供确定性圆周率分片估算和日志级别统计，仅调度显式声明对应执行器能力的节点；旧客户端默认不支持。这两项是并行分片与归并演示，不代表 activation 接力。本次仅源码兼容修复与纯 Fake/Mock/静态验证，尚未合并、部署或新增真实任务/设备验收。
+兼容修复经 [PR #89](https://github.com/7onytang/LastCore/pull/89) 合入固定源 `73b3d1`，已部署的 [CPU 演示看板](https://8.134.161.123/workloads)位于 `/workloads`；根路径与 `/console` 保留现有工作台。管理员可查看 Worker、任务分片、上下游和回报状态；π 分片估算与日志统计仅分配给实际声明兼容执行器的可用节点，旧节点不会因平台或在线状态自动支持。代码、CI、GET/HEAD、CSP 和同源资源可达已核验，仍未实际派发 π/日志任务或做新设备验收。此路径不代表 activation 接力，也不继承历史 Mac 线性、SmolLM2 整模型或 tiny 模型的执行证据；来源与范围见[当前公开页面说明](submission/evidence/public-deployment-current.md)。
 
 多设备接力推理的可复现验收步骤见 [`docs/RELAY_INFERENCE_DEMO.md`](docs/RELAY_INFERENCE_DEMO.md)。该路径使用 `inference-engine/` 与 Node Agent 的 StageExecutor，将连续模型层分配给多个 Worker，并让 activation 沿 `next_node` 逐跳传递；必须额外满足 Worker endpoint 互通。Controller 仍只接收 Worker 主动发起的心跳和 assignment 轮询，不主动连接 Worker。
 

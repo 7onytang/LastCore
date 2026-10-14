@@ -1,0 +1,28 @@
+{
+  "deployed_at_beijing": "2026-10-14T18:00:26.121105+08:00",
+  "source_commit": "73b3d1abed7dc9709d522fd8afccc0795ca41fe9",
+  "runtime_diff": [
+    "controller-server/app/demo.py",
+    "controller-server/app/main.py",
+    "controller-server/app/models.py",
+    "controller-server/app/showcase.html",
+    "controller-server/app/store.py",
+    "controller-server/app/ui/index.html",
+    "controller-server/app/ui/workloads.css",
+    "controller-server/app/ui/workloads.js",
+    "controller-server/app/workload_downgrade.py"
+  ],
+  "html_sha256": "eaa89a26070afab29691706e6990c3bf8fe5adb917808dba6de383e573798a3d",
+  "js_sha256": "858d5896973197dd3e8168793a25c9e8a5d2ab6427b14e03aa0b3f4100f6597d",
+  "css_sha256": "fbab172b3b412da99b648df6e4275dfeda24b9d528e69383522de70f88f87aa2",
+  "html_equals_fixed_git_source": true,
+  "healthz_http": 200,
+  "https_root_redirect": 302,
+  "https_console_http": 200,
+  "http_https_redirect": 308,
+  "https_root_head_redirect": 302,
+  "https_console_head_http": 200,
+  "business_timezone": "Asia/Shanghai",
+  "scope": "public page source and HTTP endpoint observations only; no infrastructure or private state",
+  "no_new_public_task_compute_or_device_tests": true
+}
