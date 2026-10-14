@@ -180,3 +180,36 @@ def test_sparse_assignment_log_counts_aggregate_to_stable_four_level_contract():
     assert value['result'] is None
     assert value['assignments'][0]['workload_result']=={'INFO':2}
     assert value['workload_result']=={'levels':{'ERROR':0,'WARN':0,'INFO':2,'OTHER':0},'total_lines':2}
+
+
+def test_synthesized_workload_get_head_assets_and_console_security_contract():
+    from fastapi.testclient import TestClient
+    from app.main import create_app, Settings
+    store=Mock()
+    app=create_app(Settings(admin_token='fixture-admin-'+'a'*32,registration_token='fixture-register-'+'b'*32),store=store)
+    client=TestClient(app,base_url='https://fixture.invalid')  # In-process ASGI only; no lifespan or socket.
+    try:
+        baseline=client.get('/')
+        assert baseline.status_code==200
+        for path in ('/','/console','/workloads'):
+            page=client.get(path);head=client.head(path)
+            assert page.status_code==head.status_code==200 and head.content==b''
+            for key in ('content-type','content-length','content-security-policy','cache-control','referrer-policy','x-content-type-options'):
+                assert head.headers[key]==page.headers[key]
+            for key in ('content-security-policy','cache-control','referrer-policy','x-content-type-options'):
+                assert page.headers[key]==baseline.headers[key]
+            assert "script-src 'self'" in page.headers['content-security-policy']
+            assert 'unsafe-inline' not in page.headers['content-security-policy']
+            if path!='/workloads':assert page.content==baseline.content
+        workload=client.get('/workloads')
+        assert 'src="/ui/workloads.js"' in workload.text and 'href="/ui/workloads.css"' in workload.text
+        assert '<script>' not in workload.text and '<style>' not in workload.text
+        assert 'href="/workloads"' in baseline.text
+        for asset in ('/ui/workloads.js','/ui/workloads.css'):
+            page=client.get(asset);head=client.head(asset)
+            assert page.status_code==head.status_code==200 and head.content==b''
+            assert head.headers['content-length']==page.headers['content-length']
+        assert client.get('/ui/../main.py').status_code==404
+        assert not store.method_calls
+    finally:
+        client.close()
