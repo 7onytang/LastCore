@@ -83,7 +83,7 @@ python -m lastcore_node_agent \
 - **执行日志（journal）**：执行结束（completed/failed/stopped）先写本地日志再上报 Controller，保证重启后不会重复执行同一 assignment；本地崩溃窗口内的重复执行无法完全避免（无分布式事务）。
 - **取消/超时停止**：轮询发现任务 cancelled/failed、或进程收到停止信号时，设置执行器取消事件并等待其退出（宽限期 `stop_grace`，默认 10s）。deadline 与心跳 TTL 由独立的本地 watchdog 线程按秒检查，assignments 轮询失败或阻塞（含整机断网、心跳同时失败）期间仍然运行，超限后有界停止执行器，不依赖网络恢复。本地停止后不再上报（Controller 侧已终态或会因心跳过期而失败），该 assignment 记为 `stopped`，永不重复执行。
 - **执行失败**：执行器抛异常时上报 `failed` 并携带错误摘要，Controller 会终止整个任务。
-- **上报重试**：终态上报（含 executor 不可用路径）先持久化待确认记录（`pending-reports.json`，0600），成功落盘后才写入执行日志 journal 进入不可再执行终态（两次写入间崩溃重启仍可只补报；pending 落盘失败则暂不 settle，保持可重执行以避免静默丢报），再最多重试 3 次；legacy 状态型回报收到成功 ACK 或 404/409（Controller 已终态）后清除记录；新 π/日志数值回报须完整匹配 ACK，未知响应或 404/409 保留记录并阻止新执行（详见后文）；重试耗尽保留记录，连接恢复或进程重启后只重放上报（Controller 对同状态上报幂等），不重新执行。pending 中的 assignment 参与执行去重，journal 淘汰旧记录后也不会被重新选择执行。
+- **上报重试**：终态上报（含 executor 不可用路径）先持久化待确认记录（`pending-reports.json`，0600），成功落盘后才写入执行日志 journal 进入不可再执行终态（两次写入间崩溃重启仍可只补报；仅 legacy 状态型回报在 pending 落盘失败时暂不 settle、保留旧的可重执行规则；π/日志 typed 数值结果持久化失败则进入恢复状态并停止新执行，不发送未落盘结果，不降格为 legacy 回报或重新计算，已有证据保留），再最多重试 3 次；legacy 状态型回报收到成功 ACK 或 404/409（Controller 已终态）后清除记录；新 π/日志数值回报须完整匹配 ACK，未知响应或 404/409 保留记录并阻止新执行（详见后文）；重试耗尽保留记录，连接恢复或进程重启后只重放上报（Controller 对同状态上报幂等），不重新执行。pending 中的 assignment 参与执行去重，journal 淘汰旧记录后也不会被重新选择执行。
 
 ## 与推理引擎对接
 
