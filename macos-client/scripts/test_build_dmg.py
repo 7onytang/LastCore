@@ -24,7 +24,7 @@ OPTIONS = ['--production', '--signing-identity', IDENTITY, '--team-id', TEAM,
 
 
 class BuildTests(unittest.TestCase):
-    def fake_build(self, flags=(), failure=None, detail=None, notary=None, certificate=CERTIFICATE):
+    def fake_build(self, flags=(), failure=None, detail=None, notary=None, certificate=CERTIFICATE, mutate_live=False):
         self.calls = []
         self.embedded = None
         self.folder = tempfile.TemporaryDirectory()
@@ -34,12 +34,23 @@ class BuildTests(unittest.TestCase):
         (root/'macos-client/source.swift').write_text('synthetic source')
         (root/'macos-client/untracked-secret.txt').write_text('do not bind untracked inputs')
         (root/'LICENSE').write_text('synthetic license')
+        fixed={'macos-client/source.swift':b'synthetic source', 'macos-client/Package.swift':b'synthetic package', 'LICENSE':b'synthetic license'}
+        blob_map={hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest():data for data in fixed.values()}
+        entries={name:hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() for name,data in fixed.items()}
         self.output = root/'output'
 
         def record(args):
             self.calls.append(list(args))
             if failure and failure(list(args)):
                 raise RuntimeError('synthetic tool failed')
+
+        def command_bytes(*args, **kwargs):
+            record(args)
+            if args[:2]==('git','ls-tree'):
+                self.assertEqual(args[4], 'f'*40)
+                return b''.join(f'100644 blob {oid}\t{name}\0'.encode() for name,oid in entries.items())
+            if args[:3]==('git','cat-file','blob'): return blob_map[args[3]]
+            raise AssertionError(args)
 
         def command(*args, **kwargs):
             record(args)
@@ -57,6 +68,11 @@ class BuildTests(unittest.TestCase):
         def run(args, **kwargs):
             record(args)
             if args[:2] == ['swift', 'build']:
+                if mutate_live: (root/'macos-client/source.swift').write_text('concurrent changed working tree')
+                package=Path(args[args.index('--package-path')+1])
+                self.assertNotEqual(package, root/'macos-client')
+                self.assertEqual((package/'source.swift').read_bytes(),fixed['macos-client/source.swift'])
+                self.assertEqual(Path(kwargs['cwd'])/'macos-client', package)
                 target = Path(args[args.index('--scratch-path')+1])/'arm64-apple-macosx/release/LastCoreClient'
                 target.parent.mkdir(parents=True)
                 target.write_bytes(b'synthetic executable, never launched')
@@ -68,7 +84,7 @@ class BuildTests(unittest.TestCase):
                 Path(args[-1]).write_bytes(b'synthetic DMG, never mounted')
             return subprocess.CompletedProcess(args, 0)
 
-        with patch.object(build, 'ROOT', root), patch.object(build, 'command', command), patch.object(build.subprocess, 'run', run), patch.object(sys, 'argv', ['build_dmg', '--output-dir', str(self.output), *flags]), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(build, 'ROOT', root), patch.object(build, 'command', command), patch.object(build, 'command_bytes', command_bytes), patch.object(build.subprocess, 'run', run), patch.object(sys, 'argv', ['build_dmg', '--output-dir', str(self.output), *flags]), contextlib.redirect_stdout(io.StringIO()):
             build.main()
         return json.loads(next(self.output.glob('*.json')).read_text())
 
@@ -87,7 +103,7 @@ class BuildTests(unittest.TestCase):
             self.assertTrue(receipt[name])
         self.assertEqual(receipt['source_commit'], 'f'*40)
         self.assertEqual(receipt['dmg_sha256'], build.digest(next(self.output.glob('*.dmg'))))
-        self.assertEqual(set(receipt['source_files']), {'macos-client/source.swift', 'LICENSE'})
+        self.assertEqual(set(receipt['source_files']), {'macos-client/source.swift', 'macos-client/Package.swift', 'LICENSE'})
         self.assertFalse(self.embedded['notarized'])
         self.assertEqual(self.embedded['signing'], 'developer-id-requested')
         self.assertTrue(any('--configuration' in c and c[c.index('--configuration')+1]=='release' for c in self.calls))
@@ -121,6 +137,14 @@ class BuildTests(unittest.TestCase):
             with self.subTest(failure=failure):
                 with self.assertRaises(RuntimeError): self.fake_build(OPTIONS, failure=failure)
                 self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_live_checkout_mutation_cannot_change_fixed_build_or_manifest(self):
+        receipt=self.fake_build(OPTIONS, mutate_live=True)
+        self.assertEqual(receipt['source_commit'], 'f'*40)
+        self.assertEqual(receipt['source_files']['macos-client/source.swift'], hashlib.sha256(b'synthetic source').hexdigest())
+        self.assertNotEqual(receipt['source_files']['macos-client/source.swift'], hashlib.sha256(b'concurrent changed working tree').hexdigest())
+        self.assertEqual(receipt['source_git_blobs'], self.embedded['source_git_blobs'])
+        self.assertEqual(receipt['source_files'], self.embedded['source_files'])
 
     def test_final_post_staple_signature_failure_cannot_publish(self):
         count=0

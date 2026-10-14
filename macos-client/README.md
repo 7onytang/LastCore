@@ -129,13 +129,17 @@ Python/Swift project.
 All candidates stay in a temporary directory. Only after every check succeeds
 are the `-production.dmg`, JSON receipt and checksum exclusively created; existing
 artifacts are never overwritten and failed publication removes its own files.
-The receipt records the fixed Git commit, hashes of tracked client/license input
-files, actual signature checks, certificate fingerprint, Apple submission ID and
+The receipt records the fixed Git commit, hashes and blob IDs of tracked client/license input
+files exported from that commit into a private snapshot, actual signature checks, certificate fingerprint, Apple submission ID and
 DMG ticket validation. The embedded source binding is generated **before** signing
 and says `developer-id-requested`, `notarized: false`; the final external receipt
 records the completed verification. The DMG ticket is stapled; the inner app is
 signed and included in that notarized submission, not separately stapled.
-Captured tool failure output is withheld from terminal errors.
+Build inputs and manifest hashes come from the same fixed Git tree/blob objects,
+not the live checkout or index; concurrent working-tree changes do not alter the
+package. Regular tracked files are exported without Git filters or archive
+attributes; symlinks/submodules fail closed. Captured tool failure output is
+withheld from terminal errors.
 
 Validation for this entry is synthetic only:
 
@@ -157,10 +161,13 @@ linear tasks may report a finite, correctly sized result. Matching completion
 retries are idempotent; conflicting retries are rejected and cannot replace the
 saved values. Cancelled or expired tasks cannot be revived.
 
-Before production rollout, back up the Controller database, finish/cancel any
-new linear task, and preserve the previous image and database snapshot. The old
-image ignores the added table but cannot receive a new linear request or a
-numeric report; restore the snapshot when reverting that protocol. No TLS,
+The preceding compatibility paragraph describes the historical introduction of
+linear numeric results. Before rollout, preserve the previous image and back up
+the database. For the current additive protocol, roll back code on the same live
+data volume only when both versions are compatible with its schema; do not
+restore a pre-deployment snapshot over subsequent writes. An incompatible
+historical protocol rollback requires a separate migration or stopped-write
+data recovery plan. No TLS,
 admin/registration credentials, existing node IDs, or whole-model job protocol
 are changed by this patch.
 

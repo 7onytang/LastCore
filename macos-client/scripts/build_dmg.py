@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import plistlib
 import re
 from uuid import UUID
@@ -16,16 +16,47 @@ ROOT = Path(__file__).resolve().parents[2]
 VERSION = "0.1.1"
 
 
-def command(*args, **kwargs):
+def command_bytes(*args, **kwargs):
     try:
-        return subprocess.check_output(list(args), cwd=ROOT, stderr=kwargs.pop("stderr", subprocess.PIPE), **kwargs).decode().strip()
+        return subprocess.check_output(list(args), cwd=ROOT, stderr=kwargs.pop("stderr", subprocess.PIPE), **kwargs)
     except (OSError, subprocess.CalledProcessError):
         raise RuntimeError(f"{args[0]} failed; captured tool output is withheld") from None
 
 
+def command(*args, **kwargs):
+    return command_bytes(*args, **kwargs).decode().strip()
+
+
+def export_snapshot(commit, destination):
+    # Read tree/blob objects directly: no index, worktree, filters or export attributes.
+    listing = command_bytes("git", "ls-tree", "-r", "-z", commit, "--", "macos-client", "LICENSE")
+    hashes, blobs = {}, {}
+    for entry in listing.split(b"\0"):
+        if not entry:
+            continue
+        header, name_bytes = entry.split(b"\t", 1)
+        mode, kind, oid = header.decode().split()
+        name = name_bytes.decode()
+        path = PurePosixPath(name)
+        if (kind != "blob" or mode not in ("100644", "100755")
+                or path.is_absolute() or ".." in path.parts
+                or not (name == "LICENSE" or name.startswith("macos-client/"))):
+            raise RuntimeError("Source snapshot requires regular tracked client/license files")
+        data = command_bytes("git", "cat-file", "blob", oid)
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        target.chmod(0o555 if mode == "100755" else 0o444)
+        hashes[name] = hashlib.sha256(data).hexdigest()
+        blobs[name] = oid
+    if "LICENSE" not in hashes or "macos-client/Package.swift" not in hashes:
+        raise RuntimeError("Fixed source snapshot lacks the client package or license")
+    return hashes, blobs
+
+
 def run_command(args, **kwargs):
     try:
-        return subprocess.run(args, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, **kwargs)
+        return subprocess.run(args, cwd=kwargs.pop("cwd", ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, **kwargs)
     except (OSError, subprocess.CalledProcessError):
         raise RuntimeError(f"{args[0]} failed; captured tool output is withheld") from None
 
@@ -133,12 +164,14 @@ def main():
     with tempfile.TemporaryDirectory(prefix="lastcore-client-dmg-") as folder:
         work = Path(folder)
         candidate = work / image.name
+        snapshot = work / "source"
+        sources, blobs = export_snapshot(commit, snapshot)
         env = dict(os.environ, CLANG_MODULE_CACHE_PATH=str(work / "clang-cache"),
                    SWIFTPM_MODULECACHE_OVERRIDE=str(work / "module-cache"))
-        run_command(["swift", "build", "--package-path", str(ROOT / "macos-client"),
+        run_command(["swift", "build", "--package-path", str(snapshot / "macos-client"),
                         "--configuration", "release", "--scratch-path", str(work / "build"),
                         "--cache-path", str(work / "cache"), "--config-path", str(work / "config"),
-                        "--security-path", str(work / "security"), "--disable-sandbox"], env=env)
+                        "--security-path", str(work / "security"), "--disable-sandbox"], env=env, cwd=snapshot)
         stage = work / "stage"
         app = stage / "LastCoreClient.app"
         executable = app / "Contents/MacOS/LastCoreClient"
@@ -152,15 +185,13 @@ def main():
                     CFBundleVersion="1", LSMinimumSystemVersion="13.0", NSHighResolutionCapable=True)
         with (app / "Contents/Info.plist").open("wb") as file:
             plistlib.dump(info, file)
-        tracked = command("git", "ls-files", "-z", "--", "macos-client", "LICENSE").split("\0")
-        sources = {name: digest(ROOT / name) for name in sorted(tracked) if name}
         provenance = dict(source_commit=commit, version=VERSION, architecture="arm64",
                           imported_client_author_commit="9fef3e632b23a018f61e5fe2c94c610df7d87959",
-                          source_files=sources, signing="developer-id-requested" if args.production else "ad-hoc", notarized=False,
+                          source_files=sources, source_git_blobs=blobs, signing="developer-id-requested" if args.production else "ad-hoc", notarized=False,
                           swift_version=command("swift", "--version"))
         # Embedded binding predates signing: never claims a completed notarization.
         (resources / "source-binding.json").write_text(json.dumps(provenance, indent=2) + "\n")
-        shutil.copy2(ROOT / "LICENSE", resources / "LICENSE.txt")
+        shutil.copy2(snapshot / "LICENSE", resources / "LICENSE.txt")
         os.symlink("/Applications", stage / "Applications")
         (stage / "安装说明.txt").write_text(
             "LastCoreClient 0.1.1 · Apple Silicon · macOS 13+\n"
