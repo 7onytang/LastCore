@@ -6,10 +6,7 @@
 
 Windows/Linux 已发布未签名的 `0.2.0-preview` 便携开发预览包：[Windows x86_64](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip)、[Linux x86_64](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip)（GLIBC >= 2.35）。原生构建与静态检查通过，GUI、联网、真实设备和跨设备 relay 未验；仅支持有界线性运算，不执行 GGUF 或 tiny Stage。校验文件、来源与范围见 [edge-client/README.md](edge-client/README.md)。
 
-Native Mac `LastCoreClient` targeted linear tasks, numeric result display,
-build/verification and the arm64 DMG are documented in
-[macos-client/README.md](macos-client/README.md). This is a small deterministic
-calculation path, separate from the tiny TCP pipeline and pretrained-model jobs.
+Mac 原生客户端的[恢复修复预览 DMG](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-5a83c1d6.dmg)固定源 `5a83c1d`（[SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-5a83c1d6.dmg.sha256)、[来源](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-5a83c1d6.json)、[独立静态审计](https://github.com/7onytang/LastCore/releases/download/v0.1.1/independent-static-audit-5a83c1d.json)），经 [PR #83](https://github.com/7onytang/LastCore/pull/83) 合入 `83f046d`。仍为 `0.1.1`、arm64/macOS 13+、ad-hoc 签名且未公证；8 项纯 Mock、构建和静态检查通过，没有新增真实任务或设备验收。原[历史实测包 f9139762](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-f9139762.dmg)及其真实 MacBook Pro 证据保留，不能转用于新预览；安装和恢复范围见 [macos-client/README.md](macos-client/README.md)。固定 `6977c09` 的完整源码 ZIP 和 `bf5b82e` 核心标签不含此后恢复修复。
 
 LastCore 面向多类型边缘设备计算网络，将设备接入统一的 AI 任务调度服务，探索利用闲置算力执行推理。Mac 与 Android 是当前已实现的接入路径，其他边缘设备适配正在开发；本次交付未提供这些适配的具体设备清单和实测证据。当前提供三条明确分开的执行路径：**原生 Mac 客户端的定向线性运算**、**tiny 模型的连续分层推理原型**，以及**固定 SmolLM2 模型在选定单设备上的完整推理**。
 
@@ -35,7 +32,7 @@ Android 开发预览附件：[arm64 APK](https://github.com/7onytang/LastCore/re
 | tiny 分层推理与 activation 逐跳传输 | 已实现 | 有本机双节点进程与单机逐字节一致验证；不是预训练大模型跨设备推理 |
 | 固定 SmolLM2-135M 整模型生成 | 已实现 | 固定 GGUF、后端和 SHA256；每个任务在一个选定 worker 上执行 |
 | 整模型任务结果、幂等、租约与停止确认 | 已实现 | 独立 `/v1/inference` API，默认关闭；与 legacy `/v1/tasks` 分开 |
-| 原生 Mac LastCoreClient 0.1.1 | 已实现定向线性任务与数值显示 | 用户真实 MacBook Pro 单节点执行、服务端参考误差 0、用户确认 GUI 两数一致；不是预训练模型 GUI |
+| 原生 Mac LastCoreClient 0.1.1 | 已实现定向线性任务与数值显示 | 历史 f9139762 包：真实 MacBook Pro 单节点、参考误差 0、用户确认 GUI；恢复修复预览 5a83c1d 仅 Mock/构建/静态，非预训练模型 GUI |
 | macOS 整模型工作节点 | 已实现，CLI 入口；恢复修复已合入 | 既有云任务证据与修复后本地真实模型证据分别保留；冻结 macOS bundle 服务 tiny 路径 |
 | Android 前台 UI、工作节点与 JNI 后端 | 已实现，真机未验收 | 有 APK 构建与主机 JVM/JNI 证据；不代表 Android 真机、Keystore 或生命周期已验证 |
 | SQLite 诊断、在线备份、恢复及部署归档 | 已实现 | 保留数据与凭据的验收范围见发布记录 |

@@ -38,6 +38,12 @@ CI 通过、源码一致、HTTP 200、人工 GUI 确认和真实模型执行分�
 
 AI 辅助 Windows/Linux 有界线性客户端、恢复处理、目标平台构建与来源/许可整理；原生 build-only 来源为 `85a1e23295dd64380a81f263a58da2593f7e94d5`，见[构建运行 38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563)及[预览来源与下载](edge-client/README.md)。恢复修正经独立源码复核和 13 项纯 Mock 检查，Mock 不替代实际设备或任务结果；这不是材料维护者新运行的验收。预览包的固定源码、PE/ELF、文件摘要及完整许可证经过独立静态复核，Windows/Linux GUI、联网、用户设备和 relay 仍未验，未新增模型执行。完整源码补充包按当前最终 main 单独绑定来源，核心标签 `bf5b82e`、原生预览构建源 `85a1e232`、旧 r2 材料源 `ac5d630` 分别保留，不补造新的对话或完整历史。
 
+## 原生 Mac 恢复修复预览补充
+
+AI 辅助审查并修复原生 Swift 客户端的结果持久化、ACK 重放、原 Controller origin/节点身份绑定及停止重启边界。固定源 `5a83c1d609af7181fe6a75812e1f70889f501fda` 经 [PR #83](https://github.com/7onytang/LastCore/pull/83) 合入 `83f046d916a2b03356d6792e81651ecc39d4186a`；保留原作者计算实现，使用现有 Foundation 原生 API，未引入新框架。8 项纯 URLProtocol Mock、优化编译、既有 smoke harness 仅编译及独立 DMG 静态审计通过；涵盖断网、丢 ACK、原身份/来源隔离、错误 ACK、损坏记录及取消后重放。
+
+[恢复修复预览下载和来源](macos-client/README.md#recovery-fix-preview-download)仍为 `0.1.1`、arm64/macOS 13+、ad-hoc 且未公证。本次没有打开 App、访问 Keychain、运行真实网络任务、计算或新增设备验收。历史 `f9139762` 包的真实 MacBook Pro 线性任务/GUI 证据不转移到新包；正式核心 `bf5b82e` 和固定 `6977c09` 的完整源码 ZIP 均保持不变且不含此次后续修复。Mock、构建和静态通过分别保留其证明范围。
+
 ## 对话记录与截图
 
 - `ai-logs/2026-10-13-submission.md`：材料聊天相关原文节选。
