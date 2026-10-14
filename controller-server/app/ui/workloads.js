@@ -60,7 +60,10 @@
     if(typeof logs!=='string'||logs.length===0)throw new UiError('input','请输入至少一行日志。');
     const lines=logs.split(/\r?\n/);
     // Python backend counts Unicode code points, rather than JavaScript UTF-16 units.
-    if(lines.length<1||lines.length>10000||lines.reduce((n,line)=>n+Array.from(line).length,0)>1000000)throw new UiError('input','日志须为1–10000行、总字符不超过1000000。');
+    if(lines.length<1||lines.length>10000)throw new UiError('input','日志须为1–10000行。');
+    let characters=0;
+    for(const line of lines){const length=Array.from(line).length;if(length>4096)throw new UiError('input','每行最多4096个 Unicode 字符。');characters+=length;}
+    if(characters>1000000)throw new UiError('input','日志总字符不超过1000000。');
     if(lines.length>capacity)throw new UiError('capacity','支持此运算的可用层容量不足，请增加设备上限或等待节点释放。');
     return {...base,max_nodes:Math.min(maxNodes,lines.length),num_layers:lines.length,timeout_seconds:120,log_lines:lines};
   }
