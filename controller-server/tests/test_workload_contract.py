@@ -164,3 +164,18 @@ def test_workload_route_is_distinct_and_inherits_strict_console_headers():
     assert len([route for route in app.routes if route.path=='/'])==1
     assert str(console.path).endswith('/ui/index.html')
     assert str(workload.path).endswith('/showcase.html')
+
+
+
+def test_sparse_assignment_log_counts_aggregate_to_stable_four_level_contract():
+    store=object.__new__(Store)
+    store._result_storage_ready=True
+    row={'id':'a','task_id':'t','node_id':'n','endpoint':'http://fixture.invalid:1',
+         'layer_start':0,'layer_end':2,'status':'completed','stored_result':None,
+         'stored_workload_result':json.dumps({'INFO':2})}
+    db=Mock();db.execute.return_value=[row]
+    task={'id':'t','status':'completed','request':json.dumps({'model_id':LOG,'workload':'log_stats'})}
+    value=store._task_views(db,[task])[0]
+    assert value['result'] is None
+    assert value['assignments'][0]['workload_result']=={'INFO':2}
+    assert value['workload_result']=={'levels':{'ERROR':0,'WARN':0,'INFO':2,'OTHER':0},'total_lines':2}

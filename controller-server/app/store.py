@@ -240,7 +240,7 @@ class Store:
                     result["workload_result"] = {"inside": inside, "samples": samples,
                                                 "pi_estimate": 4 * inside / samples}
                 elif workload == "log_stats":
-                    levels = {}
+                    levels = {"ERROR": 0, "WARN": 0, "INFO": 0, "OTHER": 0}
                     for assignment in assignments:
                         for level, count in assignment["workload_result"].items():
                             levels[level] = levels.get(level, 0) + count
