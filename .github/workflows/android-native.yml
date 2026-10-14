@@ -21,6 +21,8 @@ jobs:
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-app/.toolchain/sdk
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Pure owner-signing boundaries (no keys, signing or devices)
+        run: python3 -m unittest discover -s android-app/tests-python -p 'test_*.py' -v
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin

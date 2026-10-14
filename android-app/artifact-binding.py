@@ -29,6 +29,46 @@ def source():
             'node_admission': 'legacy layers disabled; explicit foreground whole-model Controller worker',
             'model_backend': json.loads((ROOT / 'Model.lock.json').read_text()) if (ROOT / 'Model.lock.json').exists() else None}
 
+def verify_apk(expected, apk, variant, sdk):
+    """Shared source/license/compiled-policy checks; this does not validate signing."""
+    apk = Path(apk)
+    tool = sdk / 'build-tools/35.0.0/aapt'
+    with zipfile.ZipFile(apk) as z:
+        if json.loads(z.read('assets/source-binding.json')) != expected:
+            raise SystemExit('APK source binding differs')
+        for license_name in [p.name for p in (ROOT / 'app/src/main/assets/licenses').glob('*') if p.is_file()]:
+            p = ROOT / 'app/src/main/assets/licenses' / license_name
+            if p.exists() and z.read('assets/licenses/' + license_name) != p.read_bytes():
+                raise SystemExit('shipped license mismatch')
+    if (ROOT / 'Model.lock.json').exists():
+        with zipfile.ZipFile(apk) as z:
+            libs = [n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+            if set(libs) != {'lib/arm64-v8a/liblastcore_local.so'}:
+                raise SystemExit('unexpected native library closure: ' + str(libs))
+            elf_dir = ROOT / 'verification' / variant; elf_dir.mkdir(parents=True, exist_ok=True)
+            host = 'darwin-x86_64' if os.uname().sysname == 'Darwin' else 'linux-x86_64'
+            readelf = sdk / 'ndk/28.2.13676358/toolchains/llvm/prebuilt' / host / 'bin/llvm-readelf'
+            for name in libs:
+                elf = elf_dir / Path(name).name; elf.write_bytes(z.read(name))
+                headers = subprocess.check_output([str(readelf), '-h', '-lW', str(elf)], text=True, stderr=subprocess.PIPE)
+                if 'AArch64' not in headers or 'ELF64' not in headers: raise SystemExit('wrong ELF architecture')
+                loads = [line.split()[-1] for line in headers.splitlines() if line.strip().startswith('LOAD ')]
+                if not loads or any(int(a, 16) < 16384 for a in loads): raise SystemExit('native ELF is not 16 KiB aligned')
+        subprocess.run([str(sdk / 'build-tools/35.0.0/zipalign'), '-c', '-P', '16', '4', str(apk)], check=True, capture_output=True, text=True)
+    badging = subprocess.check_output([str(tool), 'dump', 'badging', str(apk)], text=True, stderr=subprocess.PIPE)
+    permissions = [l for l in badging.splitlines() if l.startswith('uses-permission:')]
+    if permissions != ["uses-permission: name='android.permission.INTERNET'"]: raise SystemExit('unexpected permission')
+    for item in ["sdkVersion:'29'", "targetSdkVersion:'35'"]:
+        if item not in badging: raise SystemExit('SDK mismatch')
+    xml = subprocess.check_output([str(tool), 'dump', 'xmltree', str(apk), 'AndroidManifest.xml'], text=True, stderr=subprocess.PIPE)
+    for flag in ['allowBackup', 'usesCleartextTraffic']:
+        matches = [l for l in xml.splitlines() if 'android:' + flag + '(' in l]
+        if len(matches) != 1 or '(type 0x12)0x0' not in matches[0]: raise SystemExit('manifest ' + flag + ' must be false')
+    if any(l.strip().startswith(('E: service', 'E: receiver')) for l in xml.splitlines()): raise SystemExit('unexpected background component')
+    if variant == 'release' and 'application-debuggable' in badging: raise SystemExit('release debuggable')
+    return {'sha256': digest(apk), 'size_bytes': apk.stat().st_size,
+            'signing': 'debug key only' if variant == 'debug' else 'unsigned release, no publishing'}
+
 def verify():
     expected = source()
     if json.loads(ASSET.read_text()) != expected: raise SystemExit('generated binding asset is stale')
@@ -38,41 +78,7 @@ def verify():
     for variant in ['debug', 'release']:
         name = 'app-debug.apk' if variant == 'debug' else 'app-release-unsigned.apk'
         apk = ROOT / f'app/build/outputs/apk/{variant}/{name}'
-        with zipfile.ZipFile(apk) as z:
-            if json.loads(z.read('assets/source-binding.json')) != expected:
-                raise SystemExit('APK source binding differs')
-            for license_name in [p.name for p in (ROOT / 'app/src/main/assets/licenses').glob('*') if p.is_file()]:
-                p = ROOT / 'app/src/main/assets/licenses' / license_name
-                if p.exists() and z.read('assets/licenses/' + license_name) != p.read_bytes():
-                    raise SystemExit('shipped license mismatch')
-        if (ROOT / 'Model.lock.json').exists():
-            with zipfile.ZipFile(apk) as z:
-                libs = [n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
-                if set(libs) != {'lib/arm64-v8a/liblastcore_local.so'}:
-                    raise SystemExit('unexpected native library closure: ' + str(libs))
-                elf_dir = ROOT / 'verification' / variant; elf_dir.mkdir(parents=True, exist_ok=True)
-                host = 'darwin-x86_64' if os.uname().sysname == 'Darwin' else 'linux-x86_64'
-                readelf = sdk / 'ndk/28.2.13676358/toolchains/llvm/prebuilt' / host / 'bin/llvm-readelf'
-                for name in libs:
-                    elf = elf_dir / Path(name).name; elf.write_bytes(z.read(name))
-                    headers = subprocess.check_output([str(readelf), '-h', '-lW', str(elf)], text=True)
-                    if 'AArch64' not in headers or 'ELF64' not in headers: raise SystemExit('wrong ELF architecture')
-                    loads = [line.split()[-1] for line in headers.splitlines() if line.strip().startswith('LOAD ')]
-                    if not loads or any(int(a, 16) < 16384 for a in loads): raise SystemExit('native ELF is not 16 KiB aligned')
-            subprocess.run([str(sdk / 'build-tools/35.0.0/zipalign'), '-c', '-P', '16', '4', str(apk)], check=True)
-        badging = subprocess.check_output([str(tool), 'dump', 'badging', str(apk)], text=True)
-        permissions = [l for l in badging.splitlines() if l.startswith('uses-permission:')]
-        if permissions != ["uses-permission: name='android.permission.INTERNET'"]: raise SystemExit('unexpected permission')
-        for item in ["sdkVersion:'29'", "targetSdkVersion:'35'"]:
-            if item not in badging: raise SystemExit('SDK mismatch')
-        xml = subprocess.check_output([str(tool), 'dump', 'xmltree', str(apk), 'AndroidManifest.xml'], text=True)
-        for flag in ['allowBackup', 'usesCleartextTraffic']:
-            matches = [l for l in xml.splitlines() if 'android:' + flag + '(' in l]
-            if len(matches) != 1 or '(type 0x12)0x0' not in matches[0]: raise SystemExit('manifest ' + flag + ' must be false')
-        if any(l.strip().startswith(('E: service', 'E: receiver')) for l in xml.splitlines()): raise SystemExit('unexpected background component')
-        if variant == 'release' and 'application-debuggable' in badging: raise SystemExit('release debuggable')
-        artifacts[str(apk.relative_to(ROOT))] = {'sha256': digest(apk), 'size_bytes': apk.stat().st_size,
-            'signing': 'debug key only' if variant == 'debug' else 'unsigned release, no publishing'}
+        artifacts[str(apk.relative_to(ROOT))] = verify_apk(expected, apk, variant, sdk)
     report = dict(expected, built_at=datetime.datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(), artifacts=artifacts)
     test = ROOT / 'app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
     report['instrumentation_apk'] = {'sha256': digest(test), 'size_bytes': test.stat().st_size, 'execution': 'not run'}

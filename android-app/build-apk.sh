@@ -13,6 +13,14 @@ ANDROID_USER_HOME="$ANDROID_APP_ROOT/.android-user"
 GRADLE_USER_HOME="$ANDROID_APP_ROOT/.gradle-cache"
 PATH="$ANDROID_APP_ROOT/.toolchain/gradle-8.13/bin:$ANDROID_HOME/platform-tools:$PATH"
 export ANDROID_HOME ANDROID_USER_HOME GRADLE_USER_HOME PATH
+if [ "$#" -gt 0 ]; then
+    if [ "$1" != "--production" ]; then
+        echo "BLOCKED: use no arguments for development or --production --signing-config for owner signing" >&2
+        exit 2
+    fi
+    shift
+    exec python3 production-signing.py "$@"
+fi
 command -v javac >/dev/null 2>&1 || { echo "BLOCKED: JDK17 required" >&2; exit 2; }
 java -version >/dev/null 2>&1 || { echo "BLOCKED: Java runtime unavailable" >&2; exit 2; }
 command -v gradle >/dev/null 2>&1 || { echo "BLOCKED: isolated Gradle8.13 missing" >&2; exit 2; }
