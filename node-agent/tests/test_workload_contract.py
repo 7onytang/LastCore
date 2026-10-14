@@ -274,3 +274,31 @@ def test_falsy_invalid_journal_is_not_overwritten(tmp_path,invalid):
     path=tmp_path/'pending-reports.json';path.write_text(json.dumps(invalid));before=path.read_bytes()
     with pytest.raises(StateError):record_pending_report(tmp_path,'a','completed',None,VALUES,binding())
     assert path.read_bytes()==before
+
+
+
+def test_legacy_executor_return_value_cannot_change_the_five_argument_report_contract(tmp_path):
+    from types import SimpleNamespace
+    agent,client=fixture(tmp_path,lambda request:pytest.fail('no HTTP in execution fixture'))
+    run=context({'model_id':'legacy-demo','num_layers':1})
+    active=SimpleNamespace(context=run,result=None,result_payload=None)
+    agent._active=active
+    class LegacyExecutor:
+        def run(self,context):return {'legacy-local-summary':1}
+    agent._execute(run,LegacyExecutor())
+    assert active.result==('completed',None) and active.result_payload is None
+    client.close()
+
+
+@pytest.mark.parametrize("cancelled",[False,True])
+def test_typed_executor_cannot_complete_without_its_result(tmp_path,cancelled):
+    from types import SimpleNamespace
+    agent,client=fixture(tmp_path,lambda request:pytest.fail('no HTTP in execution fixture'))
+    run=context();active=SimpleNamespace(context=run,result=None,result_payload=None)
+    if cancelled:run.request_cancel("shutdown")
+    agent._active=active
+    class MissingResultExecutor:
+        def run(self,context):return None
+    agent._execute(run,MissingResultExecutor())
+    assert active.result[0]==('cancelled-local' if cancelled else 'failed') and active.result_payload is None
+    client.close()

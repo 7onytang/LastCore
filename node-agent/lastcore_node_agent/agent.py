@@ -317,7 +317,15 @@ class NodeAgent:
         status, error = "completed", None
         payload = None
         try:
-            payload = executor.run(context)
+            produced = executor.run(context)
+            workload = ((context.raw or {}).get("request") or {}).get("workload", "linear")
+            if workload in ("pi", "log_stats"):
+                if produced is None:
+                    if context.cancel.is_set():
+                        raise ExecutionCancelled(context.cancel_reason or "cancelled")
+                    raise ValueError("typed executor returned no workload result")
+                payload = produced
+            # Legacy executor return values were never a report contract.
         except ExecutionCancelled as exc:
             status, error = "cancelled-local", exc.reason
         except Exception as exc:
