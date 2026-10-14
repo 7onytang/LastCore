@@ -88,8 +88,8 @@ test('log requests preserve blank lines and set exact num_layers without seed/sa
   assert.throws(()=>buildRequest('log_stats',{logs:'a\nb',workers:1},[node('small',{available_memory_mb:1})]),e=>e.code==='capacity');
 });
 test('log count and Unicode character bounds use Python-style code points',()=>{
-  assert.equal(buildRequest('log_stats',{logs:'x'.repeat(1000000),workers:1},[node()]).log_lines.length,1);
-  assert.equal(buildRequest('log_stats',{logs:'😀'.repeat(1000000),workers:1},[node()]).num_layers,1);
+  assert.equal(buildRequest('log_stats',{logs:Array(250).fill('x'.repeat(4000)).join('\n'),workers:1},[node()]).log_lines.length,250);
+  assert.equal(buildRequest('log_stats',{logs:Array(250).fill('😀'.repeat(4000)).join('\n'),workers:1},[node()]).num_layers,250);
   assert.equal(buildRequest('log_stats',{logs:Array(10000).fill('x').join('\n'),workers:1},[node('large',{available_memory_mb:10000})]).num_layers,10000);
   for(const logs of ['',undefined,'x'.repeat(1000001),Array(10001).fill('x').join('\n')])assert.throws(()=>buildRequest('log_stats',{logs,workers:1},[node('large',{available_memory_mb:100000})]));
 });
@@ -141,4 +141,18 @@ test('empty credential gives an actionable message without requesting an endpoin
 });
 test('a malformed successful POST cannot enable a duplicate dispatch',async()=>{
   let posts=0;const view=app(async(path,opts)=>{if(opts.method==='POST'){posts++;return reply(null,201);}return idleFetch(path);});await connect(view);await view.ui.runTask();assert.equal(view.doc.map.run.disabled,true);assert.match(view.doc.map.error.textContent,/派发结果尚未确认/);await view.ui.runTask();assert.equal(posts,1);view.ui.destroy();
+});
+
+
+test('each log line permits4096 code points but rejects4097, including astral Unicode',()=>{
+  for(const glyph of ['x','😀']){
+    assert.equal(buildRequest('log_stats',{logs:glyph.repeat(4096),workers:1},[node()]).num_layers,1);
+    assert.throws(()=>buildRequest('log_stats',{logs:glyph.repeat(4097),workers:1},[node()]),e=>e.code==='input');
+  }
+});
+test('the million-character bound applies across valid-sized lines rather than a forbidden huge line',()=>{
+  const lines=Array(250).fill('x'.repeat(4000));
+  assert.equal(buildRequest('log_stats',{logs:lines.join('\r\n'),workers:1},[node()]).num_layers,250);
+  lines[0]+='x';
+  assert.throws(()=>buildRequest('log_stats',{logs:lines.join('\n'),workers:1},[node()]),e=>e.code==='input');
 });
