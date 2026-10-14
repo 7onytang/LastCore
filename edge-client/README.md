@@ -112,3 +112,21 @@ Researched reusable components: existing MIT LastCore client math/lifecycle,
 [CPython `msvcrt` locking](https://github.com/python/cpython/blob/main/Doc/library/msvcrt.rst),
 and [PyInstaller](https://github.com/pyinstaller/pyinstaller) (GPL with its
 distribution exception). No new task broker or server protocol is introduced.
+
+
+## Result display ownership
+
+The GUI separates the active/recent task from the last cloud-acknowledged result.
+Every displayed value is prefixed with its completed task ID, so running task B
+cannot imply that the saved values of A belong to B. Starting a new Session and
+refreshing a session with no acknowledged result resets the result label instead
+of retaining the previous session's text. Empty results or missing ownership are
+not displayed as acknowledged values; zero-valued results remain valid. Preview
+formatting keeps the existing16-value bound and labels truncation explicitly.
+
+The view reuses CPython/Tk's existing StringVar update mechanism and this module's
+pure view-state helpers, with no new runtime dependency or controller authority.
+Verification is pure Mock/view-state and static HTML only; it does not launch Tk,
+start a worker, create a task, access credentials or validate a native device.
+Published preview archives and their source identities are unchanged by this
+source-only fix.
