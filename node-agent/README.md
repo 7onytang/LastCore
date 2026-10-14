@@ -198,3 +198,28 @@ from `controller-server/`. Exit 0 means no active typed tasks in that snapshot;
 through downgrade; this snapshot gate cannot fence a separate running writer.
 Terminal typed records remain in `workload_results`, invisible to the old API;
 retain the live tables for re-upgrade. Do not claim full old-image typed support.
+
+The server gate checks only the database snapshot, not remote worker journals.
+Before downgrading an affected worker, stop it after cleanup and verify its
+pending typed outcome count is zero using the updated source/environment:
+
+```sh
+python - <<'PY'
+from pathlib import Path
+from lastcore_node_agent.credentials import StateError, load_pending_report_results
+try:
+    pending = load_pending_report_results(Path('/absolute/private/worker-state'))
+except (OSError, StateError):
+    print('recovery gate: unable to verify; preserve state')
+    raise SystemExit(2)
+print('pending typed outcomes:', len(pending))
+raise SystemExit(1 if pending else 0)
+PY
+```
+
+Exit 1 or 2 blocks worker downgrade: resolve the records under the updated client
+or preserve/quarantine that state without allowing an old client to replay it.
+An old client cannot validate the new journal and may discard unknown terminal
+records. Do not delete pending state to obtain a zero count. Keep admissions and
+workers stopped through the gate/downgrade window; no snapshot here fences an
+independent writer.
