@@ -42,6 +42,7 @@ def main():
         run = Path(folder)
         subprocess.run(["swiftc", "-parse-as-library", "-module-cache-path", str(run / "swift-cache"),
                         str(ROOT / "macos-client/Sources/LastCoreClient/ClientModel.swift"),
+                        str(ROOT / "macos-client/Sources/LastCoreClient/PendingReports.swift"),
                         str(ROOT / "macos-client/tests/SmokeClient.swift"), "-o", str(run / "client")], check=True)
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
@@ -100,6 +101,7 @@ def main():
                                task_status=final["status"], assignment_status=final["assignments"][0]["status"],
                                ui_observable_result_published=result["ui_observable_result_published"],
                                client_model_sha256=hashlib.sha256((ROOT / "macos-client/Sources/LastCoreClient/ClientModel.swift").read_bytes()).hexdigest(),
+                               pending_reports_sha256=hashlib.sha256((ROOT / "macos-client/Sources/LastCoreClient/PendingReports.swift").read_bytes()).hexdigest(),
                                actual_user_macbook_pro=False, actual_gui_screenshot=False,
                                keychain_and_user_settings_untouched=True)
         finally:
