@@ -23,7 +23,7 @@ BASE = dict(model_id=PI, workload="pi", num_layers=8, layer_memory_mb=1,
 @pytest.mark.parametrize("changes", [
     {"weight_seed": None}, {"weight_seed": True}, {"weight_seed": -1}, {"weight_seed": 2**31},
     {"total_samples": None}, {"total_samples": True}, {"total_samples": 100_000_001},
-    {"num_layers": 1001}, {"workload": "linear"}, {"model_id": "different"},
+    {"num_layers": 1001}, {"num_layers": True}, {"max_nodes": True}, {"layer_memory_mb":1.0}, {"weight_seed":"7"}, {"workload": "linear"}, {"model_id": "different"},
     {"log_lines": ["INFO"]}, {"input_vector": [1]},
 ])
 def test_pi_incomplete_or_contradictory_contract_is_rejected(changes):
@@ -50,6 +50,7 @@ def test_frozen_legacy_request_shape_and_capability_defaults():
     fixture=(Path(__file__).resolve().parents[2]/'edge-client/tests/fixtures/linear-request-63d409a8.json').read_text().strip()
     assert fixture == frozen
     assert TaskRequest(**data).protocol_dump_json() == fixture
+    assert TaskRequest(**(data | {"weight_seed":"7"})).protocol_dump_json() == fixture
     tiny = json.loads(TaskRequest(model_id="tiny", num_layers=2, layer_memory_mb=1).protocol_dump_json())
     assert set(tiny) == set(json.loads(frozen))
     assert Heartbeat(available_memory_mb=1).supported_workloads == []

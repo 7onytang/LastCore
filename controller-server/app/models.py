@@ -35,7 +35,7 @@ class TaskRequest(StrictModel):
     max_nodes: int = Field(default=8, gt=0, le=128)
     timeout_seconds: int = Field(default=600, ge=10, le=86400)
     input_vector: list[LinearValue] | None = Field(default=None, min_length=1, max_length=256)
-    weight_seed: int | None = Field(default=None, strict=True, ge=0, le=2_147_483_647)
+    weight_seed: int | None = Field(default=None, ge=0, le=2_147_483_647)
     target_node_id: UUID | None = None
     total_samples: int | None = Field(default=None, strict=True, ge=1_000, le=100_000_000)
     log_lines: list[str] | None = Field(default=None, min_length=1, max_length=10_000)
@@ -47,6 +47,15 @@ class TaskRequest(StrictModel):
                                   or sum(map(len, lines)) > 1_000_000):
             raise ValueError("log_lines are limited to 4096 characters each and 1,000,000 total characters")
         return lines
+
+    @model_validator(mode="before")
+    @classmethod
+    def typed_integer_contract(cls, data):
+        if isinstance(data, dict) and data.get("workload") in ("pi", "log_stats"):
+            for name in ("num_layers", "layer_memory_mb", "max_nodes", "timeout_seconds", "weight_seed", "total_samples"):
+                if name in data and data[name] is not None and type(data[name]) is not int:
+                    raise ValueError("typed workload integer fields must not be bool, float or string")
+        return data
 
     def protocol_dump_json(self):
         # Frozen legacy request dictionaries also bind published edge cache hashes.
