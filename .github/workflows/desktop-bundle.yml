@@ -2,11 +2,15 @@ name: macOS client bundle
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths: ['node-agent/**', 'inference-engine/**', 'communication/**', 'controller-server/**', 'tools/client-ci/verify_desktop_binding.py', '.github/workflows/desktop-bundle.yml']
   pull_request:
     paths: ['node-agent/**', 'inference-engine/**', 'communication/**', 'controller-server/**', 'tools/client-ci/verify_desktop_binding.py', '.github/workflows/desktop-bundle.yml']
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   bundle:
     runs-on: macos-15

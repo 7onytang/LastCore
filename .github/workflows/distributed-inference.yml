@@ -1,6 +1,7 @@
 name: Distributed inference
 on:
   push:
+    branches: [main]
     paths:
       - "inference-engine/**"
       - "communication/**"
@@ -22,6 +23,9 @@ on:
       - ".github/workflows/distributed-inference.yml"
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   communication:
     runs-on: ubuntu-latest

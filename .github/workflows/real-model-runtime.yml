@@ -1,6 +1,7 @@
 name: Real local model runtime
 on:
   push:
+    branches: [main]
     paths: ["real-model-runtime/**", ".github/workflows/real-model-runtime.yml"]
   pull_request:
     paths: ["real-model-runtime/**", ".github/workflows/real-model-runtime.yml"]
@@ -12,6 +13,9 @@ on:
         default: false
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   lifecycle-and-license:
     runs-on: ubuntu-latest

@@ -1,6 +1,7 @@
 name: Edge portable build only
 on:
   push:
+    branches: [main]
     paths: ["edge-client/**", "node-agent/lastcore_node_agent/**", "node-agent/desktop/env_file.py", ".github/workflows/edge-portable-build.yml"]
   pull_request:
     paths: ["edge-client/**", "node-agent/lastcore_node_agent/**", "node-agent/desktop/env_file.py", ".github/workflows/edge-portable-build.yml"]
@@ -8,7 +9,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: edge-portable-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   portable:
