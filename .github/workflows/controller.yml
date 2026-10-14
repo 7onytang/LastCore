@@ -1,11 +1,15 @@
 name: Controller
 on:
   push:
+    branches: [main]
     paths: ["controller-server/**", ".github/workflows/controller.yml"]
   pull_request:
     paths: ["controller-server/**", ".github/workflows/controller.yml"]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
