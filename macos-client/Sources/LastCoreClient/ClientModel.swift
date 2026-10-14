@@ -22,11 +22,19 @@ final class ClientModel: ObservableObject {
     private var startedAssignments = Set<String>()
     private let memoryMB = 4096
     private var activeControllerURL = ""
-    private let session = URLSession(configuration: .ephemeral, delegate: NoRedirectDelegate(), delegateQueue: nil)
+    private let session: URLSession
+    let reports: PendingReports
     private let persistCredentials: Bool
 
-    init(persistCredentials: Bool = true) {
+    init(persistCredentials: Bool = true, session: URLSession? = nil, journalURL: URL? = nil) {
         self.persistCredentials = persistCredentials
+        self.session = session ?? URLSession(configuration: .ephemeral, delegate: NoRedirectDelegate(), delegateQueue: nil)
+        let defaultJournal = persistCredentials
+            ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("LastCoreClient/pending-reports.json")
+            : FileManager.default.temporaryDirectory.appendingPathComponent("LastCoreClient-" + UUID().uuidString)
+                .appendingPathComponent("pending-reports.json")
+        self.reports = PendingReports(url: journalURL ?? defaultJournal)
     }
 
     var statusText: String {
@@ -35,7 +43,7 @@ final class ClientModel: ObservableObject {
     }
 
     func start() {
-        guard !isRunning else { return }
+        guard !isRunning, loopTask == nil else { return }
         guard let base = URL(string: controllerURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               base.host != nil, base.user == nil, base.password == nil,
               base.query == nil, base.fragment == nil,
@@ -58,6 +66,9 @@ final class ClientModel: ObservableObject {
         activeControllerURL = base.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         nodeID = nil
         nodeToken = nil
+        lastResult = nil
+        lastCompletedTaskID = nil
+        startedAssignments.removeAll()
         isRunning = true
         lastError = nil
         loopTask = Task { await runLoop() }
@@ -65,7 +76,6 @@ final class ClientModel: ObservableObject {
 
     func stop() {
         loopTask?.cancel()
-        loopTask = nil
         isRunning = false
         currentTask = "空闲"
         addMessage("节点已停止")
@@ -77,6 +87,9 @@ final class ClientModel: ObservableObject {
             do {
                 try await loadOrRegister()
                 try await heartbeat()
+                if let nodeID, let nodeToken {
+                    try await replayPendingReports(origin: activeControllerURL, nodeID: nodeID, token: nodeToken)
+                }
                 if acceptingTasks { try await pollAssignments() }
                 lastError = nil
                 retryDelay = 1
@@ -84,10 +97,12 @@ final class ClientModel: ObservableObject {
             } catch is CancellationError {
                 break
             } catch {
+                if Task.isCancelled { break }
                 lastError = error.localizedDescription
                 addMessage("连接错误：\(error.localizedDescription)")
-                if nodeID == nil && nodeToken == nil {
+                if error is CocoaError || (nodeID == nil && nodeToken == nil) {
                     isRunning = false
+                    loopTask = nil
                     return
                 }
                 do { try await Task.sleep(for: .seconds(retryDelay)) } catch { break }
@@ -95,6 +110,7 @@ final class ClientModel: ObservableObject {
             }
         }
         isRunning = false
+        loopTask = nil
     }
 
     private func loadOrRegister() async throws {
@@ -155,43 +171,103 @@ final class ClientModel: ObservableObject {
             }
             startedAssignments.insert(id)
             currentTask = (assignment["task_id"] as? String) ?? id
-            await execute(assignment, id: id)
+            try await execute(assignment, id: id)
             currentTask = "空闲"
         }
     }
 
-    private func execute(_ assignment: [String: Any], id: String) async {
+    private func execute(_ assignment: [String: Any], id: String) async throws {
         guard let nodeID, let nodeToken else { return }
+        guard let taskID = assignment["task_id"] as? String else {
+            throw ClientError.message("任务缺少来源标识")
+        }
+        // A previously persisted outcome must be replayed before considering execution.
+        if try reports.load().contains(where: { $0.origin == activeControllerURL && $0.nodeID == nodeID && $0.assignmentID == id }) {
+            try await replayPendingReports(origin: activeControllerURL, nodeID: nodeID, token: nodeToken)
+            return
+        }
         guard let requestData = assignment["request"] as? [String: Any],
               requestData["model_id"] as? String == "lastcore/linear-demo-v1",
               let input = requestData["input_vector"] as? [Double],
               let seed = requestData["weight_seed"] as? Int,
               let start = assignment["layer_start"] as? Int,
-              let end = assignment["layer_end"] as? Int else {
-            _ = try? await report(nodeID, nodeToken, id, ["status": "failed", "error": "unsupported workload; expected lastcore/linear-demo-v1 with input_vector"])
-            addMessage("任务 \(id) 不受支持，已报告失败")
+              let end = assignment["layer_end"] as? Int,
+              !input.isEmpty, input.count <= 256, input.allSatisfy({ $0.isFinite && abs($0) <= 1_000_000 }),
+              (0...2_147_483_647).contains(seed), 0 <= start, start < end, end <= 4096 else {
+            try reports.put(PendingReport(origin: activeControllerURL, nodeID: nodeID,
+                taskID: taskID, assignmentID: id, modelID: requestModel(assignment),
+                layerStart: assignment["layer_start"] as? Int ?? 0, layerEnd: assignment["layer_end"] as? Int ?? 0,
+                status: "failed", result: nil,
+                error: "unsupported or invalid bounded linear workload"))
+            try await replayPendingReports(origin: activeControllerURL, nodeID: nodeID, token: nodeToken)
             return
         }
         do {
             _ = try await report(nodeID, nodeToken, id, ["status": "running"])
-            let result = (start..<end).map { row in
-                var total = weight(seed: UInt32(truncatingIfNeeded: seed), row: UInt32(row), column: UInt32(input.count))
+        } catch {
+            // A transport outage is not an execution failure. Reclaim safely on the next poll.
+            startedAssignments.remove(id)
+            throw error
+        }
+        let result: [Double]
+        do {
+            try Task.checkCancellation()
+            result = try (start..<end).map { row -> Double in
+                try Task.checkCancellation()
+                guard let deadline = assignment["deadline"] as? Double,
+                      deadline > Date().timeIntervalSince1970 else { throw CancellationError() }
+                var total = weight(seed: UInt32(seed), row: UInt32(row), column: UInt32(input.count))
                 for (column, value) in input.enumerated() {
-                    total += weight(seed: UInt32(truncatingIfNeeded: seed), row: UInt32(row), column: UInt32(column)) * value
+                    total += weight(seed: UInt32(seed), row: UInt32(row), column: UInt32(column)) * value
                 }
                 return tanh(total)
             }
-            let acknowledgement = try await report(nodeID, nodeToken, id, ["status": "completed", "result": result])
-            guard acknowledgement["status"] as? String == "completed",
-                  let savedResult = acknowledgement["result"] as? [Double], savedResult == result else {
-                throw ClientError.message("云端尚未确认同一计算结果")
-            }
-            lastResult = savedResult
-            lastCompletedTaskID = assignment["task_id"] as? String
-            addMessage("任务 \(id) 完成（输出 \(result.count) 项）")
         } catch {
-            _ = try? await report(nodeID, nodeToken, id, ["status": "failed", "error": String(error.localizedDescription.prefix(2048))])
-            addMessage("任务 \(id) 失败：\(error.localizedDescription)")
+            startedAssignments.remove(id)
+            throw error
+        }
+        // Save before POST: an interrupted or lost ACK can only replay these exact values.
+        try reports.put(PendingReport(origin: activeControllerURL, nodeID: nodeID,
+            taskID: taskID, assignmentID: id, modelID: "lastcore/linear-demo-v1",
+            layerStart: start, layerEnd: end, status: "completed", result: result, error: nil))
+        try await replayPendingReports(origin: activeControllerURL, nodeID: nodeID, token: nodeToken)
+    }
+
+    private func requestModel(_ assignment: [String: Any]) -> String {
+        (assignment["request"] as? [String: Any])?["model_id"] as? String ?? "unknown"
+    }
+
+    func replayPendingReports(origin: String, nodeID: String, token: String) async throws {
+        for pending in try reports.load() where pending.origin == origin && pending.nodeID == nodeID {
+            var body: [String: Any] = ["status": pending.status]
+            if let result = pending.result { body["result"] = result }
+            if let error = pending.error { body["error"] = error }
+            let acknowledgement = try await request("POST",
+                "/v1/nodes/\(nodeID)/assignments/\(pending.assignmentID)/report", token: token,
+                body: body, origin: origin)
+            guard acknowledgement["id"] as? String == pending.taskID,
+                  acknowledgement["status"] as? String == pending.status,
+                  let assignments = acknowledgement["assignments"] as? [[String: Any]],
+                  let saved = assignments.first(where: { $0["id"] as? String == pending.assignmentID }),
+                  saved["node_id"] as? String == nodeID,
+                  saved["task_id"] as? String == pending.taskID,
+                  saved["layer_start"] as? Int == pending.layerStart,
+                  saved["layer_end"] as? Int == pending.layerEnd,
+                  (acknowledgement["request"] as? [String: Any])?["model_id"] as? String == pending.modelID,
+                  saved["status"] as? String == pending.status,
+                  (saved["result"] as? [Double]) == pending.result else {
+                throw ClientError.message("云端尚未确认同一任务结果；待回报记录已保留")
+            }
+            try Task.checkCancellation()
+            try reports.remove(pending)
+            startedAssignments.insert(pending.assignmentID)
+            if let result = pending.result {
+                lastResult = result
+                lastCompletedTaskID = pending.taskID
+                addMessage("任务 \(pending.assignmentID) 完成（输出 \(result.count) 项）")
+            } else {
+                addMessage("任务 \(pending.assignmentID) 已确认失败")
+            }
         }
     }
 
@@ -211,8 +287,8 @@ final class ClientModel: ObservableObject {
     }
 
     private func request(_ method: String, _ path: String, token: String,
-                         body: [String: Any]? = nil) async throws -> [String: Any] {
-        let base = activeControllerURL
+                         body: [String: Any]? = nil, origin: String? = nil) async throws -> [String: Any] {
+        let base = origin ?? activeControllerURL
         guard let url = URL(string: base + path) else { throw ClientError.message("Controller 地址无效") }
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = method
@@ -225,7 +301,7 @@ final class ClientModel: ObservableObject {
         guard let http = response as? HTTPURLResponse else { throw ClientError.message("Controller 未返回 HTTP 响应") }
         guard (200..<300).contains(http.statusCode) else {
             let detail = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            throw ClientError.message("HTTP \(http.statusCode)：\(String(describing: detail?["detail"] ?? "请求失败"))")
+            throw ClientError.message("待回报记录保留；HTTP \(http.statusCode)：\(String(describing: detail?["detail"] ?? "请求失败"))")
         }
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ClientError.message("Controller 返回了无效 JSON")
