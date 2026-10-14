@@ -41,7 +41,7 @@ def fixture(tmp_path,handler):
 
 
 def ack():
-    return {'id':'task','request':REQUEST,'assignments':[dict(id='a',task_id='task',node_id='node',
+    return {'id':'task','status':'completed','request':REQUEST,'assignments':[dict(id='a',task_id='task',node_id='node',
         layer_start=0,layer_end=1,status='completed',result=None,workload_result=VALUES)]}
 
 
@@ -83,7 +83,7 @@ def test_lost_ack_restart_replays_exact_durable_typed_payload(tmp_path):
     client.close()
 
 
-@pytest.mark.parametrize('change',['task','node','assignment','range','request','result','bool-result','404','409'])
+@pytest.mark.parametrize('change',['task','node','assignment','range','request','result','bool-result','invalid-status','404','409'])
 def test_unknown_ack_or_terminal_numeric_conflict_preserves_immutable_pending(tmp_path,change):
     reply=json.loads(json.dumps(ack()))
     status=200
@@ -94,6 +94,7 @@ def test_unknown_ack_or_terminal_numeric_conflict_preserves_immutable_pending(tm
     elif change=='request':reply['request']['weight_seed']=8
     elif change=='result':reply['assignments'][0]['workload_result']['inside']=1
     elif change=='bool-result':reply['assignments'][0]['workload_result']['inside']=True
+    elif change=='invalid-status':reply['status']='unknown'
     else:status=int(change)
     agent,client=fixture(tmp_path,lambda r:httpx.Response(status,json=reply))
     assert agent._record_pending('a','completed',None,VALUES,binding())
