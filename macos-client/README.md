@@ -85,3 +85,39 @@ are changed by this patch.
 Validation reuses [Pydantic's bounded finite types](https://github.com/pydantic/pydantic/blob/main/docs/api/standard_library_types.md)
 (MIT, already a project dependency) and existing SQLite transactions (public
 domain); no ORM, queue framework or generic job service is added.
+
+## Interrupted result recovery
+
+The source client saves terminal outcomes before reporting them in
+`~/Library/Application Support/LastCoreClient/pending-reports.json` (private
+permissions, atomic replacement, no credentials). Records bind the exact
+Controller origin, existing node identity, task, assignment, model and row
+range. Reconnecting replays saved values before new work; it never converts
+an unknown network outcome into a failed calculation. Completion is displayed
+only after the Controller confirms the matching assignment and values.
+
+A 404/409, malformed acknowledgement or damaged journal preserves the record
+and prevents new work for that identity. Keep the journal and original
+Keychain identity while investigating; do not delete them or rebind them to a
+new server to bypass recovery. Stop cancels the old loop, retains pending
+outcomes, and permits restart only after that loop has ended.
+
+Run the URLProtocol fixture harness (also works with the command-line Swift
+installation when XCTest is unavailable):
+
+```sh
+swiftc -parse-as-library macos-client/Sources/LastCoreClient/ClientModel.swift macos-client/Sources/LastCoreClient/PendingReports.swift macos-client/tests/RecoveryTests/RecoveryTests.swift -o /tmp/lastcore-swift-recovery-fixtures
+/tmp/lastcore-swift-recovery-fixtures
+```
+
+The harness uses production sources;
+no GUI, native calculation, Controller service or real network is started.
+These cover interrupted ACK replay after restart, origin/identity isolation,
+wrong/terminal ACKs, failed reports, corruption and stop/restart fencing. A
+build or fixture pass does not establish real device or network acceptance.
+The implementation uses the existing system Foundation APIs, including
+[atomic file replacement](https://developer.apple.com/documentation/foundation/nsdata/writingoptions/atomic).
+The maintained [Swift Foundation](https://github.com/swiftlang/swift-foundation)
+(Apache-2.0) and [SwiftNIO](https://github.com/apple/swift-nio) (Apache-2.0)
+were reviewed; adding a network framework would not replace the required
+application outcome journal, so no new dependency is introduced.
