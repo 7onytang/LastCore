@@ -92,6 +92,62 @@ packaging dependencies; researched alternatives were
 The package is ad-hoc signed and **not Apple notarized**. macOS trust or Keychain
 prompts require the user's action; no security bypass is included.
 
+### Owner production signing entry (not yet exercised)
+
+The default command above remains a development build. An owner who has already
+configured a Developer ID Application identity and an existing `notarytool`
+Keychain profile can explicitly request production processing:
+
+```sh
+python3 macos-client/scripts/build_dmg.py --output-dir /tmp/lastcore-owner-production \
+  --production \
+  --signing-identity 'Developer ID Application: OWNER NAME (TEAMID1234)' \
+  --team-id TEAMID1234 \
+  --certificate-sha256 OWNER_PUBLIC_LEAF_CERTIFICATE_DER_SHA256 \
+  --notary-profile OWNER_EXISTING_PROFILE
+```
+
+Replace the placeholders with owner-approved values. The certificate SHA256 is
+of the public leaf certificate's DER bytes, not the certificate name or its
+SHA1 identity selector. The script does not create/import identities, configure
+profiles, accept passwords or export private keys. Running this opt-in command
+**does** use the existing signing identity/Keychain profile and submit the DMG to
+Apple; the owner must authorize that separate real operation. Missing or invalid
+configuration fails before a build or signing command.
+
+The pipeline uses a release Swift build, `codesign --options runtime --timestamp`
+for the app, Apple Developer ID certificate requirements, actual authority/Team
+ID/timestamp inspection, and extracted public certificate SHA256 comparison.
+It signs and verifies the DMG, requires `notarytool submit --wait` JSON status
+`Accepted` with a valid submission ID, then runs `stapler staple`, `stapler
+validate`, and final DMG signature/integrity checks. It reuses Apple's tools
+without additional dependencies; see [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+and the mature [MIT electron/notarize implementation](https://github.com/electron/notarize)
+for the same tool-based approach. The Electron wrapper is unnecessary for this
+Python/Swift project.
+
+All candidates stay in a temporary directory. Only after every check succeeds
+are the `-production.dmg`, JSON receipt and checksum exclusively created; existing
+artifacts are never overwritten and failed publication removes its own files.
+The receipt records the fixed Git commit, hashes of tracked client/license input
+files, actual signature checks, certificate fingerprint, Apple submission ID and
+DMG ticket validation. The embedded source binding is generated **before** signing
+and says `developer-id-requested`, `notarized: false`; the final external receipt
+records the completed verification. The DMG ticket is stapled; the inner app is
+signed and included in that notarized submission, not separately stapled.
+Captured tool failure output is withheld from terminal errors.
+
+Validation for this entry is synthetic only:
+
+```sh
+python3 -m unittest discover -s macos-client/scripts -p 'test_build_dmg.py' -v
+```
+
+The tests replace subprocesses and use synthetic files. No certificate, Keychain,
+Apple service, real app build/launch or device calculation has been accessed by
+these tests. This entry does not make existing preview DMGs production releases;
+real owner signing, notarization and platform acceptance remain unverified.
+
 ## Compatibility and rollback
 
 The server adds the independent `assignment_results` table without changing the
