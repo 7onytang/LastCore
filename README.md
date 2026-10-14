@@ -271,7 +271,7 @@ python scripts/smoke_idle_expiry.py
 
 ### 浏览器看板与多设备接力推理
 
-Controller 根路径提供同源浏览器看板。部署完成后访问 `https://<controller>/`，输入管理员令牌即可查看 Worker 的在线、忙碌、暂停接单和离线状态，以及任务分片、上下游节点和回报状态。看板还提供确定性圆周率分片估算和日志级别统计；这两项是并行分片与归并演示，不代表 activation 接力。
+新增的源码演示看板位于 `/workloads`；当前根路径与 `/console` 保留现有工作台。独立审查并部署该分支后才可访问 `https://<controller>/workloads`，输入管理员令牌即可查看 Worker 的在线、忙碌、暂停接单和离线状态，以及任务分片、上下游节点和回报状态。看板还提供确定性圆周率分片估算和日志级别统计，仅调度显式声明对应执行器能力的节点；旧客户端默认不支持。这两项是并行分片与归并演示，不代表 activation 接力。本次仅源码兼容修复与纯 Fake/Mock/静态验证，尚未合并、部署或新增真实任务/设备验收。
 
 多设备接力推理的可复现验收步骤见 [`docs/RELAY_INFERENCE_DEMO.md`](docs/RELAY_INFERENCE_DEMO.md)。该路径使用 `inference-engine/` 与 Node Agent 的 StageExecutor，将连续模型层分配给多个 Worker，并让 activation 沿 `next_node` 逐跳传递；必须额外满足 Worker endpoint 互通。Controller 仍只接收 Worker 主动发起的心跳和 assignment 轮询，不主动连接 Worker。
 

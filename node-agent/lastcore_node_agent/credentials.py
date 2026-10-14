@@ -127,19 +127,50 @@ def load_pending_report_results(state_dir: Path) -> dict[str, object]:
         return {}
     if not isinstance(data, dict):
         raise StateError("pending reports file must contain a JSON object")
-    return {str(key): entry.get("result") for key, entry in data.items()
-            if isinstance(entry, dict) and "result" in entry}
+    results = {}
+    for key, entry in data.items():
+        if isinstance(entry, dict) and "workload_result" in entry:
+            binding = entry.get("binding")
+            if (not isinstance(binding, dict) or entry.get("status") != "completed"
+                    or any(not isinstance(binding.get(field), str) or not binding[field]
+                           for field in ("origin", "assignment_id", "task_id", "node_id", "model_id"))
+                    or type(binding.get("layer_start")) is not int or type(binding.get("layer_end")) is not int
+                    or not 0 <= binding["layer_start"] < binding["layer_end"] <= 100_000):
+                raise StateError("pending result has no valid source binding; preserve for recovery")
+            if (set(entry) != {"status", "error", "workload_result", "binding"} or entry["error"] is not None
+                    or set(binding) != {"origin", "assignment_id", "task_id", "node_id", "model_id", "layer_start", "layer_end", "request_sha256"}
+                    or binding["assignment_id"] != str(key)):
+                raise StateError("pending typed identity/schema mismatch; preserve for recovery")
+            values = entry["workload_result"]
+            model = binding["model_id"]
+            if (not isinstance(values, dict) or any(type(value) is not int or not 0 <= value <= 100_000_000 for value in values.values())
+                    or model not in ("lastcore/pi-monte-carlo-v1", "lastcore/log-statistics-v1")
+                    or not isinstance(binding.get("request_sha256"), str) or len(binding["request_sha256"]) != 64
+                    or any(c not in "0123456789abcdef" for c in binding["request_sha256"])
+                    or (model == "lastcore/pi-monte-carlo-v1" and (set(values) != {"inside", "samples"}
+                        or values["samples"] <= 0 or values["inside"] > values["samples"]))
+                    or (model == "lastcore/log-statistics-v1" and (not set(values).issubset({"ERROR", "WARN", "INFO", "OTHER"})
+                        or sum(values.values()) != binding["layer_end"] - binding["layer_start"]))):
+                raise StateError("pending typed result is invalid; preserve for recovery")
+            results[str(key)] = (values, binding)
+    return results
 
 
 def record_pending_report(state_dir: Path, assignment_id: str, status: str,
-                          error: str | None, result=None) -> None:
+                          error: str | None, result=None, binding=None) -> None:
     path = Path(state_dir) / PENDING_REPORTS_FILE
     data = _read_json(path) or {}
     if not isinstance(data, dict):
         raise StateError("pending reports file must contain a JSON object")
     entry = {"status": status, "error": error}
     if result is not None:
-        entry["result"] = result
+        entry["workload_result"] = result
+        entry["binding"] = binding
+    previous = data.get(assignment_id)
+    if previous is not None and not isinstance(previous, dict):
+        raise StateError("pending report schema is invalid")
+    if previous is not None and previous != entry and ("workload_result" in previous or result is not None):
+        raise StateError("cannot replace a pending typed outcome")
     data[assignment_id] = entry
     _atomic_write_json(path, data)
 

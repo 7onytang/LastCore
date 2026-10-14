@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 import threading
 import time
 from dataclasses import dataclass, field
@@ -22,7 +24,7 @@ from .credentials import (
     save_credentials,
     settle_journal,
 )
-from .executor import ExecutionContext, ExecutionCancelled, Executor, load_executor
+from .executor import ExecutionContext, ExecutionCancelled, Executor, SliceDemoExecutor, load_executor
 
 LOG = logging.getLogger("lastcore.node_agent")
 
@@ -62,6 +64,7 @@ class NodeAgent:
         self.observer = observer
         self.client = client
         self.clock = clock
+        self.supported_workloads = SliceDemoExecutor.supported_workloads if executor_factory is None and config.executor == "demo" else ()
         self.executor_factory = executor_factory or (lambda: load_executor(config.executor))
         self.stats = stats or RunStats()
         self.credentials: NodeCredentials | None = None
@@ -93,7 +96,7 @@ class NodeAgent:
             if not self.config.registration_token:
                 raise RuntimeError("no persisted node credentials and no registration token configured")
             response = self.client.register(self.config.registration_token,
-                                            self.config.registration_payload())
+                                            {**self.config.registration_payload(), "supported_workloads": list(self.supported_workloads)})
             credentials = NodeCredentials(str(response["node_id"]), str(response["node_token"]),
                                           int(response.get("heartbeat_ttl_seconds") or 30))
             save_credentials(self.config.state_dir, credentials)
@@ -191,7 +194,8 @@ class NodeAgent:
         assert self.credentials is not None
         self._guarded(self.client.heartbeat)(
             self.credentials.node_id, self.credentials.node_token,
-            self.config.available_memory_mb, self.config.accepting_tasks)
+            self.config.available_memory_mb, self.config.accepting_tasks,
+            supported_workloads=self.supported_workloads)
         with self._heartbeat_lock:
             self._last_heartbeat_ok = self.clock()
         self.stats.heartbeats_ok += 1
@@ -209,6 +213,8 @@ class NodeAgent:
             self._watch_active(rows, run)
         self._reap_finished()
         self._flush_pending_reports()
+        if self._pending_results:
+            return  # Unacknowledged numeric outcomes fence new work, including after restart.
         if self._current_run() is None:
             candidate = self._select_assignment(rows)
             if candidate is not None:
@@ -337,10 +343,19 @@ class NodeAgent:
                 "error_code":error if error in {"shutdown","deadline","heartbeat-stall","task-terminal"} else "local-cancel"})
             LOG.info("assignment %s stopped locally (%s)", run.assignment_id, error)
             return
-        if self._record_pending(run.assignment_id, status, error, getattr(run, "result_payload", None)):
+        payload = getattr(run, "result_payload", None)
+        binding = {"origin": self.client.origin, "assignment_id": run.assignment_id, "task_id": run.task_id, "node_id": self.credentials.node_id, "model_id": run.context.model_id,
+                   "layer_start": run.context.layer_start, "layer_end": run.context.layer_end,
+                   "request_sha256": hashlib.sha256(json.dumps(run.context.raw["request"], sort_keys=True,
+                       separators=(",", ":"), allow_nan=False).encode()).hexdigest()} if payload is not None else None
+        if self._record_pending(run.assignment_id, status, error, payload, binding):
             self._settle(run.assignment_id, status)
+        elif payload is not None:
+            self.stop_event.set()
+            self._notify(task_update={"assignment_id": run.assignment_id, "report_status": "recovery-required"})
+            return  # Never publish a typed outcome that was not durably saved.
         self._attempt_terminal_report(run.assignment_id, status, error,
-                                      getattr(run, "result_payload", None))
+                                      payload, binding)
         self._notify(task_update={"assignment_id":run.assignment_id,"status":status,
             "cleanup_confirmed":True,"error_code":"execution_failed" if error else None,
             "result":run.context.result_summary,
@@ -362,20 +377,22 @@ class NodeAgent:
     def _flush_pending_reports(self) -> None:
         for assignment_id, (status, error) in sorted(self._pending.items()):
             self._attempt_terminal_report(assignment_id, status, error,
-                                          self._pending_results.get(assignment_id))
+                                          *(self._pending_results.get(assignment_id) or (None, None)))
 
-    def _record_pending(self, assignment_id: str, status: str, error: str | None, result=None) -> bool:
-        # Durable pending handoff must precede the settle journal: a crash between
-        # the two writes must leave the terminal report replayable, never lost.
-        self._pending[assignment_id] = (status, error)
-        if result is not None:
-            self._pending_results[assignment_id] = result
+    def _record_pending(self, assignment_id: str, status: str, error: str | None, result=None, binding=None) -> bool:
+        # Typed outcomes are immutable snapshots read back from the durable journal.
+        if result is None:
+            self._pending[assignment_id] = (status, error)
         try:
-            record_pending_report(self.config.state_dir, assignment_id, status, error, result)
+            record_pending_report(self.config.state_dir, assignment_id, status, error, result, binding)
+            if result is not None:
+                saved = load_pending_report_results(self.config.state_dir)[assignment_id]
+                self._pending_results[assignment_id] = saved
+                self._pending[assignment_id] = (status, error)
         except (OSError, StateError) as exc:
-            LOG.error("could not persist pending terminal report for %s; "
-                      "settle deferred so the assignment stays re-executable: %s",
-                      assignment_id, exc)
+            LOG.error("could not persist terminal outcome for %s; recovery required: %s", assignment_id, exc)
+            if result is not None:
+                self.stop_event.set()
             return False
         return True
 
@@ -388,14 +405,21 @@ class NodeAgent:
             LOG.error("could not clear pending terminal report for %s: %s", assignment_id, exc)
 
     def _attempt_terminal_report(self, assignment_id: str, status: str, error: str | None,
-                                 result=None) -> None:
+                                 result=None, binding=None) -> None:
         assert self.credentials is not None
         for _ in range(max(1, self.config.report_retries)):
             try:
-                self._guarded(self.client.report)(
-                    self.credentials.node_id, self.credentials.node_token,
-                    assignment_id, status, error, result)
+                if result is None:
+                    self._guarded(self.client.report)(self.credentials.node_id, self.credentials.node_token,
+                                                      assignment_id, status, error)
+                else:
+                    self._guarded(self.client.report_result)(self.credentials.node_id, self.credentials.node_token,
+                                                             assignment_id, status, error, result, binding)
             except ControllerError as exc:
+                if result is not None and exc.status_code in (404, 409):
+                    self.stop_event.set()
+                    self._notify(task_update={"assignment_id": assignment_id, "report_status": "recovery-required"})
+                    return
                 if exc.status_code in (404, 409):
                     LOG.info("terminal report for %s not accepted: %s", assignment_id, exc)
                     self._clear_pending(assignment_id)

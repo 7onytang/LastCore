@@ -6,12 +6,10 @@ import secrets
 import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Annotated
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -107,7 +105,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
         })
     bearer = HTTPBearer(auto_error=False)
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/workloads", methods=["GET", "HEAD"], include_in_schema=False)
     def showcase():
         return FileResponse(Path(__file__).with_name("showcase.html"))
 
