@@ -1,0 +1,10 @@
+# Template only: copy OUTSIDE Git and chmod 600. Values are literal UTF-8,
+# one line per key. No shell expansion, quoting/unescaping or credentials in CLI.
+# Required fields intentionally have no working secret/default production identity.
+storeFile=
+keyAlias=
+storePassword=
+keyPassword=
+expectedCertificateSha256=
+versionCode=
+versionName=

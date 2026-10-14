@@ -61,3 +61,69 @@ The lifecycle integration reuses the platform Activity `onStop` and Java executo
 API29 uses system-window insets; API30+ applies system bars, cutout and IME insets explicitly for the target35 edge-to-edge policy. Layouts scroll and text uses sp to respect font scaling. Resource compilation and host Java compilation are not physical-device visual/lifecycle acceptance; the existing device deferral still applies.
 
 The simplified workflow has a shared model preparation card, then mutually exclusive **本机推理 / 云端节点** modes. Local mode exposes one **生成** action; without an imported file it is disabled with an adjacent explanation. A model's presence does not prove integrity; existing hash verification remains mandatory. Cloud mode exposes **启动节点** and an expandable first-enrollment form. Start/recovery is deliberately still available if the model is missing, so saved lease outcomes are not blocked by a UI prerequisite. Fields have stable IDs and inline validation; enrollment credentials remain excluded from saved state/autofill. Mode switching and duplicate actions are disabled during work. **停止** appears only while busy, then reads **正在停止…** until the existing executor completes. Starting work dismisses the keyboard and scrolls to the result/stop controls. Only the selected mode is restored, not operational state.
+
+## Explicit owner-signing preparation (initial sideload)
+
+The default no-argument build remains Debug + unsigned release + compiled
+instrumentation, with its existing version and checks. The opt-in path uses the
+same build/toolchain and then aligns a separate candidate before official
+apksigner signing and certificate verification:
+
+```sh
+./build-apk.sh --production --signing-config /absolute/private/owner-signing.properties
+```
+
+Copy owner-signing.properties.example outside every Git checkout, give the
+private configuration and owner-provided keystore owner-only permissions
+(0400/0600), and fill all seven fields: storeFile, keyAlias, storePassword,
+keyPassword, expectedCertificateSha256, versionCode and versionName. Values
+are literal UTF-8 single lines, including spaces and punctuation; do not source
+this file or apply shell expansion. Duplicate/unknown/missing fields, unsafe
+permissions or repository paths fail before any build or signing subprocess.
+The helper only stats the keystore during configuration checks; it never
+generates a key or selects an owner identity. The certificate fingerprint is
+the expected public SHA256 of the actual app signing certificate, not a
+Google Play upload identity. The owner chooses the version (positive signed
+32-bit versionCode and bounded versionName); the helper assigns no new release.
+
+Only public version properties reach Gradle. Passwords reach apksigner through
+named child environment variables, never command-line arguments, build logs,
+Git, APK assets or provenance. Sign/verify/tool errors are captured and reported
+with a fixed safe summary. Default Debug and unsigned files are retained:
+production never substitutes Debug when release/signing is missing. The SDK
+zipalign step precedes signing; the aligned/signed candidate is temporary.
+
+The signed APK must have one signer, verified v2 signature, exact expected
+certificate SHA256, no Android Debug identity, and a non-debuggable release
+manifest with the configured app version. The shared source/license/native/
+permission/API policy checks still apply. Only after all actual checks pass
+are the signed APK, JSON and SHA256 sidecar exclusively published under
+verification/production (or an explicit --output-dir outside the checkout).
+Existing artifacts are not overwritten; failure removes temporary/new
+publication outputs and does not leave a package or metadata labeled
+production. Provenance does not include private configuration paths, aliases
+or passwords. The production_signed flag means verified owner certificate
+signing only: it does not establish physical-device acceptance or launch readiness.
+
+This path is prepared using synthetic configurations and Fake subprocess
+fixtures only. No real key, keystore/password, signed production build, device
+installation or account was used for this implementation. Production identity
+and hardware acceptance remain owner-controlled prerequisites. A new owner
+certificate cannot update the historical Debug-signed app in place; do not
+delete app data/credentials to bypass recovery or signer mismatch. Published
+1760373 development APKs and existing archives remain immutable.
+
+Initial sideload/self-host target API35 remains the explicit distribution
+scope. Google Play target API36, store account, upload/app signing identities
+and policy review are a separate task. No signing framework or SDK/JNI/business
+logic dependency is added. Reused official APIs:
+[APK signing](https://developer.android.com/studio/publish/app-signing),
+[apksigner environment password inputs and verification](https://developer.android.com/tools/apksigner),
+[private signing properties](https://developer.android.com/build/gradle-tips#remove-private-signing-information-from-your-project).
+Gradle and Android build tools retain their Apache-2.0 licenses; the project
+MIT license does not replace tool/upstream terms.
+
+Run the meaningful pure boundary fixtures with
+python -m pytest -q android-app/tests-python/test_production_signing.py.
+They use placeholder files that are not keystores and Fake SDK subprocesses;
+a fixture pass cannot establish real signing or device acceptance.
