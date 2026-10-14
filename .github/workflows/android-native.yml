@@ -2,11 +2,15 @@ name: Android native APK
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths: ['android-app/**', '.github/workflows/android-native.yml']
   pull_request:
     paths: ['android-app/**', '.github/workflows/android-native.yml']
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   apk:
     runs-on: ubuntu-24.04
