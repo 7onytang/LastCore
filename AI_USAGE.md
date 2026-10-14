@@ -36,7 +36,11 @@ CI 通过、源码一致、HTTP 200、人工 GUI 确认和真实模型执行分�
 
 ## Windows/Linux 预览构建补充
 
-AI 辅助 Windows/Linux 有界线性客户端、恢复处理、目标平台构建与来源/许可整理；原生 build-only 来源为 `85a1e23295dd64380a81f263a58da2593f7e94d5`，见[构建运行 38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563)及[预览来源与下载](edge-client/README.md)。恢复修正经独立源码复核和 13 项纯 Mock 检查，Mock 不替代实际设备或任务结果；这不是材料维护者新运行的验收。预览包的固定源码、PE/ELF、文件摘要及完整许可证经过独立静态复核，Windows/Linux GUI、联网、用户设备和 relay 仍未验，未新增模型执行。完整源码补充包按当前最终 main 单独绑定来源，核心标签 `bf5b82e`、原生预览构建源 `85a1e232`、旧 r2 材料源 `ac5d630` 分别保留，不补造新的对话或完整历史。
+AI 辅助 Windows/Linux 有界线性客户端、恢复处理、目标平台构建与来源/许可整理。当前原生 build-only 预览固定源 `63d409a8ed313befe6f55e83feaca94afde4b8aa`，见[构建运行 38517716454](https://github.com/7onytang/LastCore/actions/runs/38517716454)及[当前下载、摘要与历史来源](edge-client/README.md)。GUI 将当前任务与已确认结果分开标注；ACK 校验通过后单次发布不可变 `(task_id, tuple(values))` 快照，视图只读取一次，避免 A 的任务 ID 配上 B 的数值，新 Session/无结果清空。19 项纯 GUI callback/recovery Mock 检查通过，不启动 Tk、实际线程、网络任务、设备或模型计算；它们不证明原生 GUI 运行。
+
+当前 Windows/Linux ZIP 及 sidecar/manifest 经独立 build-only 静态复核后追加到既有正式发行页；Windows 为17,630,729字节、SHA256 `8f26b53fd751c4c9b6e9f25a9070ba63b3e5198f51c5153b3794c7dbf7e9b5eb`，Linux 为28,909,760字节、SHA256 `55517667466da9cbfe46f41e5cc72b278af14b245194c683a1da1bbd34ef3468`。固定源码、PE/ELF、文件摘要与许可材料的检查不等于 GUI、联网、用户设备或跨设备 relay 验收，这些仍未验；包仍为未签名 `0.2.0-preview`、仅有界线性运算，不执行 GGUF 或 tiny Stage。
+
+原 `85a1e23295dd64380a81f263a58da2593f7e94d5`/[构建38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563)的未签名附件与静态/13项恢复 Mock 记录作为历史保留，不删除、不改 SHA，不将旧范围转用于新包。核心标签 `bf5b82e`、固定 `6977c09` 的完整源码 ZIP、原 r2 材料源 `ac5d630` 与当前客户端预览源 `63d409a8` 各自独立；本次入口/文档同步不重打 ZIP、不改 tag、不新增运行验收或补造对话历史。
 
 ## 原生 Mac 恢复修复预览补充
 

@@ -8,16 +8,19 @@ node's connection, task and acknowledged result. There is no admin/fleet UI.
 
 This is an **unsigned development preview, not verified runtime support**.
 Native Windows/Linux portable folders have been compiled and statically checked
-at source `85a1e23295dd64380a81f263a58da2593f7e94d5`, in
-[build-only run 38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563).
+at source `63d409a8ed313befe6f55e83feaca94afde4b8aa`, in
+[build-only run 38517716454](https://github.com/7onytang/LastCore/actions/runs/38517716454).
+This source includes the GUI immutable acknowledged task/result snapshot and
+explicit result-owner labels. Its 19 pure Mock checks are not native GUI or device
+acceptance. The current published artifacts received independent static approval.
 Windows GUI, Linux GUI, user-device connection/computation and installer
 acceptance remain pending. Separate native wheel hash locks are under
 `packaging/locks/`; do not use the macOS dependency lock for Windows.
 
 | Native artifact | Build/static result | Scope |
 | --- | --- | --- |
-| Windows x64, Python 3.13.16 | Passed, 17,632,491-byte ZIP, SHA256 `34ef2fbeffe95663c6ec707cde1368478bafbc3079649297170cdc3b56a7635a` | PE32+ AMD64, Tk resource/scripts and full terms verified; no program launched |
-| Linux x64, Python 3.12.14 | Passed, 28,908,043-byte ZIP, SHA256 `fa57579d209bd9277d2847445a32fb65575fe0cc2d0ae9e7931c0f3b6900c1ea` | ELF64 x86_64, required GLIBC at least 2.35; no program launched |
+| Windows x64, Python 3.13.16 | Passed, 17,630,729-byte ZIP, SHA256 `8f26b53fd751c4c9b6e9f25a9070ba63b3e5198f51c5153b3794c7dbf7e9b5eb` | PE32+ AMD64, Tk resource/scripts and full terms verified; no program launched |
+| Linux x64, Python 3.12.14 | Passed, 28,909,760-byte ZIP, SHA256 `55517667466da9cbfe46f41e5cc72b278af14b245194c683a1da1bbd34ef3468` | ELF64 x86_64, required GLIBC at least 2.35; no program launched |
 
 The archive manifest binds 21 explicit runtime/build inputs to fixed Git blobs,
 and includes bundled-file hashes, full licenses, exact CA bundle, OS/ABI and
@@ -29,10 +32,23 @@ links below refer to the published development preview attachments on the existi
 
 | Platform | Portable ZIP | Integrity and source |
 | --- | --- | --- |
-| Windows x86_64 | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip) | [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.json) |
-| Linux x86_64 (GLIBC >= 2.35) | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip) | [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.json) |
+| Windows x86_64 | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-63d409a8.zip) | [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-63d409a8.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-63d409a8.json) |
+| Linux x86_64 (GLIBC >= 2.35) | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-63d409a8.zip) | [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-63d409a8.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-63d409a8.json) |
 
 Unpack the portable folder without dropping its `_internal` or license files. These are unsigned development previews for bounded linear math only: no GGUF/LLM or tiny Stage execution. Native builds and static checks passed; native GUI launch, networking, user-device execution and Mac-to-Windows relay remain unverified. New runtime/device checks are paused at the user’s request. Publishing these attachments does not change the formal core tag, historical screenshots or fixed r2 submission archive.
+
+## Historical preview source85a1e232
+
+The previous unsigned previews remain unchanged as historical attachments:
+[source85a1e23295dd64380a81f263a58da2593f7e94d5/build38391011563](https://github.com/7onytang/LastCore/actions/runs/38391011563).
+Their build/static evidence did not verify native GUI, networking, computation or
+relay, and cannot be transferred to the current63d409a8 packages. The GUI ownership
+fix belongs to63d409a8; use the current download table above for that fix.
+
+| Historical artifact | Preserved ZIP / SHA256 / manifest | Size and SHA256 |
+| --- | --- | --- |
+| Windows x86_64 | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip), [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.json) | 17,632,491 bytes; `34ef2fbeffe95663c6ec707cde1368478bafbc3079649297170cdc3b56a7635a` |
+| Linux x86_64 | [ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip), [SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip.sha256), [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.json) | 28,908,043 bytes; `fa57579d209bd9277d2847445a32fb65575fe0cc2d0ae9e7931c0f3b6900c1ea` |
 
 ## Native build-only portable previews
 
