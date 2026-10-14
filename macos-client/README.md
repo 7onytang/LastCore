@@ -54,6 +54,32 @@ server patch, but only logs the output count. Install 0.1.1 to display the numer
 values. Confirm the same task ID and result in the client and the server, not
 just HTTP 200 or a connected indicator. Activity times use Asia/Shanghai.
 
+## Recovery-fix preview download
+
+The [recovery-fix preview DMG](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-5a83c1d6.dmg)
+is built from `5a83c1d609af7181fe6a75812e1f70889f501fda`, merged through
+[PR #83](https://github.com/7onytang/LastCore/pull/83) at
+`83f046d916a2b03356d6792e81651ecc39d4186a`.
+[SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-5a83c1d6.dmg.sha256),
+[build provenance](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-5a83c1d6.json) and
+[independent static audit](https://github.com/7onytang/LastCore/releases/download/v0.1.1/independent-static-audit-5a83c1d.json)
+accompany the download. Its DMG SHA256 is
+`6f7e2af998b6ff8dd790459c8205de2a7fa08d13f561ae8ac92a2aac19b0f70b`.
+
+The application version remains `0.1.1`, Apple Silicon arm64/macOS 13+,
+ad-hoc signed and not notarized. Eight pure URLProtocol Mock regressions,
+optimized build and independent static artifact audit passed; the existing
+smoke harness was compiled only. No GUI launch, Keychain access, real network
+job, computation or new device acceptance was performed for this preview.
+
+The [historical f9139762 DMG](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-f9139762.dmg),
+[original provenance](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-f9139762.json) and
+[checksum](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreClient-0.1.1-arm64-f9139762.dmg.sha256)
+remain unchanged. Its [historical MacBook Pro linear acceptance](../submission/evidence/mac-client-0.1.1-linear-acceptance.md)
+does not establish runtime acceptance of the recovery preview. The formal
+core tag remains `bf5b82e`, and the complete-source ZIP remains fixed at
+`6977c0919c9df3323cb0ec52e2b8820646df8233`; neither includes this later fix.
+
 ## DMG
 
 After committing the source, run
