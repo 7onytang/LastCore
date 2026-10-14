@@ -2,6 +2,8 @@
 
 正式发行入口：[v0.1.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.1)。安装、运行入口沿用下方及各模块 README；本次发布说明与未验收范围见 [发布记录](submission/RELEASE-v0.1.1.md)。按用户要求，发布整合本身不新增真实任务或设备测试；本轮此前已完成的真实 Mac 线性与 GGUF 验收单独列出。GitHub Release 不自动证明公网服务已更新。
 
+已公开的[完整源码 ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip)固定源码 `6977c0919c9df3323cb0ec52e2b8820646df8233`，包含 Windows/Linux 客户端源码、README、AI 使用说明、公开对话节选、8 张原始截图、许可证和作者历史。[SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip.sha256) 为 `03c58948ecff6918fabdc9d019421936cfd2c71dfc5d71fe8c28672fe5bb3721`；[manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/COMPLETE_SOURCE_MANIFEST.json)记录固定文件摘要与范围。正式核心标签仍为 `bf5b82e`，原 r2 包仍固定 `ac5d630`；源码补充包及此次文档更新不改变既有归档，不新增运行验收。
+
 Windows/Linux 已发布未签名的 `0.2.0-preview` 便携开发预览包：[Windows x86_64](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-windows-x86_64-85a1e232.zip)、[Linux x86_64](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCoreEdge-0.2.0-preview-linux-x86_64-85a1e232.zip)（GLIBC >= 2.35）。原生构建与静态检查通过，GUI、联网、真实设备和跨设备 relay 未验；仅支持有界线性运算，不执行 GGUF 或 tiny Stage。校验文件、来源与范围见 [edge-client/README.md](edge-client/README.md)。
 
 Native Mac `LastCoreClient` targeted linear tasks, numeric result display,
@@ -106,7 +108,7 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 - [AI_USAGE.md](AI_USAGE.md)与[真实 AI 对话记录索引](ai-logs/README.md)
 - [本地提交历史快照](submission/git-history.txt)：保留原始时间偏移，不单独证明平台仓库创建时间或赛事合规。
 
-已验证的核心进入正式交付阶段：Demo 源码与离线页面在 `demo/`；3 张正式工作台截图与 5 张历史截图在 `screenshots/`，每张均有原始来源、时间、尺寸和 SHA256。截图中的设备图是示意、交互是历史回放，线上健康截图仅证明当时服务可达。原 `a6` ZIP 与镜像保持不变；正式版在源码、实际入口与截图收口后，从最终固定提交生成一个新版本包，保留准确来源。邮件尚未发送；最终提交地址为 `seproject@yeah.net`，主题为 `【Tibo重置了吗 + 赛题全称】`。
+已验证的核心进入正式交付阶段：Demo 源码与离线页面在 `demo/`；3 张正式工作台截图与 5 张历史截图在 `screenshots/`，每张均有原始来源、时间、尺寸和 SHA256。截图中的设备图是示意、交互是历史回放，线上健康截图仅证明当时服务可达。原 `a6` ZIP 与镜像保持不变；正式 r2 包和完整源码补充包已按各自固定提交公开发布，来源与摘要见顶部入口。邮件尚未发送；最终提交地址为 `seproject@yeah.net`，主题为 `【Tibo重置了吗 + 赛题全称】`。
 
 ## 本地运行
 

@@ -2,23 +2,25 @@
 
 队伍名：**Tibo重置了吗**。截止时间：**2026 年 10 月 13 日 18:00，Asia/Shanghai**，来自用户提供的赛事要求。
 
-本文件依据用户提供的提交要求和六个评分维度整理材料，不声称是赛事官方 README 模板。赛题全称与官方开赛时间尚待确认，开发时间合规性不作未经核验的结论。
+本文件依据用户提供的提交要求和六个评分维度整理材料，不声称是赛事官方 README 模板。按用户要求，不以赛题全称或官方开赛时间核对作为材料准备阻塞；开发时间合规性不作未经核验的结论。
 
-用户要求的顺序已执行：最小核心完成并冻结后，再制作最终展示。Demo 源码已由 PR #62 合入；本批补入 5 张原始实际截图、采集元数据和三分钟讲稿。统一 ZIP 等全部材料与最小部署脚本进入最后云端 main 后生成一次；随后静态部署与同字节镜像通过实际检查，结果随最终交付验收收据提供。邮件未发送。
+用户要求的顺序已执行：最小核心完成并冻结后，再制作最终展示。Demo 源码已由 PR #62 合入；现有 5 张历史截图与 3 张正式工作台截图均保留采集元数据，三分钟讲稿不是已录制视频。正式 r2 包已发布；当前完整源码补充包单独绑定后续源码，固定来源与范围如下。邮件未发送。
 
-Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc22c5db9f351d304604e65743ca02ccda3`，核心合并提交 `7a9cd4910ee41d3b27fdc8c1d02c08f8487bc331`。23 项相关测试（8 项新增回归）、真实本地 Controller 的三个恢复场景和一次真实固定 GGUF 任务通过；证据见 `submission/evidence/mac-worker-30b9efc-review.md` 与 `submission/evidence/mac-worker-30b9efc-local.json`。这是本地修复验收，不是新云部署或 Android 真机证明；最终参赛提交和展示材料仍待统一固定。
+Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc22c5db9f351d304604e65743ca02ccda3`，核心合并提交 `7a9cd4910ee41d3b27fdc8c1d02c08f8487bc331`。23 项相关测试（8 项新增回归）、真实本地 Controller 的三个恢复场景和一次真实固定 GGUF 任务通过；证据见 `submission/evidence/mac-worker-30b9efc-review.md` 与 `submission/evidence/mac-worker-30b9efc-local.json`。这是本地修复验收，不是新云部署或 Android 真机证明；正式核心、r2 材料和后续源码补充的来源分别固定，不互相替换。
+
+已公开的[完整源码 ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip)固定源码 `6977c0919c9df3323cb0ec52e2b8820646df8233`，包含 Windows/Linux 客户端源码、README、AI 使用说明、公开对话节选、8 张原始截图、许可证和作者历史。[SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip.sha256) 为 `03c58948ecff6918fabdc9d019421936cfd2c71dfc5d71fe8c28672fe5bb3721`；[manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/COMPLETE_SOURCE_MANIFEST.json)记录固定文件摘要与范围。正式核心标签仍为 `bf5b82e`，原 r2 包仍固定 `ac5d630`；源码补充包及此次文档更新不改变既有归档，不新增运行验收。
 
 ## 必需材料
 
 | 材料 | 当前状态 | 位置 / 待办 |
 | --- | --- | --- |
-| 源代码 | 最小核心及 Demo 已合入；打包固定最后云端提交 | 各模块和 `demo/`；原 Alpha `85ddad9` 与修复源 `30b9efc` 的验证范围分开 |
+| 源代码 | 核心标签 `bf5b82e`；完整源码补充固定 `6977c09` | 各模块和 `demo/`；原 Alpha `85ddad9` 与修复源 `30b9efc` 的验证范围分开 |
 | README 项目说明 | 已有运行说明；本次补充提交核对 | 根 `README.md`；功能和核心文件见下表 |
 | AI 使用说明 | 已有并对照两条主线节选更新；完整历史不作推断 | `AI_USAGE.md` |
 | AI 对话记录 | 三个聊天相关节选已记录；完整开发覆盖仍待补充 | `ai-logs/`；优化主线 41 条原文已逐条核对 |
-| 3–8 张实际运行截图 | 已有 5 张原始 PNG，摘要与尺寸核对通过 | `screenshots/README.md`、`screenshots/capture-manifest.json`；3 张网页、2 张实际 HTTPS 服务截图 |
-| Demo 链接或不超过 3 分钟视频 | 页面与离线展示已合入；上线检查随交付验收提供 | `demo/index.html`、`demo/offline.html`、`demo/DEMO-SCRIPT-3MIN.txt`；讲稿不冒充已录制视频 |
-| 同一 ZIP 压缩包 | 等截图、Demo、最终提交齐备后生成 | 应包含上述材料；排除凭据、缓存和私有数据库 |
+| 3–8 张实际运行截图 | 8 张原始 PNG（5 张历史 + 3 张正式工作台），附摘要与尺寸 | `screenshots/README.md`、`screenshots/formal-v0.1.1/README.md`及各自 capture manifest；移动网页不等于 Android 真机 |
+| Demo 链接或不超过 3 分钟视频 | 页面、离线展示及公开部署回执已提供 | `demo/index.html`、`demo/offline.html`、`demo/DEMO-SCRIPT-3MIN.txt`；讲稿不冒充已录制视频 |
+| 同一 ZIP 压缩包 | r2 与完整源码补充 ZIP 已公开发布 | 固定来源和下载入口见上文；排除凭据、缓存和私有数据库 |
 | 开发时间证明 | 公开仓库创建时间与原始 Git 历史已记录；官方开赛时间待确认 | `submission/repository-provenance.json`、`submission/git-history.txt` |
 | 邮件提交 | 未发送 | `seproject@yeah.net`，主题为队伍名 + 赛题 |
 
@@ -39,7 +41,8 @@ Mac worker 的三处恢复/凭据修复已由 PR #59 合入：修复源 `30b9efc
 | 部署与固定来源归档 | 已实现；公开 Alpha 有独立来源记录 | `ops/public-ip-https/`、`ops/staging/prepare_release.py`、`ops/staging/integration-sources.json`；`submission/evidence/` |
 | 预训练大模型跨设备分层、KV cache、NAT 穿透、自动迁移 | 未实现 | 根 README 已列局限，不列为已完成功能 |
 | 其他类型边缘设备适配 | 开发中 | 定位为多类型边缘设备计算网络；本次材料未提供具体设备清单和实测证据，不列为已验收支持 |
-| Android 真机运行、生产签名/公证、Windows 发布 | 未验收 / 未交付 | 不把 APK 构建、主机 JNI 或未签名 bundle 当作这些能力的证明 |
+| Windows/Linux 原生线性客户端 | 已公开未签名开发预览；原生构建与静态检查通过 | `edge-client/README.md`；GUI、联网、设备及 relay 未验，不执行 GGUF 或 tiny Stage |
+| Android 真机运行、生产签名/公证 | 未验收 / 未交付 | 不把 APK 构建、主机 JNI 或开发预览包当作这些能力的证明 |
 
 ## 评分依据索引
 
