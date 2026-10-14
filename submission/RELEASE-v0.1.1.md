@@ -4,9 +4,9 @@ Publication date: 2026-10-13, Asia/Shanghai. This is a public, non-prerelease Gi
 
 This record below preserves the initial publication scope at source `bf5b82e`. Subsequent authorized deployment, preview attachments and source supplements are recorded separately; this documentation update does not replace the original tag or archives.
 
-## Current supplements (2026-10-13, Asia/Shanghai)
+## Current supplements (2026-10-14, Asia/Shanghai)
 
-- The [deployment receipt](evidence/public-deployment-current.md) records formal Controller source `bf5b82e` at 18:41:15 Beijing; `cc7c7ba` console screenshots remain historical captures.
+- The [current deployment receipt](evidence/public-deployment-current.md) records public page source `eee330c` at 2026-10-14 13:45:04 Beijing: only the HTML download entry changed from deployed `bf5b82e`; HTTPS root redirects 302 and console/health respond 200; public HTML/JS/CSS hashes are recorded. No new public jobs, computation or device tests were run. The earlier `bf5b82e` deployment and `cc7c7ba` screenshots remain historical evidence; the formal core tag and existing archives are unchanged.
 - [Windows/Linux portable previews](../edge-client/README.md) are published at component version `0.2.0-preview`, build source `85a1e232`. Native compilation and static checks passed; GUI, network, device and relay operation remain unverified. They are unsigned and support bounded linear calculations only.
 - The [Android development preview](../README.md) is attached as app version `0.1.0-draft` with Android Debug signing; physical-device acceptance remains deferred.
 - [Complete source ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip), source `6977c0919c9df3323cb0ec52e2b8820646df8233`, is separate from initial core `bf5b82e` and immutable r2 material source `ac5d630`. [Checksum](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip.sha256) and [manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/COMPLETE_SOURCE_MANIFEST.json) accompany it. No new runtime, model or device acceptance is claimed.

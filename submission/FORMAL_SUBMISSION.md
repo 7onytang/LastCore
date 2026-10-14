@@ -24,7 +24,7 @@
 - 全部固定源码、根 `README.md`、依赖/安装/运行与验证说明、许可证及来源绑定。
 - `AI_USAGE.md` 和 `ai-logs/`：使用说明与明确标注完整度的真实记录。
 - `screenshots/`：3–8 张实际运行图，逐张记录来源 URL、源码、北京时间、像素尺寸和 SHA256。新工作台首页不能用旧 Demo 截图冒充；用户文字确认不冒称截图。
-- 实际工作台入口、保留的历史 Demo、离线展示与不超过三分钟的讲解路线。默认入口及 `/console` 于北京时间 2026-10-13 18:41:15 核验对齐正式源 `bf5b82e`，见[公开部署补充](evidence/public-deployment-current.md)。18:04 的 `cc7c7ba` [历史部署摘要](evidence/formal-console-deployment-summary.json)与 18:08 的[3 张正式截图](../screenshots/formal-v0.1.1/README.md)保留原来源和范围。
+- 实际工作台入口、保留的历史 Demo、离线展示与不超过三分钟的讲解路线。北京时间 2026-10-14 13:45:04，固定源 `eee330c` 的 HTML 下载入口已部署，HTTPS 默认入口 302、`/console` 和健康响应 200；HTML 与固定公开源一致，无新增公开任务/计算/设备验收，见[公开部署补充](evidence/public-deployment-current.md)。18:04 的 `cc7c7ba` [历史部署摘要](evidence/formal-console-deployment-summary.json)与 18:08 的[3 张正式截图](../screenshots/formal-v0.1.1/README.md)保留原来源和范围。
 - 本目录的公开证据、源码/作者历史、支持范围表及 ZIP manifest/checksums。
 
 不提交原始私有运行收据、用户节点标识或主机名、Keychain、令牌、操作员路径、模型/构建缓存和私钥。原生客户端产物可以通过固定公开版本链接提供；不误标未签名、开发签名或未公证产物。
