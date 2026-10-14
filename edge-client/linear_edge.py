@@ -100,6 +100,7 @@ class LinearController(ControllerClient):
         self.last_heartbeat = 0.0
         self.last_task = None
         self.last_result = None
+        self.acknowledged_result = None  # One immutable task/value binding for views.
         self.recovery_required = False
         self.on_recovery_required = lambda: None
 
@@ -165,6 +166,7 @@ class LinearController(ControllerClient):
             assignment = next(a for a in task["assignments"] if a["id"] == assignment_id)
             if assignment["status"] != "completed" or assignment.get("result") != cached["result"]:
                 raise RuntimeError("Controller has not acknowledged the computed values")
+            self.acknowledged_result = (task["id"], tuple(cached["result"]))
             self.last_task, self.last_result = task["id"], cached["result"]
             _atomic_write_json(self.state / "last-linear-result.json", {
                 "task_id": self.last_task, "result": self.last_result, "server_acknowledged": True})

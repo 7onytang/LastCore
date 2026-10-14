@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from linear_edge import Session, VERSION
-from view_state import device_status
+from view_state import device_status, task_result_labels, NO_CONFIRMED_RESULT
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
     status = tk.StringVar(value="未连接")
     node = tk.StringVar(value="未加载")
     task = tk.StringVar(value="空闲")
-    result = tk.StringVar(value="尚无云端确认的计算结果")
+    result = tk.StringVar(value=NO_CONFIRMED_RESULT)
     state = {"session": None, "thread": None, "error": None, "stopping": False}
     panel = ttk.Frame(root, padding=20)
     panel.pack(fill="both", expand=True)
@@ -31,7 +31,7 @@ def main():
     ttk.Button(line, text="选择现有节点配置", command=lambda: file.set(filedialog.askopenfilename())).pack(side="right")
     ttk.Label(panel, text="确认原节点凭据的签发源（HTTPS）").pack(anchor="w")
     ttk.Entry(panel, textvariable=verified_origin).pack(fill="x", pady=6)
-    for label, variable in (("连接状态", status), ("本机节点 ID", node), ("当前/最近任务", task), ("实际结果", result)):
+    for label, variable in (("连接状态", status), ("本机节点 ID", node), ("当前/最近任务", task), ("最近已确认结果", result)):
         row = ttk.Frame(panel)
         row.pack(fill="x", pady=5)
         ttk.Label(row, text=label + "：", width=16).pack(side="left")
@@ -54,6 +54,8 @@ def main():
             status.set("启动失败：" + type(exc).__name__ + "；请核对配置/状态目录/原 HTTPS 源")
             return
         state.update(session=session, error=None, stopping=False)
+        task.set("空闲")
+        result.set(NO_CONFIRMED_RESULT)
         state["thread"] = threading.Thread(target=work, args=(session,), daemon=True)
         state["thread"].start()
         node.set(session.node_id)
@@ -74,9 +76,15 @@ def main():
             status.set(device_status(alive,age,session.config.accepting_tasks,state['stopping'],
                                      state['error'],session.client.recovery_required))
             run = session.agent._current_run()
-            task.set(run.task_id if run else session.client.last_task or "空闲")
-            if session.client.last_result is not None:
-                result.set(", ".join(f"{v:.8f}" for v in session.client.last_result[:16]))
+            confirmed = session.client.acknowledged_result
+            completed_task, completed_values = confirmed if confirmed is not None else (None, None)
+            task_text, result_text = task_result_labels(
+                run.task_id if run else None, completed_task, completed_values)
+            task.set(task_text)
+            result.set(result_text)
+        else:
+            task.set("空闲")
+            result.set(NO_CONFIRMED_RESULT)
         root.after(500, refresh)
 
     buttons = ttk.Frame(panel)
