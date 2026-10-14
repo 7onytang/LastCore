@@ -28,6 +28,7 @@ class ExecutionContext:
     cancel_reason: str = ""
     raw: dict | None = None
     result_summary: dict | None = None
+    clock: Callable[[], float] = field(default=time.time, repr=False)
 
     def request_cancel(self, reason: str) -> None:
         self.cancel_reason = reason
@@ -47,7 +48,7 @@ class SliceDemoExecutor(Executor):
 
     def __init__(self, slices: int = 20, slice_seconds: float = 0.2,
                  sleep: Callable[[float], None] = time.sleep,
-                 clock: Callable[[], float] = time.time, random_unit=None):
+                 clock: Callable[[], float] | None = None, random_unit=None):
         self.slices = slices
         self.slice_seconds = slice_seconds
         self.sleep = sleep
@@ -57,7 +58,7 @@ class SliceDemoExecutor(Executor):
     def _check(self, context):
         if context.cancel.is_set():
             raise ExecutionCancelled(context.cancel_reason or "cancelled")
-        if self.clock() >= context.deadline:
+        if (self.clock or context.clock)() >= context.deadline:
             raise ExecutionCancelled("deadline")
 
     def run(self, context: ExecutionContext):

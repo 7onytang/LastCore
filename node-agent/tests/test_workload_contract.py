@@ -181,3 +181,24 @@ def test_published_linear_override_and_five_arg_failed_reports_still_replay(tmp_
     assert json.loads(calls[-1].content)=={'status':'failed','error':'fixture'}
     assert not load_pending_reports(tmp_path)
     client.close()
+
+
+def test_frozen_old_request_cache_replays_without_any_linear_calculation(tmp_path,monkeypatch):
+    sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'edge-client'))
+    import linear_edge
+    from app.models import TaskRequest
+    frozen_request={'model_id':'lastcore/linear-demo-v1','num_layers':2,'layer_memory_mb':1,'max_nodes':1,
+        'timeout_seconds':600,'input_vector':[1.0,2.0],'weight_seed':7,
+        'target_node_id':'00000000-0000-0000-0000-000000000001'}
+    current_request=json.loads(TaskRequest(**frozen_request).protocol_dump_json())
+    old_binding=hashlib.sha256(json.dumps(['task','a',frozen_request,0,2],sort_keys=True).encode()).hexdigest()
+    path=linear_edge.result_file(tmp_path,'a');path.parent.mkdir()
+    path.write_text(json.dumps({'binding':old_binding,'model_id':linear_edge.MODEL,'task_id':'task',
+                               'assignment_id':'a','result':[.1,.2]}))
+    original=path.read_bytes()
+    monkeypatch.setattr(linear_edge,'weight',lambda *_:pytest.fail('must not calculate'))
+    run=ExecutionContext(task_id='task',assignment_id='a',model_id=linear_edge.MODEL,position=0,
+        layer_start=0,layer_end=2,previous_node=None,next_node=None,deadline=9999999999,
+        raw={'request':current_request})
+    linear_edge.LinearExecutor(tmp_path).run(run)
+    assert path.read_bytes()==original

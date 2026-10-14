@@ -284,6 +284,7 @@ class NodeAgent:
                 **({"report_status":"pending"} if assignment_id in self._pending else {})})
             return
         context = ExecutionContext(
+            clock=self.clock,
             task_id=task_id,
             assignment_id=assignment_id,
             model_id=str((row.get("request") or {}).get("model_id", "")),

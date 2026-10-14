@@ -116,3 +116,31 @@ def test_read_only_downgrade_gate_uses_metadata_fixture(tmp_path):
         db.execute("UPDATE tasks SET status='completed'")
     assert check(path)["status"] == "ready"
     assert check(tmp_path / "missing.sqlite3")["status"] == "error"
+
+
+def test_old_core_reader_sees_no_dict_in_legacy_result_storage(tmp_path):
+    import subprocess
+    import types
+    database=tmp_path/'compat.sqlite3'
+    store=Store(str(database),30,clock=lambda:100)
+    request=TaskRequest(**BASE).protocol_dump_json()
+    with sqlite3.connect(database) as db:
+        db.execute('INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?,?)',
+            ('fixture-node','fixture-hash','fixture','fixture','http://127.0.0.1:1',1024,1,1,100))
+        db.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?)',('fixture-task',request,'completed',100,200,None))
+        db.execute('INSERT INTO assignments VALUES (?,?,?,?,?,?,?,?)',
+            ('fixture-assignment','fixture-task','fixture-node',0,0,8,'completed',None))
+        db.execute('INSERT INTO workload_results VALUES (?,?)',
+            ('fixture-assignment',json.dumps({'inside':500,'samples':1000})))
+    new=store.get_task('fixture-task')
+    assert new['result'] is None and new['assignments'][0]['result'] is None
+    assert new['workload_result']=={'inside':500,'samples':1000,'pi_estimate':2.0}
+    old_module=types.ModuleType('app.frozen_old_store')
+    old_source=subprocess.check_output(['git','show','60c58831edaa4de06fd144b4e79f5df216900911:controller-server/app/store.py'])
+    exec(compile(old_source,'frozen-public-old-store','exec'),old_module.__dict__)
+    old=old_module.Store(str(database),30,clock=lambda:100).get_task('fixture-task')
+    assert old['result'] is None and old['assignments'][0]['result'] is None
+    assert 'workload_result' not in old
+    with sqlite3.connect(database) as db:
+        assert db.execute('SELECT COUNT(*) FROM assignment_results').fetchone()[0]==0
+        assert db.execute('SELECT COUNT(*) FROM workload_results').fetchone()[0]==1

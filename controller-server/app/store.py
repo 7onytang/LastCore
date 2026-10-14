@@ -124,11 +124,11 @@ class Store:
             raise HTTPException(401, "invalid node credential", headers={"WWW-Authenticate": "Bearer"})
         return node
 
-    def _node_view(self, db, node, *, busy=None):
+    def _node_view(self, db, node, *, busy=None, workloads=None):
         data = dict(node)
         data.pop("token_hash")
         data["accepting_tasks"] = bool(data["accepting_tasks"])
-        data["supported_workloads"] = [row[0] for row in db.execute(
+        data["supported_workloads"] = workloads if workloads is not None else [row[0] for row in db.execute(
             "SELECT workload FROM node_workloads WHERE node_id=? ORDER BY workload", (node["id"],))]
         if busy is None:
             busy = db.execute("""SELECT 1 FROM assignments a JOIN tasks t ON t.id=a.task_id
@@ -144,7 +144,10 @@ class Store:
             SELECT DISTINCT a.node_id FROM tasks t JOIN assignments a ON a.task_id=t.id
             WHERE t.status IN ('queued','running')
         """)}
-        return [self._node_view(db, node, busy=node["id"] in busy)
+        capabilities = {}
+        for node_id, workload in db.execute("SELECT node_id, workload FROM node_workloads ORDER BY workload"):
+            capabilities.setdefault(node_id, []).append(workload)
+        return [self._node_view(db, node, busy=node["id"] in busy, workloads=capabilities.get(node["id"], []))
                 for node in db.execute("SELECT * FROM nodes ORDER BY id").fetchall()]
 
     def register(self, request):
