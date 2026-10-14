@@ -14,6 +14,8 @@ from .credentials import StateError, acquire_state_lock
 
 
 def _resolve_executor_factory(config: AgentConfig):
+    if config.executor == "demo":
+        return None  # Preserve the explicit, known built-in factory and its capabilities.
     if config.executor == "stage":
         from .inference_adapter import build_stage_executor
         return build_stage_executor(config)

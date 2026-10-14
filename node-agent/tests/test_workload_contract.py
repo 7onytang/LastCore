@@ -47,6 +47,8 @@ def ack():
 
 def test_builtin_capability_is_explicit_and_custom_factory_is_safe_default(tmp_path):
     agent,client=fixture(tmp_path,lambda r:httpx.Response(200,json={}))
+    from lastcore_node_agent.__main__ import _resolve_executor_factory
+    assert _resolve_executor_factory(agent.config) is None
     assert agent.supported_workloads==('pi','log_stats')
     custom=NodeAgent(agent.config,client,executor_factory=lambda:pytest.fail('must not instantiate'))
     assert custom.supported_workloads==()

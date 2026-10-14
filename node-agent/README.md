@@ -159,6 +159,12 @@ curl -s http://127.0.0.1:8000/v1/tasks/<task_id> -H "Authorization: Bearer $CONT
 
 ## Explicit CPU-demo workload capability (source integration candidate)
 
+With `--executor demo`, the explicit new `pi` and `log_stats` workloads perform
+actual bounded CPU arithmetic (deterministic Monte Carlo shard counts and log
+level counts). Legacy demo assignments still simulate lifecycle slices; neither
+path is a language model or proves activation relay. No historical task/device
+acceptance is transferred to this source integration.
+
 Only the updated built-in `demo` executor advertises `pi` and `log_stats` in
 registration and authenticated heartbeats. Custom/injected factories default
 to no new capability; an OS name, online heartbeat or old linear client is not

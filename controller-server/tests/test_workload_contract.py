@@ -144,3 +144,20 @@ def test_old_core_reader_sees_no_dict_in_legacy_result_storage(tmp_path):
     with sqlite3.connect(database) as db:
         assert db.execute('SELECT COUNT(*) FROM assignment_results').fetchone()[0]==0
         assert db.execute('SELECT COUNT(*) FROM workload_results').fetchone()[0]==1
+
+
+def test_workload_route_is_distinct_and_inherits_strict_console_headers():
+    from app.main import create_app, Settings
+    app=create_app(Settings(admin_token='fixture-admin-'+'a'*32,registration_token='fixture-register-'+'b'*32),
+                   store=Mock())
+    handlers={route.path:route.endpoint for route in app.routes if route.path in ('/','/console','/workloads')}
+    assert set(handlers)=={'/','/console','/workloads'}
+    console=handlers['/console']()
+    workload=handlers['/workloads']()
+    assert console.headers==workload.headers
+    assert "script-src 'self'" in workload.headers['Content-Security-Policy']
+    assert 'unsafe-inline' not in workload.headers['Content-Security-Policy']
+    assert 'HEAD' in next(route.methods for route in app.routes if route.path=='/workloads')
+    assert len([route for route in app.routes if route.path=='/'])==1
+    assert str(console.path).endswith('/ui/index.html')
+    assert str(workload.path).endswith('/showcase.html')
