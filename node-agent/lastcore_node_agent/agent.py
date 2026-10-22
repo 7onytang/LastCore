@@ -97,8 +97,7 @@ class NodeAgent:
                 raise RuntimeError("no persisted node credentials and no registration token configured")
             response = self.client.register(self.config.registration_token,
                                             {**self.config.registration_payload(), "supported_workloads": list(self.supported_workloads)})
-            credentials = NodeCredentials(str(response["node_id"]), str(response["node_token"]),
-                                          int(response.get("heartbeat_ttl_seconds") or 30))
+            credentials = NodeCredentials.from_record(response)
             save_credentials(self.config.state_dir, credentials)
             LOG.info("registered as node %s", credentials.node_id)
         else:
@@ -111,11 +110,11 @@ class NodeAgent:
             self._settled = load_settled(self.config.state_dir)
             self._pending = load_pending_reports(self.config.state_dir)
             self._pending_results = load_pending_report_results(self.config.state_dir)
+            joined = self._join_controller()
         except (OSError, StateError):
             self.stop_event.set()
             self._notify(connection="recovery-required")
             raise
-        joined = self._join_controller()
         heartbeat_thread = None
         if joined:
             heartbeat_thread = threading.Thread(target=self._heartbeat_loop,
