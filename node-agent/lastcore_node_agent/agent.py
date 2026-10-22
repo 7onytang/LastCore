@@ -385,6 +385,10 @@ class NodeAgent:
         self._settled[assignment_id] = status
         try:
             settle_journal(self.config.state_dir, assignment_id, status)
+        except StateError:
+            self.stop_event.set()
+            self._notify(connection="recovery-required")
+            raise
         except OSError as exc:
             LOG.error("could not persist settle journal: %s", exc)
 

@@ -81,11 +81,14 @@ python -m lastcore_node_agent \
 - **轮询与去重**：按 `assignment_id` 去重，同一分配只启动一次执行；同一时刻本地最多一个任务；优先启动最早创建的合格任务（先处理旧任务）。
 - **启动条件**：`task_status` 为 queued/running、当前时间早于 deadline。先上报 `running` 成功才开始执行；Controller 返回 409（任务已终态）则静默跳过。
 - **执行日志（journal）**：执行结束（completed/failed/stopped）先写本地日志再上报 Controller，保证重启后不会重复执行同一 assignment；本地崩溃窗口内的重复执行无法完全避免（无分布式事务）。
+- **去重日志损坏保护**：只有缺失的 `journal.json` 或明确的 `{"settled":[]}` 表示没有历史记录。已有文件必须保持 `{"settled":[{"id":"…","status":"…"}]}` 结构，最多 512 条；状态允许 `completed`、`failed`、`stopped`、`skipped-terminal`，重复 ID 保留最后状态。空对象、`settled:null`、非法条目、未知状态/字段及超长列表会触发 `StateError`。启动时在注册、心跳和任务轮询之前停止并发出 `recovery-required` 本地事件；运行中写去重日志发现损坏也停止，不过滤条目或覆盖原证据。保留整个状态目录（含凭据及 pending 回报），从可信备份恢复并核对任务归属后再启动；不能删除或清空日志来绕过恢复。实现复用 [CPython 标准库 JSON](https://github.com/python/cpython/blob/main/Lib/json/decoder.py)（PSF 许可）及现有原子写入，无新增运行依赖；引入 Celery 等完整任务框架会改变现有 HTTP 协议与恢复存储，不适合此修复。
 - **取消/超时停止**：轮询发现任务 cancelled/failed、或进程收到停止信号时，设置执行器取消事件并等待其退出（宽限期 `stop_grace`，默认 10s）。deadline 与心跳 TTL 由独立的本地 watchdog 线程按秒检查，assignments 轮询失败或阻塞（含整机断网、心跳同时失败）期间仍然运行，超限后有界停止执行器，不依赖网络恢复。本地停止后不再上报（Controller 侧已终态或会因心跳过期而失败），该 assignment 记为 `stopped`，永不重复执行。
 - **执行失败**：执行器抛异常时上报 `failed` 并携带错误摘要，Controller 会终止整个任务。
 - **上报重试**：终态上报（含 executor 不可用路径）先持久化待确认记录（`pending-reports.json`，0600），成功落盘后才写入执行日志 journal 进入不可再执行终态（两次写入间崩溃重启仍可只补报；仅 legacy 状态型回报在 pending 落盘失败时暂不 settle、保留旧的可重执行规则；π/日志 typed 数值结果持久化失败则进入恢复状态并停止新执行，不发送未落盘结果，不降格为 legacy 回报或重新计算，已有证据保留），再最多重试 3 次；legacy 状态型回报收到成功 ACK 或 404/409（Controller 已终态）后清除记录；新 π/日志数值回报须完整匹配 ACK，未知响应或 404/409 保留记录并阻止新执行（详见后文）；重试耗尽保留记录，连接恢复或进程重启后只重放上报（Controller 对同状态上报幂等），不重新执行。pending 中的 assignment 参与执行去重，journal 淘汰旧记录后也不会被重新选择执行。
 
 ## 与推理引擎对接
+
+无需真实节点或模型的恢复回归：在 `node-agent/` 安装 `requirements-dev.txt` 后执行 `python -m pytest -q tests/test_credentials.py tests/test_settled_recovery.py`。测试覆盖损坏文件原字节保留、启动前禁止网络/执行、运行中停止、合法旧状态及 512 条淘汰；不代表真实设备验收。
 
 `executor.py` 定义了唯一接入点：
 

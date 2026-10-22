@@ -17,6 +17,7 @@ JOURNAL_FILE = "journal.json"
 PENDING_REPORTS_FILE = "pending-reports.json"
 LOCK_FILE = "agent.lock"
 JOURNAL_LIMIT = 512
+SETTLED_STATUSES = frozenset({"completed", "failed", "stopped", "skipped-terminal"})
 
 
 class StateError(Exception):
@@ -98,26 +99,35 @@ def load_credentials(state_dir: Path) -> NodeCredentials | None:
     return NodeCredentials(node_id, node_token, ttl)
 
 
+def _settled_entries(data) -> list[dict]:
+    # Missing is the only implicit empty journal. Never repair a present file by
+    # discarding entries: they are the evidence used to prevent repeat execution.
+    if data is None:
+        return []
+    if not isinstance(data, dict) or set(data) != {"settled"}:
+        raise StateError("settled journal schema is invalid; preserve for recovery")
+    entries = data["settled"]
+    if not isinstance(entries, list) or len(entries) > JOURNAL_LIMIT:
+        raise StateError("settled journal entries are invalid; preserve for recovery")
+    for entry in entries:
+        if (not isinstance(entry, dict) or set(entry) != {"id", "status"}
+                or not isinstance(entry["id"], str) or not entry["id"]
+                or not isinstance(entry["status"], str) or entry["status"] not in SETTLED_STATUSES):
+            raise StateError("settled journal entry is invalid; preserve for recovery")
+    return entries
+
+
 def settle_journal(state_dir: Path, assignment_id: str, status: str) -> None:
     path = Path(state_dir) / JOURNAL_FILE
-    data = _read_json(path) or {}
-    entries = data.get("settled") if isinstance(data, dict) else None
-    entries = [entry for entry in (entries or []) if isinstance(entry, dict)]
-    entries.append({"id": assignment_id, "status": status})
-    entries = entries[-JOURNAL_LIMIT:]
-    _atomic_write_json(path, {"settled": entries})
+    entries = _settled_entries(_read_json(path))
+    entry = {"id": assignment_id, "status": status}
+    _settled_entries({"settled": [entry]})
+    _atomic_write_json(path, {"settled": (entries + [entry])[-JOURNAL_LIMIT:]})
 
 
 def load_settled(state_dir: Path) -> dict[str, str]:
-    data = _read_json(Path(state_dir) / JOURNAL_FILE)
-    if data is None:
-        return {}
-    entries = data.get("settled") if isinstance(data, dict) else None
-    settled: dict[str, str] = {}
-    for entry in entries or []:
-        if isinstance(entry, dict) and isinstance(entry.get("id"), str):
-            settled[entry["id"]] = str(entry.get("status", ""))
-    return settled
+    entries = _settled_entries(_read_json(Path(state_dir) / JOURNAL_FILE))
+    return {entry["id"]: entry["status"] for entry in entries}
 
 
 def _validate_pending_data(data):

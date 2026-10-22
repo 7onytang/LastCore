@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
-      - run: pytest -q tests/test_credentials.py
+      - run: pytest -q tests/test_credentials.py tests/test_settled_recovery.py
   test:
     runs-on: ubuntu-latest
     defaults:
