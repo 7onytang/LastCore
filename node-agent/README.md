@@ -78,6 +78,7 @@ python -m lastcore_node_agent \
 - **单进程独占**：状态目录通过 `agent.lock` 文件锁独占，同一凭据目录同时只允许一个 Agent 进程，防止重复注册与同一任务的重复执行；第二个进程启动时报错退出（码 4）。
 - **入网重试**：启动时 Controller 不可达会每秒重试注册/首次心跳，直到成功或收到停止信号，不会因此退出。
 - **心跳**：独立线程按间隔发送可用内存与接单意愿；断网只重试并计数，不改变任务执行。HTTP 客户端不使用环境/系统代理（`trust_env=False`），避免本机代理拦截 Controller 地址。
+- **凭据值校验**：注册响应与本地凭据使用同一校验：节点 ID 和令牌必须是非空字符串；`heartbeat_ttl_seconds` 必须是 5–3600 的 JSON 整数，与 Controller 配置范围一致。布尔、零、负数、字符串、浮点及非有限数均拒绝，不转型或静默替换为默认值；仅旧记录或响应中完全缺失 TTL 时保留 30 秒默认值。异常本地记录会原样保留并在任何网络请求前停止；异常注册响应不会落盘，也不会继续心跳或领任务。应核对原 Controller/备份后恢复，不删除原身份或 pending 日志绕过检查。校验复用标准库 `dataclasses` 和 [CPython JSON](https://github.com/python/cpython/blob/main/Doc/library/json.rst)（PSF 许可）；已核对 Pydantic 的严格类型方案，但为此增加节点运行依赖与冻结包体积没有必要。
 - **轮询与去重**：按 `assignment_id` 去重，同一分配只启动一次执行；同一时刻本地最多一个任务；优先启动最早创建的合格任务（先处理旧任务）。
 - **启动条件**：`task_status` 为 queued/running、当前时间早于 deadline。先上报 `running` 成功才开始执行；Controller 返回 409（任务已终态）则静默跳过。
 - **执行日志（journal）**：执行结束（completed/failed/stopped）先写本地日志再上报 Controller，保证重启后不会重复执行同一 assignment；本地崩溃窗口内的重复执行无法完全避免（无分布式事务）。
@@ -88,7 +89,7 @@ python -m lastcore_node_agent \
 
 ## 与推理引擎对接
 
-无需真实节点或模型的恢复回归：在 `node-agent/` 安装 `requirements-dev.txt` 后执行 `python -m pytest -q tests/test_credentials.py tests/test_settled_recovery.py`。测试覆盖损坏文件原字节保留、启动前禁止网络/执行、运行中停止、合法旧状态及 512 条淘汰；不代表真实设备验收。
+无需真实节点或模型的恢复回归：在 `node-agent/` 安装 `requirements-dev.txt` 后执行 `python -m pytest -q tests/test_credentials.py tests/test_settled_recovery.py tests/test_credential_recovery.py`。测试覆盖损坏文件原字节保留、凭据与 TTL 校验、启动前禁止网络/执行、运行中停止、合法旧状态及 512 条淘汰；不代表真实设备验收。
 
 `executor.py` 定义了唯一接入点：
 

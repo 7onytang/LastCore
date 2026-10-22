@@ -30,6 +30,22 @@ class NodeCredentials:
     node_token: str
     heartbeat_ttl_seconds: int
 
+    def __post_init__(self):
+        if (not isinstance(self.node_id, str) or not self.node_id
+                or not isinstance(self.node_token, str) or not self.node_token):
+            raise StateError("credentials have invalid node_id/node_token")
+        if type(self.heartbeat_ttl_seconds) is not int or not 5 <= self.heartbeat_ttl_seconds <= 3600:
+            raise StateError("credentials heartbeat_ttl_seconds must be an integer between 5 and 3600")
+
+    @classmethod
+    def from_record(cls, data) -> "NodeCredentials":
+        if not isinstance(data, dict):
+            raise StateError("credentials must contain an object")
+        # Older records may omit TTL. An explicit invalid value is never an
+        # absent default and must not be coerced or silently repaired.
+        return cls(data.get("node_id"), data.get("node_token"),
+                   data.get("heartbeat_ttl_seconds", 30))
+
 
 def _atomic_write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,17 +102,7 @@ def load_credentials(state_dir: Path) -> NodeCredentials | None:
     data = _read_json(Path(state_dir) / CREDENTIALS_FILE)
     if data is None:
         return None
-    if not isinstance(data, dict):
-        raise StateError("credentials file must contain a JSON object")
-    node_id = data.get("node_id")
-    node_token = data.get("node_token")
-    try:
-        ttl = int(data.get("heartbeat_ttl_seconds") or 30)
-    except (TypeError, ValueError) as exc:
-        raise StateError("credentials file has invalid heartbeat_ttl_seconds") from exc
-    if not isinstance(node_id, str) or not node_id or not isinstance(node_token, str) or not node_token:
-        raise StateError("credentials file has invalid node_id/node_token")
-    return NodeCredentials(node_id, node_token, ttl)
+    return NodeCredentials.from_record(data)
 
 
 def _settled_entries(data) -> list[dict]:
