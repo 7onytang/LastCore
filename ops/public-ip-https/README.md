@@ -69,6 +69,14 @@ Caddy automatically checks renewal every 10 minutes by default. ARI, when presen
 
 The standard-library monitor verifies the locally served certificate against the system's public trust store, checks IP SAN/short lifetime, performs a token-free HTTPS `/healthz`, and warns below 48 hours remaining. It writes a mode-0600 public-metadata state file `/var/lib/lastcore-caddy/tls-monitor.json` plus a journal entry; failure marks the oneshot unit failed. It does not send external notifications. It is compatible with the target's Python 3.6.8 and OpenSSL 1.1.1k. The timer runs hourly and five minutes after boot; it is a monitor, not the renewal scheduler.
 
+Run the monitor's offline regressions from the repository root with no additional dependencies:
+
+```sh
+python3 -m unittest discover -s ops/public-ip-https/tests -p 'test_*.py' -v
+```
+
+CI runs these on Python 3.6 and 3.12. Fixtures cover fragmented health responses, the 48-hour warning boundary, wrong IP SAN, excessive certificate lifetime, simulated trust/expiry handshake failures, malformed/unhealthy/oversized health replies, failed state writes and replacement of stale success by error. They create no network connections, ACME requests or compute tasks and do not prove a live renewal. The implementation reuses the maintained [CPython SSL implementation](https://github.com/python/cpython/blob/main/Lib/ssl.py) under the PSF license and existing Caddy/CertMagic renewal; a separate monitoring service or dependency would add unnecessary integration cost.
+
 An initial certificate, persisted restart and active renewal worker establish issuance/persistence/renewal management. They do **not** prove a future scheduled real renewal has happened. Record a changed valid production serial/NotAfter after a later real renewal before claiming that test passed. Inspect:
 
 ```sh

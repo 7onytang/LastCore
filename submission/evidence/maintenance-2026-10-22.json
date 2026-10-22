@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "checked_at_beijing": "2026-10-22T16:35:08.899557+08:00",
+  "scope": "read-only maintenance; no new computation, model or device acceptance",
+  "deployed_source_commit": "73b3d1abed7dc9709d522fd8afccc0795ca41fe9",
+  "server_revision_and_health_checked": true,
+  "health": "ok",
+  "tls_monitor_last_result": "success",
+  "new_compute_jobs_created": 0,
+  "checks": {
+    "/healthz": {
+      "status": 200
+    },
+    "/console": {
+      "status": 200
+    },
+    "/workloads": {
+      "status": 200
+    },
+    "/ui/console.js": {
+      "status": 200,
+      "sha256": "858d5896973197dd3e8168793a25c9e8a5d2ab6427b14e03aa0b3f4100f6597d",
+      "fixed_source_bytes_match": true
+    },
+    "/v1/nodes": {
+      "status": 401
+    }
+  },
+  "tls": {
+    "trusted_chain": true,
+    "serial": "0578A41E847EA91A322F902B76D48D98107E",
+    "not_before_beijing": "2026-10-20T00:27:59+08:00",
+    "not_after_beijing": "2026-10-26T16:27:58+08:00"
+  }
+}

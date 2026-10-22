@@ -1,5 +1,7 @@
 # LastCore
 
+维护记录：[2026-10-22 公网只读核对](submission/evidence/maintenance-2026-10-22.json)。运行版本 `73b3d1a` 健康，证书已自动续期；监控离线回归入口见 [HTTPS 运维说明](ops/public-ip-https/README.md#acceptance-and-renewal)。未新增真实计算任务。
+
 正式发行入口：[v0.1.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.1)。安装、运行入口沿用下方及各模块 README；本次发布说明与未验收范围见 [发布记录](submission/RELEASE-v0.1.1.md)。按用户要求，发布整合本身不新增真实任务或设备测试；本轮此前已完成的真实 Mac 线性与 GGUF 验收单独列出。GitHub Release 不自动证明公网服务已更新。
 
 已公开的[完整源码 ZIP](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip)固定源码 `6977c0919c9df3323cb0ec52e2b8820646df8233`，包含 Windows/Linux 客户端源码、README、AI 使用说明、公开对话节选、8 张原始截图、许可证和作者历史。[SHA256](https://github.com/7onytang/LastCore/releases/download/v0.1.1/LastCore-v0.1.1-complete-source.zip.sha256) 为 `03c58948ecff6918fabdc9d019421936cfd2c71dfc5d71fe8c28672fe5bb3721`；[manifest](https://github.com/7onytang/LastCore/releases/download/v0.1.1/COMPLETE_SOURCE_MANIFEST.json)记录固定文件摘要与范围。正式核心标签仍为 `bf5b82e`，原 r2 包仍固定 `ac5d630`；源码补充包及此次文档更新不改变既有归档，不新增运行验收。
