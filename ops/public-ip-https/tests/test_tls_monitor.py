@@ -20,6 +20,8 @@ spec.loader.exec_module(monitor)
 IP = "8.134.161.123"
 NOW = 1_790_000_000
 HEALTH = b'HTTP/1.1 200 OK\r\nContent-Length: 15\r\n\r\n{"status":"ok"}'
+# Python 3.6 reports certificate handshake failures as SSLError.
+VERIFY_ERROR = getattr(ssl, "SSLCertVerificationError", ssl.SSLError)
 
 
 class CertificateChecks(unittest.TestCase):
@@ -76,8 +78,8 @@ class CertificateChecks(unittest.TestCase):
     def test_untrusted_and_expired_certificates_fail_closed(self):
         # The real default SSL context rejects these during the handshake.
         for reason in ["certificate has expired", "unable to get local issuer certificate"]:
-            with self.subTest(reason=reason), self.assertRaises(ssl.SSLCertVerificationError):
-                self.probe(trust_error=ssl.SSLCertVerificationError(reason))
+            with self.subTest(reason=reason), self.assertRaises(VERIFY_ERROR):
+                self.probe(trust_error=VERIFY_ERROR(reason))
 
     def test_unhealthy_or_malformed_responses_rejected(self):
         for response in [HEALTH.replace(b"200 OK", b"503 Unavailable"),
@@ -124,7 +126,7 @@ class StateChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             state = Path(folder) / "status.json"
             self.run_main(state, {"status": "ok"})
-            code, output = self.run_main(state, error=ssl.SSLCertVerificationError("expired"))
+            code, output = self.run_main(state, error=VERIFY_ERROR("expired"))
             self.assertEqual(code, 2)
             self.assertEqual(output["status"], "error")
             self.assertEqual(json.loads(state.read_text()), output)
