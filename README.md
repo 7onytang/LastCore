@@ -262,6 +262,16 @@ docker cp "$(docker compose ps -q controller):/data/backups/$BACKUP_NAME" "backu
 
 任务 queued → running → completed。任一分配失败、任一已分配节点心跳过期或任务到期，整个任务变为 failed，其余未完成分配也变为 failed；管理员可将活动任务变为 cancelled。相同状态的回报可重试，终态不接受新的状态。服务启动时清理已过期任务，运行期间默认每秒后台扫描，即使没有 API 请求也会持久化终态并释放预留；API 访问数据库时仍会清理。`CONTROLLER_EXPIRY_INTERVAL_SECONDS` 可设为 0.1 至 60 秒，间隔为两次扫描之间的等待时间，并非实时保证；数据库锁等待及扫描耗时可能延迟清理。后台 SQLite 错误会记录日志并在下个间隔重试，启动清理失败则拒绝启动；关闭服务时等待当前扫描完成，避免遗留数据库写入。节点回归不会恢复已失败的任务，需要创建新任务，暂不自动重试以避免重复计算。后台清理仍不能强制终止远端计算。
 
+## 离线 endpoint 回归
+
+安装依赖与运行入口沿用各模块说明。纯解析回归（不启动 HTTP/TCP、不加载或执行模型）：
+
+```bash
+(cd inference-engine && python -m pytest -q tests/test_endpoint_parsing.py)
+```
+
+TCP endpoint 接受 `host:port`、带根路径 `/` 的 URL 和 IPv6 客户端地址；scheme 仍仅取地址，不启用 TLS。拒绝 URL 凭据及非根路径、query、fragment，端口范围为 0–65535。0 仅保留本地动态监听语义，不代表可发布的远端地址；当前本地 Stage listener 仍使用 IPv4，IPv6 解析不等于 listener 已支持 IPv6。
+
 ## 验证
 
 ```bash

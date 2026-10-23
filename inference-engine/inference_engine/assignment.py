@@ -20,7 +20,9 @@ controller's left-closed, right-open, zero-based convention.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from ipaddress import IPv6Address
 from typing import Mapping
+from urllib.parse import urlsplit
 
 from .errors import ShardError
 from .stage import StageRuntime, load_stage
@@ -48,15 +50,41 @@ class AssignmentPlan:
 
 
 def parse_endpoint(value: str) -> tuple[str, int]:
-    if not value:
+    """Extract the TCP address, preserving scheme labels and IPv6 client use.
+
+    Controller URLs may have a root slash. Schemes (including https) remain
+    address labels, not a request to add TLS. IPv6 is usable by Channel.connect;
+    the current AF_INET listener still requires an IPv4 local bind address.
+    Port zero is retained for local ephemeral listeners, not a routable peer.
+    """
+    if not isinstance(value, str) or not value.strip():
         raise ShardError("assignment endpoint is empty")
-    host, separator, port = value.rpartition(":")
-    if not separator or not port.isdigit():
-        raise ShardError(f"assignment endpoint {value!r} is not a host:port URL")
-    host = host.split("://")[-1].strip("/")
-    if not host:
-        raise ShardError(f"assignment endpoint {value!r} has no host")
-    return host, int(port)
+    text = value.strip()
+    if any(character.isspace() for character in text):
+        raise ShardError("assignment endpoint contains whitespace")
+    url = text if "://" in text or text.startswith("//") else "//" + text
+    # Retain the old parser's bare IPv6:port form as well as standard [IPv6]:port.
+    prefix, authority = url.split("://", 1) if "://" in url else ("", url[2:])
+    host_port = authority.split("/", 1)[0]
+    if host_port.count(":") > 1 and not host_port.startswith("["):
+        host, _, port = host_port.rpartition(":")
+        try:
+            IPv6Address(host)
+        except ValueError as exc:
+            raise ShardError("assignment endpoint has an invalid IPv6 address") from exc
+        authority = "[" + host + "]:" + port + authority[len(host_port):]
+        url = (prefix + "://" if prefix else "//") + authority
+    try:
+        parsed = urlsplit(url)
+        host, port = parsed.hostname, parsed.port
+        credentials = parsed.username is not None or parsed.password is not None
+    except ValueError as exc:
+        raise ShardError("assignment endpoint must have a valid host and port") from exc
+    if not host or port is None:
+        raise ShardError("assignment endpoint must have a host and explicit port")
+    if credentials or parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        raise ShardError("assignment endpoint must be a TCP address without URL credentials or routing")
+    return host, port
 
 
 def assignment_plan(assignment: Mapping, *, model_id: str | None = None,
