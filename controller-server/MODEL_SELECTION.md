@@ -1,9 +1,10 @@
 # Initial model/runtime choice and evidence limits
 
 Source inventory: `2f66bcbffc30eb80821652fd5c5799df5262cd50`.
+Hardware-selection update against `5330a9b5b929d32c07eb475964f575f667478f37`.
 This records the reproducible choice requested by
-[SPEC-03 #42](https://github.com/7onytang/LastCore/issues/42). Unknown hardware
-and memory limits remain unknown; this is not a completed device qualification
+[SPEC-03 #42](https://github.com/7onytang/LastCore/issues/42). User-specific hardware
+and resource limits remain unconfirmed; this is not a completed device qualification
 or a change to that issue's acceptance criteria.
 
 ## Chosen whole-model integration baseline
@@ -48,7 +49,26 @@ redistribution package. These recorded licenses permit redistribution subject
 to their terms; any additional distribution/store requirements must be checked
 for the actual package. See [the full license manifest](../real-model-runtime/licenses/manifest.json).
 
-## Hardware and observed compatibility
+## Selected first test hardware
+
+The first target is an **Apple Silicon MacBook Pro**, using the existing pinned
+llama.cpp CPU backend and SmolLM2-135M-Instruct Q4_K_M baseline. The planned
+reproduction configuration is **16 GiB RAM** with the documented macOS arm64
+setup. The user's exact MacBook Pro model, chip and installed RAM are not
+confirmed. This is a hardware-selection decision, not completed device
+qualification; 16 GiB is a planning configuration, not an official or measured
+minimum, a peak-memory guarantee, or a statement about the user's device.
+
+Retain the free-disk planning estimate and toolchain exclusions above. Minimum
+working RAM, a universal minimum disk requirement and peak RSS remain
+unestablished. New physical-device and inference acceptance remains paused.
+
+The separately observed Mac mini M4 / 16 GiB is a development/reference host
+only. It does not replace the MacBook Pro target or identify the hardware behind
+historical GGUF or MacBook Pro receipts. No historical receipt is amended by
+this selection.
+
+## Observed compatibility and evidence limits
 
 | Execution path / evidence | Confirmed observation | Unknown or excluded |
 | --- | --- | --- |
@@ -59,9 +79,9 @@ for the actual package. See [the full license manifest](../real-model-runtime/li
 | [Android native preview](../android-app/README.md) | Build target API29+, arm64-v8a; pinned JNI runtime and host-side verification; development APK builds | No named physical Android device tested; real install/inference, Keystore/lifecycle/TLS, thermal/battery impact and minimum RAM remain unverified |
 | [Windows/Linux preview](../edge-client/README.md) | Fixed-source native compilation/static artifacts exist for bounded linear arithmetic | No pretrained model runtime support or GUI/network/device execution qualification |
 
-No public artifact containing a Mac model identifier, M-series chip name and
-installed RAM was found in the checked-in evidence inventory. Those values are
-therefore not inferred from a hostname, developer machine or private recollection.
+The historical whole-model receipts do not identify the Mac model, M-series chip
+and installed RAM together. Those gaps are not filled from a hostname, the current
+development/reference host or private recollection.
 The reproducible model choice does not establish a hardware minimum.
 
 The Android source admission gate (512 MiB **available** memory, conservative
@@ -69,10 +89,14 @@ thermal/battery checks) is a policy gate, not a measured model requirement.
 Likewise Controller `available_memory_mb` is self-reported scheduling input;
 it does not measure peak RSS or qualify device suitability.
 
-## Remaining acceptance
+## Selection scope and remaining qualification
 
-[SPEC-03 #42](https://github.com/7onytang/LastCore/issues/42) retains the missing
-named-hardware configuration/minimum-memory evidence. Model-manifest-driven
+[SPEC-03 #42](https://github.com/7onytang/LastCore/issues/42) asks for a reproducible
+documented choice and model redistribution under its license. The fixed baseline,
+selected MacBook Pro target, reproduction instructions and license record address
+that selection scope. Actual target-device qualification, measured resource
+floors and peak profiling remain unestablished; this record does not present them
+as completed or add them to the original selection acceptance. Model-manifest-driven
 resource budgets and legacy model policy remain
 [#41](https://github.com/7onytang/LastCore/issues/41).
 The real model uses a separate runtime/whole-model worker, rather than the old
