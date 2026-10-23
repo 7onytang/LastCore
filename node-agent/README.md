@@ -91,6 +91,8 @@ python -m lastcore_node_agent \
 
 无需真实节点或模型的恢复回归：在 `node-agent/` 安装 `requirements-dev.txt` 后执行 `python -m pytest -q tests/test_credentials.py tests/test_settled_recovery.py tests/test_credential_recovery.py`。测试覆盖损坏文件原字节保留、凭据与 TTL 校验、启动前禁止网络/执行、运行中停止、合法旧状态及 512 条淘汰；不代表真实设备验收。
 
+终态报告收到 Controller ACK 后，只有磁盘 pending journal 清理成功才移除内存重放记录；若清理暂时失败，下次轮询按原 payload 重报，typed 结果在此期间继续阻止新任务。纯 Fake 验证：`python -m pytest -q tests/test_workload_contract.py -k ack_cleanup_failure`，覆盖普通状态与 typed 结果的清理失败、原 journal 保留及恢复后的幂等重报。
+
 `executor.py` 定义了唯一接入点：
 
 ```python

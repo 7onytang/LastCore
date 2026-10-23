@@ -83,6 +83,32 @@ def test_lost_ack_restart_replays_exact_durable_typed_payload(tmp_path):
     client.close()
 
 
+@pytest.mark.parametrize('typed', [False, True])
+def test_ack_cleanup_failure_keeps_pending_until_durable_retry(tmp_path, monkeypatch, typed):
+    import lastcore_node_agent.agent as agent_module
+    calls = []
+    agent, client = fixture(tmp_path, lambda request: (
+        calls.append(request) or httpx.Response(200, json=ack())))
+    args = (VALUES, binding()) if typed else ()
+    assert agent._record_pending('a', 'completed', None, *args)
+    original = (tmp_path / 'pending-reports.json').read_bytes()
+    clear = agent_module.clear_pending_report
+    def denied(*args):
+        raise PermissionError('fixture journal replacement denied')
+    monkeypatch.setattr(agent_module, 'clear_pending_report', denied)
+    agent._flush_pending_reports()
+    assert agent._pending == {'a': ('completed', None)}
+    assert (tmp_path / 'pending-reports.json').read_bytes() == original
+    if typed:
+        assert agent._pending_results == {'a': (VALUES, binding())}
+    monkeypatch.setattr(agent_module, 'clear_pending_report', clear)
+    agent._flush_pending_reports()
+    assert len(calls) == 2 and calls[0].content == calls[1].content
+    assert not agent._pending and not agent._pending_results
+    assert not load_pending_reports(tmp_path)
+    client.close()
+
+
 @pytest.mark.parametrize('change',['task','node','assignment','range','request','result','bool-result','invalid-status','bool-layer','404','409'])
 def test_unknown_ack_or_terminal_numeric_conflict_preserves_immutable_pending(tmp_path,change):
     reply=json.loads(json.dumps(ack()))
