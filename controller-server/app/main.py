@@ -144,6 +144,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
     def assignments(node_id: str, token: Annotated[str, Depends(credential)]):
         return {"assignments": store.assignments(node_id, token)}
 
+    @app.get("/v1/nodes/{node_id}/assignments/{assignment_id}")
+    def assignment(node_id: str, assignment_id: str, token: Annotated[str, Depends(credential)]):
+        return store.assignment(node_id, token, assignment_id)
+
     @app.post("/v1/nodes/{node_id}/assignments/{assignment_id}/report")
     def report(node_id: str, assignment_id: str, request: AssignmentReport,
                token: Annotated[str, Depends(credential)]):

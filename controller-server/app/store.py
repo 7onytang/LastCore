@@ -298,7 +298,7 @@ class Store:
     def assignments(self, node_id, token):
         with self.transaction() as db:
             self._node_auth(db, node_id, token)
-            # Include terminal commands until the node observes them; no silent reuse after expiry.
+            # Bounded history, not a durable terminal-command delivery queue.
             rows = db.execute("""SELECT DISTINCT t.* FROM tasks t JOIN assignments a ON a.task_id=t.id
                                  WHERE a.node_id=? ORDER BY t.created_at DESC LIMIT 100""", (node_id,)).fetchall()
             result = []
@@ -308,6 +308,19 @@ class Store:
                         result.append({**assignment, "task_status": task["status"],
                                        "request": task["request"], "deadline": task["deadline"]})
             return result
+
+    def assignment(self, node_id, token, assignment_id):
+        """Resolve one owned assignment independently of the bounded history window."""
+        with self.transaction() as db:
+            self._node_auth(db, node_id, token)
+            row = db.execute("SELECT task_id FROM assignments WHERE id=? AND node_id=?",
+                             (assignment_id, node_id)).fetchone()
+            if row is None:
+                raise HTTPException(404, "assignment not found")
+            task = self._task_view(db, row["task_id"])
+            assignment = next(a for a in task["assignments"] if a["id"] == assignment_id)
+            return {**assignment, "task_status": task["status"],
+                    "request": task["request"], "deadline": task["deadline"]}
 
     def report(self, node_id, token, assignment_id, report):
         with self.transaction() as db:
