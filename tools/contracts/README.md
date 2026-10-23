@@ -30,7 +30,13 @@ to [FastAPI's TestClient](https://fastapi.tiangolo.com/tutorial/testing/), which
 invokes the actual ASGI routes, validation, authentication, and temporary SQLite
 store. Responses are produced by the application; the bridge does not mock them.
 See also [HTTPX transports](https://www.python-httpx.org/advanced/transports/).
-Socket binding is prohibited by the fixture. Lifespan startup/shutdown runs through
+Socket binding during application requests is prohibited by the fixture. On Windows,
+CPython's asyncio portal startup uses an internal loopback socketpair for event-loop
+wakeups, so the binding guard is installed after TestClient starts. This is not an
+HTTP listener; every tested request still uses the in-process transport. See
+[CPython's event-loop self pipe](https://github.com/python/cpython/blob/3.12/Lib/asyncio/proactor_events.py)
+and [socketpair fallback](https://github.com/python/cpython/blob/3.12/Lib/socket.py).
+Lifespan startup/shutdown runs through
 TestClient, and event-controlled Fake executors perform no model or task compute.
 
 The tests drive NodeAgent poll steps directly instead of starting its continuous

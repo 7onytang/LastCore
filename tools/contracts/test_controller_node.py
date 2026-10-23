@@ -1,4 +1,4 @@
-"""Real FastAPI routes/SQLite plus real NodeAgent client; in-process, no sockets.
+"""Real FastAPI routes/SQLite plus real NodeAgent client; in-process HTTP.
 
 Ported from PR #27 (7458b15). Only executor work and clocks are controlled fakes.
 The transport forwards requests to TestClient; it never manufactures API replies.
@@ -60,11 +60,13 @@ class ControlledExecutor:
 def contract(tmp_path, monkeypatch):
     def no_bind(*_args, **_kwargs):
         pytest.fail('contract test attempted a socket bind')
-    monkeypatch.setattr(socket.socket, 'bind', no_bind)
     now = [1000.0]
     store = Store(str(tmp_path / 'controller.sqlite3'), 5, clock=lambda: now[0])
     settings = Settings(ADMIN, REGISTRATION, heartbeat_ttl_seconds=5)
     with TestClient(create_app(settings, store)) as admin:
+        # Windows asyncio creates an internal loopback socketpair at portal startup.
+        # The actual application requests below must never bind a server socket.
+        monkeypatch.setattr(socket.socket, 'bind', no_bind)
         transport = AppTransport(admin)
         client = ControllerClient(ORIGIN, transport=transport)
         executor = ControlledExecutor()

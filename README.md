@@ -271,7 +271,7 @@ pytest -q
 python scripts/smoke_idle_expiry.py
 ```
 
-Controller 与 Node Agent 的跨模块协议回归见 [`tools/contracts/README.md`](tools/contracts/README.md)：使用实际 FastAPI 路由、临时 SQLite 和 NodeAgent/ControllerClient，在进程内验证注册、心跳、报告、取消、TTL、同身份恢复及日志不含 token。独立 CI 在 Ubuntu、Windows、macOS 15 运行 Fake executor，无 socket 绑定、真实模型或用户设备验收。
+Controller 与 Node Agent 的跨模块协议回归见 [`tools/contracts/README.md`](tools/contracts/README.md)：使用实际 FastAPI 路由、临时 SQLite 和 NodeAgent/ControllerClient，在进程内验证注册、心跳、报告、取消、TTL、同身份恢复及日志不含 token。独立 CI 在 Ubuntu、Windows、macOS 15 运行 Fake executor，请求阶段禁止新 socket 绑定；Windows asyncio 启动内部唤醒 socketpair 会使用 loopback。不涉及真实模型或用户设备验收。
 
 ### 浏览器看板与多设备接力推理
 
