@@ -13,8 +13,21 @@ publishes that intent exclusively with a hard link; an existing marker is never
 overwritten. POSIX directory metadata is fsynced before the POST. A filesystem
 that cannot safely reserve the intent is rejected before network registration.
 
-The response must validate as NodeCredentials and be saved/read back successfully
-before the marker is removed. Transport failures, unusable success responses,
+The response must validate as NodeCredentials and be saved/read back successfully.
+On POSIX the state directory is then fsynced, making the credential rename durable
+under the filesystem's fsync contract, before the marker is unlinked. A failure at
+this pre-unlink barrier preserves the marker and enters recovery. The directory is
+fsynced again after unlink; a failure then still retains the already-synchronized
+identity, so restart reuses it even if the marker deletion is uncertain. Recovery
+with an existing identity and leftover marker follows the same ordering.
+
+On Windows the file writer uses Python's file fsync (`_commit`), atomic replacement,
+and readback, but this code does not implement directory/volume flush semantics.
+It therefore protects preserved state across normal process restart; it does not
+claim that readback establishes Windows power-loss durability. Filesystem/device
+failures or loss of all local evidence remain outside this local barrier guarantee.
+
+Transport failures, unusable success responses,
 credential-save failures, or HTTP error responses retain the intent and enter
 `recovery-required`. Although the current Controller's auth/validation rejection
 occurs before its creation transaction, a client cannot prove that an observed

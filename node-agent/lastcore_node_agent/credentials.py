@@ -140,12 +140,7 @@ def begin_registration(state_dir: Path) -> None:
         _atomic_write_json(staging, {'version': 1, 'phase': 'pending'})
         # Unlike replace(), link() never overwrites an already reserved intent.
         os.link(staging, path)
-        if os.name != 'nt':
-            directory = os.open(state_dir, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+        _sync_registration_directory(state_dir)
     except OSError:
         raise StateError('cannot reserve registration intent; preserve state for operator recovery') from None
     finally:
@@ -155,9 +150,22 @@ def begin_registration(state_dir: Path) -> None:
             pass  # The exclusive pending marker remains the admission barrier.
 
 
+def _sync_registration_directory(state_dir: Path) -> None:
+    if os.name == 'nt':
+        return  # File _commit/readback is not a Windows directory/power-loss guarantee.
+    directory = os.open(state_dir, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def clear_registration_pending(state_dir: Path) -> None:
-    # Called only after the validated node identity is durably saved/read back.
+    # A readback cannot establish rename durability. Persist the identity's
+    # directory entry before removing its intent, including leftover-intent recovery.
+    _sync_registration_directory(state_dir)
     (Path(state_dir) / REGISTRATION_PENDING_FILE).unlink()
+    _sync_registration_directory(state_dir)
 
 
 def _settled_entries(data) -> list[dict]:

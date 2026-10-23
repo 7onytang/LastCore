@@ -1,6 +1,8 @@
 """Credential admission/recovery fixtures. No real Controller or task execution."""
 import json
 import os
+from pathlib import Path
+import stat
 from unittest.mock import Mock
 
 import httpx
@@ -291,3 +293,97 @@ def test_existing_identity_offline_is_connection_retry_not_enrollment_recovery(t
     assert all(call.args[0]['connection'] == 'unreachable' for call in observer.call_args_list)
     assert (tmp_path / 'node-credentials.json').read_bytes() == original
     assert not load_registration_pending(tmp_path)
+
+
+def test_registration_persists_identity_directory_before_unlinking_intent(tmp_path, monkeypatch):
+    import lastcore_node_agent.agent as agent_implementation
+    import lastcore_node_agent.credentials as state_implementation
+    events = []
+    agent, client, _, _ = fixture_agent(tmp_path)
+    client.register.side_effect = lambda *args: (events.append('POST') or record())
+    real_fsync, real_replace = state_implementation.os.fsync, state_implementation.os.replace
+    real_read = agent_implementation.load_credentials
+    real_sync = state_implementation._sync_registration_directory
+    real_unlink = Path.unlink
+    def fsync(fd):
+        if 'POST' in events and not stat.S_ISDIR(os.fstat(fd).st_mode): events.append('file-fsync')
+        return real_fsync(fd)
+    def replace(source, target):
+        if Path(target).name == 'node-credentials.json': events.append('replace')
+        return real_replace(source, target)
+    def read(directory):
+        value = real_read(directory)
+        if 'POST' in events: events.append('readback')
+        return value
+    def sync(directory):
+        if 'POST' in events: events.append('directory-sync-barrier')
+        return real_sync(directory)
+    def unlink(path, *args, **kwargs):
+        if path.name == REGISTRATION_PENDING_FILE: events.append('unlink-intent')
+        return real_unlink(path, *args, **kwargs)
+    monkeypatch.setattr(state_implementation.os, 'fsync', fsync)
+    monkeypatch.setattr(state_implementation.os, 'replace', replace)
+    monkeypatch.setattr(agent_implementation, 'load_credentials', read)
+    monkeypatch.setattr(state_implementation, '_sync_registration_directory', sync)
+    monkeypatch.setattr(Path, 'unlink', unlink)
+    agent.ensure_credentials()
+    assert events == ['POST', 'file-fsync', 'replace', 'readback',
+                      'directory-sync-barrier', 'unlink-intent', 'directory-sync-barrier']
+
+
+def test_identity_directory_sync_failure_keeps_intent_on_initial_and_restart_paths(tmp_path, monkeypatch):
+    import lastcore_node_agent.credentials as implementation
+    sync = implementation._sync_registration_directory
+    def failed_sync(directory):
+        if (directory / 'node-credentials.json').exists():
+            raise PermissionError('private directory detail must not escape')
+        sync(directory)
+    monkeypatch.setattr(implementation, '_sync_registration_directory', failed_sync)
+    agent, client, _, _ = fixture_agent(tmp_path)
+    with pytest.raises(StateError, match='intent cleanup failed') as error: agent.run_forever()
+    assert 'private directory detail' not in str(error.value)
+    marker = tmp_path / REGISTRATION_PENDING_FILE
+    marker_bytes = marker.read_bytes()
+    identity = (tmp_path / 'node-credentials.json').read_bytes()
+    client.register.assert_called_once()
+    restarted, other, _, _ = fixture_agent(tmp_path)
+    with pytest.raises(StateError, match='intent cleanup failed'): restarted.run_forever()
+    assert marker.read_bytes() == marker_bytes
+    assert (tmp_path / 'node-credentials.json').read_bytes() == identity
+    assert other.mock_calls == []
+    monkeypatch.setattr(implementation, '_sync_registration_directory', sync)
+    recovered, no_registration, _, _ = fixture_agent(tmp_path)
+    assert recovered.ensure_credentials() == NodeCredentials.from_record(record())
+    assert not marker.exists() and no_registration.mock_calls == []
+
+
+def test_post_unlink_sync_failure_still_leaves_synchronized_identity_for_restart(tmp_path, monkeypatch):
+    import lastcore_node_agent.credentials as implementation
+    sync = implementation._sync_registration_directory
+    events = []
+    def failed_last_sync(directory):
+        events.append('directory-sync')
+        if len(events) == 3: raise OSError('fixture deletion persistence failure')
+        sync(directory)
+    monkeypatch.setattr(implementation, '_sync_registration_directory', failed_last_sync)
+    agent, client, _, _ = fixture_agent(tmp_path)
+    with pytest.raises(StateError, match='intent cleanup failed'): agent.run_forever()
+    assert len(events) == 3 and not (tmp_path / REGISTRATION_PENDING_FILE).exists()
+    assert load_credentials(tmp_path) == NodeCredentials.from_record(record())
+    restarted, other, _, _ = fixture_agent(tmp_path)
+    assert restarted.ensure_credentials() == agent.credentials
+    assert other.mock_calls == [] and client.register.call_count == 1
+
+
+def test_posix_directory_sync_closes_descriptor_even_when_fsync_fails(monkeypatch, tmp_path):
+    import lastcore_node_agent.credentials as implementation
+    from types import SimpleNamespace
+    events = []
+    def fsync(fd):
+        events.append(('fsync', fd))
+        raise OSError('fixture directory sync failure')
+    monkeypatch.setattr(implementation, 'os', SimpleNamespace(name='posix', O_RDONLY=0, O_DIRECTORY=65536,
+        open=lambda directory, flags: (events.append(('open', directory, flags)) or 71),
+        fsync=fsync, close=lambda fd: events.append(('close', fd))))
+    with pytest.raises(OSError): implementation._sync_registration_directory(tmp_path)
+    assert events == [('open', tmp_path, 65536), ('fsync', 71), ('close', 71)]
