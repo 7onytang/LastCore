@@ -7,19 +7,23 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from linear_edge import Session, VERSION
-from view_state import device_status, task_result_labels, NO_CONFIRMED_RESULT
+from view_state import device_status, task_result_labels, NO_CONFIRMED_RESULT, admission_text, recent_error_text
 
 
 def main():
     root = tk.Tk()
     root.title(f"LastCore Edge {VERSION} · 本机线性任务")
-    root.geometry("720x430")
+    root.geometry("720x600")
     file = tk.StringVar()
     verified_origin = tk.StringVar(value="https://8.134.161.123")
     status = tk.StringVar(value="未连接")
     node = tk.StringVar(value="未加载")
     task = tk.StringVar(value="空闲")
     result = tk.StringVar(value=NO_CONFIRMED_RESULT)
+    actual_origin = tk.StringVar(value="尚未加载会话")
+    resources = tk.StringVar(value="配置资源尚未加载")
+    admission = tk.StringVar(value="未运行")
+    recent_errors = tk.StringVar(value="暂无已观察错误")
     state = {"session": None, "thread": None, "error": None, "stopping": False}
     panel = ttk.Frame(root, padding=20)
     panel.pack(fill="both", expand=True)
@@ -31,7 +35,7 @@ def main():
     ttk.Button(line, text="选择现有节点配置", command=lambda: file.set(filedialog.askopenfilename())).pack(side="right")
     ttk.Label(panel, text="确认原节点凭据的签发源（HTTPS）").pack(anchor="w")
     ttk.Entry(panel, textvariable=verified_origin).pack(fill="x", pady=6)
-    for label, variable in (("连接状态", status), ("本机节点 ID", node), ("当前/最近任务", task), ("最近已确认结果", result)):
+    for label, variable in (("连接状态", status), ("本机节点 ID", node), ("当前/最近任务", task), ("最近已确认结果", result), ("实际 Controller", actual_origin), ("资源摘要", resources), ("接收新任务", admission), ("近期错误", recent_errors)):
         row = ttk.Frame(panel)
         row.pack(fill="x", pady=5)
         ttk.Label(row, text=label + "：", width=16).pack(side="left")
@@ -62,19 +66,46 @@ def main():
         status.set("连接中，等待真实心跳")
 
     def stop():
-        state["stopping"] = True
         session = state["session"]
-        if session is not None:
-            session.agent.shutdown()
+        thread = state['thread']
+        if session is None or thread is None or not thread.is_alive():
+            state['stopping'] = False
+            status.set('已停止')
+            admission.set('未运行')
+            return
+        state["stopping"] = True
+        session.agent.shutdown()
         status.set("正在停止本机任务")
+
+    def set_accepting(value):
+        session, thread = state['session'], state['thread']
+        if session is None or thread is None or not thread.is_alive() or state['stopping']:
+            return
+        try:
+            session.set_accepting_tasks(value)
+            admission.set('恢复接单待确认' if value else '暂停接单待确认')
+        except (ValueError, OSError):
+            admission.set('控制请求未完成，请重试')
+
+    def pause():
+        set_accepting(False)
+
+    def resume():
+        set_accepting(True)
 
     def refresh():
         session, thread = state["session"], state["thread"]
         if session is not None and thread is not None:
             alive = thread.is_alive()
             age = time.monotonic() - session.client.last_heartbeat
+            snapshot = session.status_snapshot()
             status.set(device_status(alive,age,session.config.accepting_tasks,state['stopping'],
-                                     state['error'],session.client.recovery_required))
+                                     state['error'],session.client.recovery_required, snapshot.get('admission'),
+                                     session.admission_request_id, snapshot.get('connection')))
+            actual_origin.set(snapshot['controller_origin'])
+            resources.set(f"配置上报内存 {snapshot['available_memory_mb']} MiB · 权重 {snapshot['compute_weight']} · {snapshot['cpu_logical'] or 'Unavailable'} 逻辑核心（非占用测量）")
+            admission.set(admission_text(snapshot.get('admission'), session.admission_request_id, alive, state['stopping']))
+            recent_errors.set(recent_error_text(snapshot.get('recent_errors', [])))
             run = session.agent._current_run()
             confirmed = session.client.acknowledged_result
             completed_task, completed_values = confirmed if confirmed is not None else (None, None)
@@ -85,12 +116,15 @@ def main():
         else:
             task.set("空闲")
             result.set(NO_CONFIRMED_RESULT)
+            admission.set('未运行')
         root.after(500, refresh)
 
     buttons = ttk.Frame(panel)
     buttons.pack(fill="x", pady=14)
     ttk.Button(buttons, text="连接并接收任务", command=start).pack(side="left")
     ttk.Button(buttons, text="停止本机执行", command=stop).pack(side="left", padx=10)
+    ttk.Button(buttons, text="暂停接单", command=pause).pack(side="left", padx=5)
+    ttk.Button(buttons, text="恢复接单", command=resume).pack(side="left", padx=5)
 
     def close():
         stop()

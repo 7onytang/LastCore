@@ -148,3 +148,17 @@ Verification is pure Mock/view-state and static HTML only; it does not launch Tk
 start a worker, create a task, access credentials or validate a native device.
 Published preview archives and their source identities are unchanged by this
 source-only fix.
+
+## 本机暂停/恢复与状态确认
+
+既有配置/GUI 启动方式保持不变。portable 仍只执行有界线性任务、复用现有节点身份；不切换到 Python desktop 的 tiny/demo backend。界面显示实际已加载会话的安全 Controller origin、配置上报内存/权重及逻辑核心数；它们不是当前内存占用测量。
+
+暂停/恢复直接调用同进程 NodeAgent 的接单接口，不重启或停止当前任务。接单请求先显示“待确认”，只有最新 request ID 对应的心跳 ACK 才显示已暂停/接收任务；断网、清理和恢复屏障保持可见。近期错误仅显示安全原因码。未建立会话时点击停止直接显示已停止，不留下永久的停止中状态。任务与上一份已确认结果仍按各自任务 ID 分开显示。
+
+生产 Session observer/回调和标签的离线回归（不创建 Tk 窗口、网络连接、真实 worker 或模型）：
+
+```sh
+(cd edge-client && python -m pytest -q tests/test_gui_view.py tests/test_admission_view.py tests/test_runtime_binding_inputs.py)
+```
+
+新增运行依赖 `local_status.py`、`local_control.py` 已列入 portable 的必需源码绑定清单；没有重生成锁、许可证或历史预览包。Fake 控件只承接真实回调输出，不等于完整 Tk GUI 或真实设备验收。

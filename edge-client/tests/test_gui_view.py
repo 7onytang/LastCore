@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from view_state import device_status,task_result_labels,NO_CONFIRMED_RESULT
+from view_state import device_status,task_result_labels,NO_CONFIRMED_RESULT,admission_text,recent_error_text
 
 class Variable:
     def __init__(self,value=''):self.value=value
@@ -26,9 +26,13 @@ def fixture(last_task=None,last_result=None,active=None):
         acknowledged_result=(last_task,tuple(last_result)) if last_task and last_result is not None else None)
     session=SimpleNamespace(client=client,config=SimpleNamespace(accepting_tasks=True),
         agent=SimpleNamespace(_current_run=lambda:SimpleNamespace(task_id=active) if active else None))
+    session.admission_request_id=None
+    session.status_snapshot=lambda:{'controller_origin':'https://actual.invalid','available_memory_mb':512,'compute_weight':1,'cpu_logical':4,'admission':None,'recent_errors':[]}
     return {'state':{'session':session,'thread':SimpleNamespace(is_alive=lambda:True),'error':None,'stopping':False},
         'root':SimpleNamespace(after=lambda *args:None),'time':SimpleNamespace(monotonic=lambda:101),
         'task':Variable(),'result':Variable(),'status':Variable(),
+        'actual_origin':Variable(),'resources':Variable(),'admission':Variable(),'recent_errors':Variable(),
+        'admission_text':admission_text,'recent_error_text':recent_error_text,
         'device_status':device_status,'task_result_labels':task_result_labels,'NO_CONFIRMED_RESULT':NO_CONFIRMED_RESULT}
 
 
@@ -87,3 +91,26 @@ def test_gui_reads_atomic_binding_despite_mixed_legacy_attributes():
     client.acknowledged_result=('B',(.75,))
     refresh()
     assert view['result'].value=='已确认任务 B：0.75000000'
+
+
+def test_stop_without_a_session_does_not_remain_stopping():
+    view=fixture();view['state']['session']=None;view['state']['thread']=None
+    callback('stop',view)()
+    assert not view['state']['stopping']
+    assert view['status'].value=='已停止' and view['admission'].value=='未运行'
+
+
+def test_real_pause_resume_callbacks_only_change_admission_not_stop():
+    view=fixture();calls=[]
+    view['state']['session'].set_accepting_tasks=lambda value:calls.append(value)
+    view['set_accepting']=callback('set_accepting',view)
+    callback('pause',view)();callback('resume',view)()
+    assert calls==[False,True] and not view['state']['stopping']
+    assert view['admission'].value=='恢复接单待确认'
+
+
+def test_refresh_shows_actual_session_origin_and_configured_resources():
+    view=fixture();callback('refresh',view)()
+    assert view['actual_origin'].value=='https://actual.invalid'
+    assert '配置上报内存 512 MiB' in view['resources'].value
+    assert '非占用测量' in view['resources'].value
