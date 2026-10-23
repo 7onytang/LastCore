@@ -83,6 +83,9 @@ def _windows_private_acl(path):
         allowed = {user_string.value, 'BA', 'SY', 'S-1-5-32-544', 'S-1-5-18'}
         if owner.group(1) not in allowed:
             raise ControlError('control path belongs to another owner')
+        # CPython's private mkdir(0700) uses OW (Owner Rights), not the literal SID.
+        # Its owner was checked above, so this symbolic principal has the same scope.
+        allowed.add('OW')
         for ace in aces:
             fields = ace.split(';')
             if len(fields) != 6 or fields[0] not in {'A', 'D'}:

@@ -40,7 +40,8 @@ directories, and nonprivate files are rejected without applying a command.
 The writer reuses the existing credential journal's atomic fsync/replace helper;
 it never reads credentials. On POSIX both file and parent must belong to the
 current user and have no group/other access. Windows checks native owner/DACL:
-allow ACEs must target the current user, Administrators, or SYSTEM. A private
+allow ACEs must target the current user, Administrators, SYSTEM, or Owner Rights
+after verifying that the actual owner is one of those principals. A private
 `TemporaryDirectory` on Python 3.12.4+ establishes the required Windows directory
 ACL; chmod mode bits alone do not establish Windows privacy.
 
