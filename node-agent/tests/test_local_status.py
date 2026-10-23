@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from pathlib import Path
 from lastcore_node_agent.local_status import LocalStatusWriter
@@ -17,7 +18,8 @@ def test_status_file_allowlist_drops_secrets_payloads_and_provider_fields(tmp_pa
     saved=path.read_text()
     assert 'secret-credential' not in saved and 'private-' not in saved
     assert json.loads(saved)['task']['result']['output_shape']==[1,1,64]
-    assert path.stat().st_mode & 0o077 == 0
+    if os.name != 'nt':
+        assert path.stat().st_mode & 0o077 == 0  # POSIX mode bits are not a Windows ACL check.
     writer({'task_update':{'assignment_id':'another-stage','status':'failed'}})
     assert json.loads(path.read_text())['task']['status']=='completed'
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from pathlib import Path
 import tempfile
 import threading
@@ -37,6 +38,26 @@ def safe_task(value):
     return task
 
 
+def safe_admission(value):
+    """Only explicit booleans and matching acknowledgement identities are visible."""
+    if not isinstance(value, dict) or type(value.get('desired')) is not bool:
+        return None
+    confirmed = value.get('confirmed')
+    if confirmed is not None and type(confirmed) is not bool:
+        return None
+    identifiers = {}
+    for key in ('request_id', 'confirmed_request_id'):
+        item = value.get(key)
+        if item is not None and (not isinstance(item, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', item)):
+            return None
+        identifiers[key] = item
+    if value.get('status') not in ('pending', 'confirmed'):
+        return None
+    matched = confirmed is value['desired'] and identifiers['request_id'] == identifiers['confirmed_request_id']
+    return {'desired': value['desired'], 'confirmed': confirmed, **identifiers,
+            'status': 'confirmed' if value['status'] == 'confirmed' and matched else 'pending'}
+
+
 class LocalStatusWriter:
     def __init__(self,path):
         self.path=Path(path); self.lock=threading.Lock()
@@ -50,6 +71,8 @@ class LocalStatusWriter:
             for key in ['last_heartbeat','heartbeat_ttl']:
                 value=updates.get(key)
                 if isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and value>0: self.value[key]=value
+            if 'admission' in updates: self.value['admission']=safe_admission(updates['admission'])
+            if 'control_error' in updates: self.value['control_error']='invalid-command' if updates['control_error']=='invalid-command' else None
             if 'task' in updates: self.value['task']=safe_task(updates['task'])
             patch=safe_task(updates.get('task_update'))
             if patch and self.value['task'] and patch.get('assignment_id')==self.value['task'].get('assignment_id'):

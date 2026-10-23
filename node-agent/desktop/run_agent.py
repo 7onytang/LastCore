@@ -18,6 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env-file", required=True,
                         help="private KEY=VALUE configuration file; values are never shell-evaluated")
     parser.add_argument("--ui-status-file",help=argparse.SUPPRESS)
+    parser.add_argument("--ui-control-file",help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
         values = read_env_file(args.env_file)
@@ -43,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         if sibling_path.is_dir(): sys.path.insert(0,str(sibling_path))
     sys.argv = ["lastcore-node-agent"]
     if args.ui_status_file: sys.argv.extend(["--ui-status-file",args.ui_status_file])
+    if args.ui_control_file: sys.argv.extend(["--ui-control-file",args.ui_control_file])
     try:
         runpy.run_module("lastcore_node_agent", run_name="__main__")
     except ValueError:

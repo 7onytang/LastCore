@@ -156,3 +156,20 @@ Task data includes the accepted own task/assignment identity, executor/model, la
 CPU comes from two actual OS counter samples, not a new request thread's meaningless first baseline. Available/total memory comes from psutil virtual_memory. Unknown/unsupported metrics remain `Unavailable`; GPU/NPU availability is not inferred. Optional sampler `psutil==7.2.2` (BSD-3-Clause) installs only in the chosen environment. Windows node execution remains unsupported by the baseline fcntl lock; this work does not port or release it.
 
 Legacy stop applies to this local process only. UI cleanup-confirmed state occurs only after the executor thread finishes; grace timeout stays stop-unconfirmed. The legacy assignment API has no separate stop-ack route and retains its existing no-completion-report cancellation behavior. The UI therefore distinguishes local stop from Controller task convergence; it cannot claim global cancellation or an acknowledgment that was not sent. Successful completion shows acknowledgment only after the existing terminal report actually succeeds.
+
+## 接单控制与本机状态
+
+源码面板仍使用既有 `python desktop/ui.py --env-file <私有配置>` 入口，不改变 stage/demo 选择。地址显示为已加载私有配置的 Controller origin，配置上报内存/权重与 OS 测量分开；缺少传感器时保留 Unavailable，不把配置内存当实际空闲值。近期错误仅保留有界安全原因码，不展示 token、配置路径或原始进程日志。
+
+“暂停接单”只禁止新执行，不取消当前任务；心跳、取消观察和结果上报继续运行。“恢复接单”同样先显示待确认。父进程在原有私有临时目录原子写入 control.json，显式传递 `--ui-control-file` 给子进程。只有观察到同 request ID、同确认 ID、相同布尔值且 `status=confirmed` 的心跳 ACK，界面才显示确认；旧 ACK 或仅有相同布尔值不足以确认。进程停止中保留等待确认状态，并禁止再次启动。协议细节见 [CONTROL_PROTOCOL.md](../CONTROL_PROTOCOL.md)。
+
+以下测试调用实际 NodeProcess/launcher/HTTP dispatch 和生产 JS，仅将子进程、传输或时钟替换为 Fake；不启动 GUI、HTTP/TCP listener、真实 worker 或模型：
+
+```sh
+(cd node-agent && python -m pytest -q tests/test_desktop_admission.py tests/test_local_status.py tests/test_resource_snapshot.py tests/test_desktop_ui.py -k 'not local_controls_require')
+node --test controller-server/tests-ui/desktop.test.cjs
+```
+
+这提供源码逻辑与事件绑定证据，不是现有冻结 bundle/用户设备的运行验收；本改动不会更新历史下载附件。
+
+独立 `Desktop controls` workflow 在 Ubuntu、Windows、macOS 15 执行上述 Fake/NodeVM 回归；只安装 Node Agent 声明的测试依赖，不运行 Tk、浏览器、listener 或模型。新的 Python 环境先按 [Python 官方安全公告](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576) 的固定 pip 26.2.2 wheel/hash 引导，再安装业务测试依赖。
