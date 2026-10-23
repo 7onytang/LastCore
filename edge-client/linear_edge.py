@@ -21,6 +21,7 @@ for directory in (ROOT / "node-agent", ROOT / "node-agent/desktop"):
 
 from env_file import read_env_file
 from lastcore_node_agent.agent import NodeAgent
+from lastcore_node_agent.local_status import safe_admission
 from lastcore_node_agent.config import AgentConfig
 from lastcore_node_agent.controller import ControllerClient, ControllerError
 from lastcore_node_agent.credentials import _atomic_write_json, acquire_state_lock, load_credentials
@@ -193,6 +194,11 @@ class Session:
         if self.lock is None:
             raise ValueError("State directory is already in use; exit the old client first")
         self.client = None
+        self.close_lock = threading.Lock()
+        self.closed = False
+        self.observation_lock = threading.Lock()
+        self.observation = {'connection':'starting', 'admission':None, 'recent_errors':[]}
+        self.admission_request_id = None
         try:
             credentials = load_credentials(self.config.state_dir)
             if credentials is None:
@@ -208,16 +214,63 @@ class Session:
             self.node_id = credentials.node_id
             self.client = LinearController(current_origin, self.config.state_dir)
             self.agent = LinearNodeAgent(self.config, self.client,
-                                   executor_factory=lambda: LinearExecutor(self.config.state_dir))
+                                   executor_factory=lambda: LinearExecutor(self.config.state_dir), observer=self._observe)
             self.client.on_recovery_required = self.agent.shutdown
         except Exception:
             self.lock.close()
             raise
 
+    def _observe(self, updates):
+        with self.observation_lock:
+            for key in ('connection', 'poll_status'):
+                if key in updates:
+                    self.observation[key] = str(updates[key])[:32]
+            if 'admission' in updates:
+                self.observation['admission'] = safe_admission(updates['admission'])
+            if updates.get('poll_status') in {'unavailable','rejected'}:
+                code = 'poll-' + updates['poll_status']
+                errors = self.observation['recent_errors']
+                if not errors or errors[-1] != code:
+                    self.observation['recent_errors'] = (errors + [code])[-8:]
+            reason = updates.get('connection')
+            if reason not in {'unreachable','heartbeat-failed','rejected','recovery-required'}:
+                reason = (updates.get('task_update') or {}).get('error_code')
+            if reason in {'unreachable','heartbeat-failed','rejected','recovery-required','deadline','heartbeat-stall','execution_failed','executor_unavailable','cleanup_timeout'}:
+                errors = self.observation['recent_errors']
+                if not errors or errors[-1] != reason:
+                    self.observation['recent_errors'] = (errors + [reason])[-8:]
+
+    def status_snapshot(self):
+        with self.observation_lock:
+            return {**self.observation, 'recent_errors':list(self.observation['recent_errors']),
+                    'controller_origin':origin(self.config.controller_url),
+                    'available_memory_mb':self.config.available_memory_mb,
+                    'compute_weight':self.config.compute_weight,
+                    'cpu_logical':os.cpu_count(), 'execution_alive':self.has_live_execution()}
+
+    def set_accepting_tasks(self, value):
+        if type(value) is not bool:
+            raise ValueError('accepting must be a boolean')
+        import uuid
+        request_id = uuid.uuid4().hex
+        self.agent.set_accepting_tasks(value, request_id=request_id)
+        self.admission_request_id = request_id
+        return request_id
+
+    def has_live_execution(self):
+        return self.agent.has_live_execution()
+
     def close(self):
-        if self.client is not None:
-            self.client.close()
-        self.lock.close()
+        with self.close_lock:
+            if self.closed:
+                return True
+            if self.has_live_execution():
+                return False  # Main-loop completion is not executor cleanup confirmation.
+            if self.client is not None:
+                self.client.close()
+            self.lock.close()
+            self.closed = True
+            return True
 
 
 def main():

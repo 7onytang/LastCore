@@ -98,7 +98,7 @@ async function localRequest(path, method = 'GET') {
 let localLoading = false;
 const taskStates = {'preparing':'准备中','running':'执行中','completed':'本机完成','failed':'执行失败',
   'stopping':'正在停止','stopped-local':'本机已停止','stop-unconfirmed':'停止未确认'};
-const ownErrors = {'shutdown':'用户停止本机执行','deadline':'任务超时','heartbeat-stall':'心跳中断',
+const ownErrors = {'poll-unavailable':'任务轮询不可达','poll-rejected':'任务轮询被拒绝','shutdown':'用户停止本机执行','deadline':'任务超时','heartbeat-stall':'心跳中断',
   'task-terminal':'Controller 任务已结束','local-cancel':'本机取消','execution_failed':'本机执行失败',
   'executor_unavailable':'执行器不可用','cleanup_timeout':'清理尚未确认'};
 const ownConnection = {'connected':'心跳已确认','unreachable':'连接不可达','heartbeat-failed':'心跳失败',
@@ -106,6 +106,15 @@ const ownConnection = {'connected':'心跳已确认','unreachable':'连接不可
 function renderOwnState(state) {
   const observation = state.observation || {}, task = observation.task, device = state.device || {};
   $('own-node-id').textContent = observation.node_id || '—';
+  $('own-controller-origin').textContent = state.controller_origin || 'Unavailable';
+  const configured = state.configured_resources || {};
+  $('own-configured-resources').textContent = `内存 ${configured.available_memory_mb ?? 'Unavailable'} MiB · 权重 ${configured.compute_weight ?? 'Unavailable'}（配置值，非占用测量）`;
+  const admission = observation.admission;
+  const confirmed = admission && typeof admission.desired === 'boolean' && admission.status === 'confirmed' && admission.confirmed === admission.desired && admission.request_id === admission.confirmed_request_id;
+  $('own-admission').textContent = !state.running ? '未运行' : state.stopping ? '停止中，接单状态未确认' : !admission || typeof admission.desired !== 'boolean' ? '接单状态未确认' : confirmed ? admission.desired ? '接收新任务 · 心跳已确认' : '暂停接单 · 心跳已确认' : admission.desired ? '恢复接单待确认' : '暂停接单待确认';
+  const errorLabels = {...ownConnection, ...ownErrors, 'invalid-command':'控制命令无效', 'recovery-required':'恢复待确认'};
+  const recent = Array.isArray(state.recent_errors) ? state.recent_errors.slice(-8).filter(code => Object.hasOwn(errorLabels,code)).map(code => errorLabels[code]) : [];
+  $('own-recent-errors').textContent = recent.join('；') || '暂无已观察错误';
   $('own-connection').textContent = ownConnection[observation.connection] || 'Unavailable';
   $('own-heartbeat').textContent = observation.last_heartbeat ? date(observation.last_heartbeat) : '—';
   $('own-cpu').textContent = Number.isFinite(device.cpu_percent) ? `${device.cpu_percent}% · ${device.cpu_logical ?? '—'} 逻辑核心` : 'Unavailable · 尚无有效采样';
@@ -127,8 +136,8 @@ function renderOwnState(state) {
 }
 async function localState(action) {
   if (localLoading) return; localLoading = true;
-  $('start-agent').disabled = true; $('stop-agent').disabled = true; $('refresh-local').disabled = true;
-  if (action) { $('process-status').textContent = action === 'start' ? '正在启动…' : '正在停止…'; }
+  $('start-agent').disabled = true; $('stop-agent').disabled = true; $('pause-agent').disabled = true; $('resume-agent').disabled = true; $('refresh-local').disabled = true;
+  if (action) { $('process-status').textContent = {start:'正在启动…',stop:'正在停止…',pause:'正在请求暂停接单…',resume:'正在请求恢复接单…'}[action]; }
   try {
     if (!localKey) throw new Error('本地会话已失效，请从启动终端重新打开原始面板链接。');
     const state = await localRequest(action ? `/desktop/${action}` : '/desktop/state', action ? 'POST' : 'GET');
@@ -141,6 +150,9 @@ async function localState(action) {
     $('start-agent').textContent = state.exit_code !== null && state.exit_code !== 0 ? '重试启动' : '连接并启动';
     $('stop-agent').textContent = state.stopping ? '正在停止…' : '停止本机执行';
     $('start-agent').disabled = state.running; $('stop-agent').disabled = !state.running || state.stopping;
+    const admission = state.observation?.admission;
+    $('pause-agent').disabled = !state.running || state.stopping || admission?.desired === false;
+    $('resume-agent').disabled = !state.running || state.stopping || admission?.desired === true;
     $('refresh-local').hidden = true;
   } catch (error) {
     $('desktop-result').textContent = error.message; $('process-status').textContent = '状态未确认';
@@ -154,6 +166,8 @@ if (desktop) {
   $('refresh-local').addEventListener('click',() => localState());
   $('start-agent').addEventListener('click',() => localState('start'));
   $('stop-agent').addEventListener('click',() => localState('stop'));
+  $('pause-agent').addEventListener('click',() => localState('pause'));
+  $('resume-agent').addEventListener('click',() => localState('resume'));
   localState();
   setInterval(() => {if (!document.hidden) localState();},5000);
 }

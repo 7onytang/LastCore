@@ -9,9 +9,9 @@
 <p id="own-task-report" class="muted edge-note">任务数据只来自本机执行进程。</p>
 </section>
 <section class="card"><div class="section-head"><h2>设备状态</h2><span id="process-status" class="badge">未启动</span></div>
-<dl class="edge-details"><div><dt>本机节点 ID</dt><dd id="own-node-id">—</dd></div><div><dt>Controller 连接</dt><dd id="own-connection">未启动</dd></div><div><dt>最近心跳 · 北京</dt><dd id="own-heartbeat">—</dd></div><div><dt>CPU 使用率</dt><dd id="own-cpu">Unavailable</dd></div><div><dt>可用内存 / 总内存</dt><dd id="own-memory">Unavailable</dd></div><div><dt>加速器信息</dt><dd id="own-accelerator">Unavailable · 未采集 GPU/NPU</dd></div></dl>
+<dl class="edge-details"><div><dt>本机节点 ID</dt><dd id="own-node-id">—</dd></div><div><dt>Controller 地址</dt><dd id="own-controller-origin">—</dd></div><div><dt>配置上报资源</dt><dd id="own-configured-resources">—</dd></div><div><dt>接收新任务</dt><dd id="own-admission">未运行</dd></div><div><dt>近期错误</dt><dd id="own-recent-errors">暂无已观察错误</dd></div><div><dt>Controller 连接</dt><dd id="own-connection">未启动</dd></div><div><dt>最近心跳 · 北京</dt><dd id="own-heartbeat">—</dd></div><div><dt>CPU 使用率</dt><dd id="own-cpu">Unavailable</dd></div><div><dt>可用内存 / 总内存</dt><dd id="own-memory">Unavailable</dd></div><div><dt>加速器信息</dt><dd id="own-accelerator">Unavailable · 未采集 GPU/NPU</dd></div></dl>
 <small id="own-sampled" class="muted">资源指标尚未采样</small>
-<div class="actions edge-actions"><button id="start-agent" class="primary" disabled>连接并启动</button><button id="stop-agent" class="secondary" hidden disabled>停止本机执行</button><button id="refresh-local" class="secondary" hidden>重试状态查询</button></div>
+<div class="actions edge-actions"><button id="start-agent" class="primary" disabled>连接并启动</button><button id="stop-agent" class="secondary" hidden disabled>停止本机执行</button><button id="pause-agent" class="secondary" disabled>暂停接单</button><button id="resume-agent" class="secondary" disabled>恢复接单</button><button id="refresh-local" class="secondary" hidden>重试状态查询</button></div>
 <p id="desktop-result" role="status" class="muted">等待启动。运行模式由私有配置明确指定。</p>
 </section></div>
 <footer><span>仅本机状态</span><small>Asia/Shanghai · 预发布</small></footer>

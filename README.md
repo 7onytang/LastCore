@@ -418,3 +418,8 @@ python demo/export-standalone.py
 Android 仍按 `android-app/README.md` 使用固定 SDK/NDK 构建；资源/Java 编译、完整 APK 构建与真机推理是独立的验证层次。
 
 桌面源码节点面板已进一步限定为“当前任务 / 设备状态”两卡，独立页面没有管理员凭据、全节点列表、派活或全局取消。安装其项目级依赖：`python -m pip install -r node-agent/desktop/requirements-ui.txt`。它显示本机接受的任务、分片与实际数值摘要，确认心跳按北京时间展示，CPU/内存来自本机 OS 采样，缺失时显示 `Unavailable`。该面板不是用户已有的 SwiftUI `LastCoreClient`；不能依据 App 名称或在线注册字段推断 live executor 兼容。legacy 停止只确认本机清理，Controller 后续收敛与停止确认协议的范围见桌面 README，未修改服务器协议。
+
+
+### Desktop 接单控制离线回归
+
+本机面板与 portable 线性 GUI 新增暂停/恢复接单及安全地址、配置资源和近期错误状态。暂停只禁新执行，保留当前任务、取消观察与回报；仅同 request ID 的心跳 ACK 确认接单状态。Python desktop 和 portable 分别沿用 tiny/demo 子进程与线性会话 backend，不混同能力。运行入口保持各模块 README；逻辑回归见 [desktop 接单控制](node-agent/desktop/README.md#接单控制与本机状态) 和 [portable 状态确认](edge-client/README.md#本机暂停恢复与状态确认)。本次源码与 Fake/NodeVM 证据不代表历史下载附件已更新或 GUI/设备已验收。
