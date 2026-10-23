@@ -21,7 +21,7 @@ python desktop/smoke_bundle.py
 
 集成候选还将 LastCore 自身的完整 MIT 许可证放入 `_internal/licenses/lastcore/LICENSE`，与仓库顶层 `LICENSE` 逐字节对应。此文件也纳入完整 bundle sidecar 的大小与 SHA256 清单；第三方条款仍独立保留。
 
-当前产物没有开发者身份签名/公证；macOS 14+ arm64 本机验证可用。Windows 安装模板仅参考，当前基线源码锁使用 fcntl，不能声称 Windows 可运行；未做 Windows 构建和验收。以下保留桌面运行/安装说明，其中历史结果不代替当前构建验收。
+当前 macOS bundle 没有开发者身份签名/公证；macOS 14+ arm64 本机验证范围保留。早期基线仅使用 `fcntl` 的 Windows 锁限制已由 [PR #70](https://github.com/7onytang/LastCore/pull/70) 修正：当前 `credentials.py` 在 Windows 使用 `msvcrt`，其他平台使用 `fcntl`，并有 Windows 状态／凭据 CI 回归。它不等于 Windows 完整注册、运行或安装验收。本目录 Windows 安装模板仍仅参考；另一个 [Windows/Linux 线性预览](../../edge-client/README.md) 已有原生构建和静态核验，GUI、联网、设备任务与安装验收仍未完成，也不能转作本 tiny bundle 的 Windows 验收。以下保留历史桌面运行／安装说明，不将历史结果转用于当前构建。
 
 # 桌面节点启动 / 配置 / 安装（LC-12）
 

@@ -198,6 +198,10 @@ docker cp "$(docker compose ps -q controller):/data/backups/$BACKUP_NAME" "backu
 
 ## API 与权限
 
+当前源码的请求约束、响应字段、鉴权、错误状态、重试／兼容和安全缺口统一记录在
+[Agent / Controller 契约](controller-server/API_CONTRACT.md)；固定模型、许可与硬件证据范围见
+[模型选择记录](controller-server/MODEL_SELECTION.md)。这些是源码与已有证据的核对记录，不表示未完成的跨平台、真机或签名验收已经通过。
+
 所有受保护接口使用 `Authorization: Bearer <token>`。注册 token 仅用于入网，管理员 token 用于创建和查看任务，注册返回的节点 token 仅管理该节点。节点 token 只返回一次，服务器保存 SHA-256 摘要；节点程序需要持久化 `node_id` 和 `node_token`。断线后使用原凭据重新发心跳，避免重复注册。
 
 | 方法 | 路径 | 凭据 | 用途 |
