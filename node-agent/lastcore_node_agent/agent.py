@@ -424,12 +424,14 @@ class NodeAgent:
         return True
 
     def _clear_pending(self, assignment_id: str) -> None:
-        self._pending.pop(assignment_id, None)
-        self._pending_results.pop(assignment_id, None)
         try:
             clear_pending_report(self.config.state_dir, assignment_id)
         except (OSError, StateError) as exc:
             LOG.error("could not clear pending terminal report for %s: %s", assignment_id, exc)
+            return
+        # Keep replay state and the typed-outcome fence until durable cleanup succeeds.
+        self._pending.pop(assignment_id, None)
+        self._pending_results.pop(assignment_id, None)
 
     def _attempt_terminal_report(self, assignment_id: str, status: str, error: str | None,
                                  result=None, binding=None) -> None:
