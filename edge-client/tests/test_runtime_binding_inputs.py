@@ -30,10 +30,18 @@ def test_snapshot_module_must_reach_the_actual_frozen_archive_gate():
     class Archive:
         toc={'PYZ.pyz':(0,1,1,0,'z')}
         def open_embedded_archive(self,name):
-            return SimpleNamespace(toc={'lastcore_node_agent.local_status':(0,1,2)})
-    assert manifest.require_control_module('fake.exe',lambda _:Archive(),required='lastcore_node_agent.local_status')=='lastcore_node_agent.local_status'
+            target=manifest.ROOT/'node-agent/lastcore_node_agent/local_status.py'
+            return SimpleNamespace(toc={'lastcore_node_agent.local_status':(0,1,2)},
+                extract=lambda required:compile(target.read_bytes(),'other-build-location','exec',dont_inherit=True,optimize=0))
+    assert manifest.require_snapshot_module('fake.exe',lambda _:Archive())=='lastcore_node_agent.local_status'
     class Missing(Archive):
         def open_embedded_archive(self,name):
             return SimpleNamespace(toc={'lastcore_node_agent.local_control':(0,1,2)})
-    with pytest.raises(RuntimeError,match='local_status'):
-        manifest.require_control_module('fake.exe',lambda _:Missing(),required='lastcore_node_agent.local_status')
+    with pytest.raises(RuntimeError,match='local_status.*missing'):
+        manifest.require_snapshot_module('fake.exe',lambda _:Missing())
+    class Stale(Archive):
+        def open_embedded_archive(self,name):
+            return SimpleNamespace(toc={'lastcore_node_agent.local_status':(0,1,2)},
+                extract=lambda required:compile('OLD_SNAPSHOT = True','old-build-location','exec'))
+    with pytest.raises(RuntimeError,match='differs from fixed source'):
+        manifest.require_snapshot_module('fake.exe',lambda _:Stale())

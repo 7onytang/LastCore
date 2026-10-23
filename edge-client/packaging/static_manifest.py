@@ -9,6 +9,7 @@ import re
 import struct
 import subprocess
 import sys
+import types
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -17,16 +18,56 @@ ROOT=Path(__file__).resolve().parents[2]
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def require_control_module(executable, archive_factory=None, required='lastcore_node_agent.local_control'):
+def require_control_module(executable, archive_factory=None, source=None):
     # Inspect the frozen PYZ without starting the client, GUI, node or a task.
     if archive_factory is None:
         from PyInstaller.archive.readers import CArchiveReader
         archive_factory = CArchiveReader
     archive = archive_factory(str(executable))
+    required = 'lastcore_node_agent.local_control'
+    source = source or ROOT / 'node-agent/lastcore_node_agent/local_control.py'
+    expected = compile(source.read_bytes(), str(source), 'exec', dont_inherit=True, optimize=0)
+    def normalized(code):
+        if isinstance(code, types.CodeType):
+            return code.replace(co_filename='<bound-source>', co_consts=tuple(normalized(v) for v in code.co_consts))
+        if isinstance(code, tuple):
+            return tuple(normalized(v) for v in code)
+        return code
     for name, entry in archive.toc.items():
-        if entry[-1] == 'z' and required in archive.open_embedded_archive(name).toc:
+        if entry[-1] != 'z':
+            continue
+        pyz = archive.open_embedded_archive(name)
+        if required in pyz.toc:
+            if normalized(pyz.extract(required)) != normalized(expected):
+                raise RuntimeError('Frozen local control helper differs from fixed source')
             return required
-    raise RuntimeError('Required local control helper missing from frozen executable: ' + required)
+    raise RuntimeError('Required local control helper missing from frozen executable')
+
+
+def require_snapshot_module(executable, archive_factory=None, source=None):
+    # Preserve the core helper gate; apply the same strict binding to UI snapshots.
+    if archive_factory is None:
+        from PyInstaller.archive.readers import CArchiveReader
+        archive_factory = CArchiveReader
+    archive = archive_factory(str(executable))
+    required = 'lastcore_node_agent.local_status'
+    source = source or ROOT / 'node-agent/lastcore_node_agent/local_status.py'
+    expected = compile(source.read_bytes(), str(source), 'exec', dont_inherit=True, optimize=0)
+    def normalized(code):
+        if isinstance(code, types.CodeType):
+            return code.replace(co_filename='<bound-source>', co_consts=tuple(normalized(v) for v in code.co_consts))
+        if isinstance(code, tuple):
+            return tuple(normalized(v) for v in code)
+        return code
+    for name, entry in archive.toc.items():
+        if entry[-1] != 'z':
+            continue
+        pyz = archive.open_embedded_archive(name)
+        if required in pyz.toc:
+            if normalized(pyz.extract(required)) != normalized(expected):
+                raise RuntimeError('Frozen local_status snapshot differs from fixed source')
+            return required
+    raise RuntimeError('Required local_status snapshot missing from frozen executable')
 
 
 def inspect_binary(path):
@@ -57,7 +98,7 @@ def main():
     extension='.exe' if sys.platform=='win32' else ''
     binaries={name:inspect_binary(bundle/(name+extension)) for name in ('LastCoreEdge','LastCoreLinearEdge')}
     control_modules={name:require_control_module(bundle/(name+extension)) for name in binaries}
-    snapshot_modules={name:require_control_module(bundle/(name+extension), required='lastcore_node_agent.local_status') for name in binaries}
+    snapshot_modules={name:require_snapshot_module(bundle/(name+extension)) for name in binaries}
     license_root=bundle/'_internal/licenses';license_data=json.loads((license_root/'manifest.json').read_text())
     for name,digest in license_data['files'].items():
         if sha(license_root/name)!=digest:raise RuntimeError('License transport mismatch: '+name)
