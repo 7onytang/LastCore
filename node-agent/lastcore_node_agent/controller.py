@@ -68,6 +68,21 @@ class ControllerClient:
         self._check(response)
         return response.json().get("assignments", [])
 
+    def assignment(self, node_id: str, node_token: str, assignment_id: str) -> dict:
+        response = self._client.get(
+            f"/v1/nodes/{node_id}/assignments/{assignment_id}",
+            headers=self._headers(node_token))
+        self._check(response)
+        try:
+            row = response.json()
+            if (not isinstance(row, dict) or row.get("id") != assignment_id
+                    or row.get("node_id") != node_id
+                    or row.get("task_status") not in ("queued", "running", "completed", "cancelled", "failed")):
+                raise ValueError("invalid assignment")
+        except (ValueError, TypeError):
+            raise ControllerError(503, "assignment lookup response mismatch") from None
+        return row
+
     def report(self, node_id: str, node_token: str, assignment_id: str, status: str,
                error: str | None = None, result=None) -> dict:
         payload = {"status": status, "error": error}

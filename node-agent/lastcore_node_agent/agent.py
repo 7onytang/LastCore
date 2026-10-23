@@ -77,6 +77,7 @@ class NodeAgent:
         self._heartbeat_lock = threading.Lock()
         self._last_heartbeat_ok = 0.0
         self._credential_error: str | None = None
+        self._assignment_lookup_supported = True
 
     def _notify(self, **updates) -> None:
         if self.observer is not None:
@@ -241,10 +242,30 @@ class NodeAgent:
         if self._heartbeat_stalled():
             run.context.request_cancel("heartbeat-stall")
             return
-        for row in rows:
-            if row.get("task_id") == run.task_id and row.get("task_status") in ("cancelled", "failed"):
-                run.context.request_cancel("task-terminal")
+        row = next((row for row in rows if row.get("id") == run.assignment_id
+                    and row.get("task_id") == run.task_id), None)
+        if row is None and self._assignment_lookup_supported:
+            assert self.credentials is not None
+            try:
+                row = self._guarded(self.client.assignment)(
+                    self.credentials.node_id, self.credentials.node_token, run.assignment_id)
+            except ControllerError as exc:
+                # FastAPI's default route-missing response differs from the owned-ID
+                # endpoint's "assignment not found". Neither is a stop acknowledgement.
+                if (exc.status_code == 404 and exc.detail == "Not Found") or exc.status_code in (405, 501):
+                    self._assignment_lookup_supported = False
+                    LOG.warning("controller lacks assignment lookup; using legacy latest-100 history "
+                                "until agent restart; cancellation outside that window may wait for deadline")
+                else:
+                    LOG.warning("active assignment lookup failed: %s", exc)
                 return
+            except httpx.HTTPError as exc:
+                LOG.warning("active assignment lookup unavailable: %s", exc)
+                return
+        if (row is not None and row.get("id") == run.assignment_id
+                and row.get("task_id") == run.task_id
+                and row.get("task_status") in ("cancelled", "failed")):
+            run.context.request_cancel("task-terminal")
 
     def _select_assignment(self, rows: list) -> dict | None:
         for row in reversed(rows):
