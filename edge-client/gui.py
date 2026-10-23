@@ -47,10 +47,16 @@ def main():
         except Exception as exc:
             state["error"] = type(exc).__name__
         finally:
-            session.close()
+            if not session.close():
+                state['stopping'] = True
 
     def start():
         if state["thread"] is not None and state["thread"].is_alive():
+            return
+        previous = state['session']
+        if previous is not None and not previous.close():
+            state['stopping'] = True
+            status.set('停止未确认 · 工作线程仍在运行')
             return
         try:
             session = Session(file.get(), verified_origin.get())
@@ -68,7 +74,8 @@ def main():
     def stop():
         session = state["session"]
         thread = state['thread']
-        if session is None or thread is None or not thread.is_alive():
+        if session is None or (not session.has_live_execution() and (thread is None or not thread.is_alive())):
+            if session is not None: session.close()
             state['stopping'] = False
             status.set('已停止')
             admission.set('未运行')
@@ -96,12 +103,20 @@ def main():
     def refresh():
         session, thread = state["session"], state["thread"]
         if session is not None and thread is not None:
-            alive = thread.is_alive()
-            age = time.monotonic() - session.client.last_heartbeat
+            loop_alive = thread.is_alive()
             snapshot = session.status_snapshot()
-            status.set(device_status(alive,age,session.config.accepting_tasks,state['stopping'],
-                                     state['error'],session.client.recovery_required, snapshot.get('admission'),
-                                     session.admission_request_id, snapshot.get('connection')))
+            execution_alive = snapshot['execution_alive']
+            alive = loop_alive or execution_alive
+            if not loop_alive:
+                state['stopping'] = execution_alive
+                if not execution_alive: session.close()
+            age = time.monotonic() - session.client.last_heartbeat
+            if not loop_alive and execution_alive:
+                status.set('停止未确认 · 工作线程仍在运行')
+            else:
+                status.set(device_status(alive,age,session.config.accepting_tasks,state['stopping'],
+                                         state['error'],session.client.recovery_required, snapshot.get('admission'),
+                                         session.admission_request_id, snapshot.get('connection')))
             actual_origin.set(snapshot['controller_origin'])
             resources.set(f"配置上报内存 {snapshot['available_memory_mb']} MiB · 权重 {snapshot['compute_weight']} · {snapshot['cpu_logical'] or 'Unavailable'} 逻辑核心（非占用测量）")
             admission.set(admission_text(snapshot.get('admission'), session.admission_request_id, alive, state['stopping']))
@@ -110,7 +125,7 @@ def main():
             confirmed = session.client.acknowledged_result
             completed_task, completed_values = confirmed if confirmed is not None else (None, None)
             task_text, result_text = task_result_labels(
-                run.task_id if run else None, completed_task, completed_values)
+                run.task_id if run and execution_alive else None, completed_task, completed_values)
             task.set(task_text)
             result.set(result_text)
         else:
@@ -128,7 +143,9 @@ def main():
 
     def close():
         stop()
-        if state["thread"] is not None and state["thread"].is_alive():
+        session = state['session']
+        if ((state["thread"] is not None and state["thread"].is_alive())
+                or (session is not None and not session.close())):
             status.set("等待本机停止确认")
             root.after(200, close)
         else:

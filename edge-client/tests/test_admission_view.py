@@ -17,7 +17,7 @@ def session():
     value.observation_lock=threading.Lock()
     value.observation={'connection':'starting','admission':None,'recent_errors':[]}
     value.admission_request_id=None
-    value.agent=SimpleNamespace(set_accepting_tasks=lambda desired,request_id:value._observe({'admission':{
+    value.agent=SimpleNamespace(has_live_execution=lambda:False,set_accepting_tasks=lambda desired,request_id:value._observe({'admission':{
         'desired':desired,'confirmed':None,'request_id':request_id,'confirmed_request_id':None,'status':'pending'}}))
     return value
 
@@ -82,7 +82,7 @@ def test_real_core_setter_and_heartbeat_ack_flow_through_production_session_obse
     value.agent=NodeAgent(value.config,client,clock=lambda:1000.0,observer=value._observe)
     try:
         value.agent.ensure_credentials();value.agent._send_heartbeat()
-        active=SimpleNamespace(context=SimpleNamespace(cancel=threading.Event()))
+        active=SimpleNamespace(context=SimpleNamespace(cancel=threading.Event()),worker=SimpleNamespace(is_alive=lambda:True))
         value.agent._active=active
         pause=value.set_accepting_tasks(False)
         assert admission_text(value.status_snapshot()['admission'],pause)=='暂停接单待确认'

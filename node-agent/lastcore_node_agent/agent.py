@@ -296,6 +296,11 @@ class NodeAgent:
         with self._active_lock:
             return self._active
 
+    def has_live_execution(self) -> bool:
+        """Read actual executor liveness without reaping, reporting or releasing it."""
+        with self._active_lock:
+            return self._active is not None and self._active.worker.is_alive()
+
     def _heartbeat_stalled(self) -> bool:
         assert self.credentials is not None
         with self._heartbeat_lock:

@@ -26,8 +26,10 @@ def fixture(last_task=None,last_result=None,active=None):
         acknowledged_result=(last_task,tuple(last_result)) if last_task and last_result is not None else None)
     session=SimpleNamespace(client=client,config=SimpleNamespace(accepting_tasks=True),
         agent=SimpleNamespace(_current_run=lambda:SimpleNamespace(task_id=active) if active else None))
+    session.has_live_execution=lambda:bool(active)
+    session.close=lambda:not session.has_live_execution()
     session.admission_request_id=None
-    session.status_snapshot=lambda:{'controller_origin':'https://actual.invalid','available_memory_mb':512,'compute_weight':1,'cpu_logical':4,'admission':None,'recent_errors':[]}
+    session.status_snapshot=lambda:{'controller_origin':'https://actual.invalid','available_memory_mb':512,'compute_weight':1,'cpu_logical':4,'admission':None,'recent_errors':[],'execution_alive':bool(active)}
     return {'state':{'session':session,'thread':SimpleNamespace(is_alive=lambda:True),'error':None,'stopping':False},
         'root':SimpleNamespace(after=lambda *args:None),'time':SimpleNamespace(monotonic=lambda:101),
         'task':Variable(),'result':Variable(),'status':Variable(),

@@ -194,6 +194,8 @@ class Session:
         if self.lock is None:
             raise ValueError("State directory is already in use; exit the old client first")
         self.client = None
+        self.close_lock = threading.Lock()
+        self.closed = False
         self.observation_lock = threading.Lock()
         self.observation = {'connection':'starting', 'admission':None, 'recent_errors':[]}
         self.admission_request_id = None
@@ -244,7 +246,7 @@ class Session:
                     'controller_origin':origin(self.config.controller_url),
                     'available_memory_mb':self.config.available_memory_mb,
                     'compute_weight':self.config.compute_weight,
-                    'cpu_logical':os.cpu_count()}
+                    'cpu_logical':os.cpu_count(), 'execution_alive':self.has_live_execution()}
 
     def set_accepting_tasks(self, value):
         if type(value) is not bool:
@@ -255,10 +257,20 @@ class Session:
         self.admission_request_id = request_id
         return request_id
 
+    def has_live_execution(self):
+        return self.agent.has_live_execution()
+
     def close(self):
-        if self.client is not None:
-            self.client.close()
-        self.lock.close()
+        with self.close_lock:
+            if self.closed:
+                return True
+            if self.has_live_execution():
+                return False  # Main-loop completion is not executor cleanup confirmation.
+            if self.client is not None:
+                self.client.close()
+            self.lock.close()
+            self.closed = True
+            return True
 
 
 def main():

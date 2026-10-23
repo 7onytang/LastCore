@@ -180,3 +180,8 @@ python -m pytest -q tests/test_gui_view.py tests/test_admission_view.py tests/te
 These are pure callback/Fake-core checks: no Tk window, actual model, device,
 Controller service or external network is started. Platform CI remains the
 final check; a local pass does not establish that every platform passed.
+
+
+### 同进程执行器停止确认
+
+portable 的 Agent 主循环结束不等于执行器线程已经释放资源。若插件超过停止宽限仍在运行，Session 保留 Controller client 和原状态锁，界面显示停止未确认、禁止新会话，并等待真实 worker 退出后才关闭窗口/释放锁。最后一条 observer 即使写着 stopped，也不能覆盖公开只读 `NodeAgent.has_live_execution()` 的实际结果。该 getter 不清理引用、不发送报告、不更改协议；本修复不强杀任意插件。生产回调与真实 core 的阻塞 Fake 验证入口为 `tests/test_stop_isolation.py`，不启动 GUI、listener 或模型。
