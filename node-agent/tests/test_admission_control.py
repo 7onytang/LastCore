@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import threading
 import subprocess
+import tempfile
 from types import SimpleNamespace
 
 import httpx
@@ -13,6 +14,13 @@ from lastcore_node_agent.agent import NodeAgent
 from lastcore_node_agent.controller import ControllerClient
 from lastcore_node_agent.local_control import ControlError, LocalControlReader, write_control_command
 from tests.helpers import make_config
+
+
+@pytest.fixture
+def private_control_dir(tmp_path):
+    # Windows chmod(0700) is not a DACL operation; use the documented secure creator.
+    with tempfile.TemporaryDirectory(dir=tmp_path) as name:
+        yield Path(name)
 
 
 def test_stale_heartbeat_cannot_confirm_new_request(fake, client, clock, tmp_path):
@@ -68,7 +76,8 @@ def test_poll_backoff_caps_and_success_resets_without_changing_heartbeat(fake, c
     assert stop.waits == [2, 4, 8, 16, 30, 30, 1, 2]
 
 
-def test_backoff_wait_is_interruptible_and_controls_have_independent_watchdog(fake, client, clock, tmp_path):
+def test_backoff_wait_is_interruptible_and_controls_have_independent_watchdog(fake, client, clock, private_control_dir):
+    tmp_path = private_control_dir
     path = tmp_path / 'command.json'
     tmp_path.chmod(0o700)
     agent = NodeAgent(make_config(tmp_path / 'state', poll_interval=30, watchdog_interval=.01),
@@ -121,7 +130,8 @@ def test_shutdown_timeout_retains_live_run_until_thread_exits(fake, client, cloc
     assert agent._current_run() is None and agent.stats.stopped == [assignment]
 
 
-def test_private_command_is_idempotent_and_rejects_reused_id(fake, client, tmp_path):
+def test_private_command_is_idempotent_and_rejects_reused_id(fake, client, private_control_dir):
+    tmp_path = private_control_dir
     tmp_path.chmod(0o700)
     path = tmp_path / 'control.json'
     reader = LocalControlReader(path)
@@ -143,7 +153,8 @@ def test_private_command_is_idempotent_and_rejects_reused_id(fake, client, tmp_p
     json.dumps({'version': 1, 'request_id': '../bad', 'accepting_tasks': False}),
     'x' * 1025,
 ])
-def test_bad_command_never_changes_admission(raw, client, tmp_path):
+def test_bad_command_never_changes_admission(raw, client, private_control_dir):
+    tmp_path = private_control_dir
     tmp_path.chmod(0o700)
     path = tmp_path / 'control.json'; path.write_text(raw); path.chmod(0o600)
     agent = NodeAgent(make_config(tmp_path / 'state'), client)
@@ -152,7 +163,8 @@ def test_bad_command_never_changes_admission(raw, client, tmp_path):
     assert agent.admission_state() == before
 
 
-def test_symlink_and_nonprivate_command_are_rejected(client, tmp_path):
+def test_symlink_and_nonprivate_command_are_rejected(client, private_control_dir):
+    tmp_path = private_control_dir
     tmp_path.chmod(0o700)
     path = tmp_path / 'control.json'
     target = tmp_path / 'target.json'

@@ -8,6 +8,8 @@ import logging
 import platform
 import socket
 import threading
+import tempfile
+from pathlib import Path
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -264,11 +266,16 @@ def test_pause_drains_active_work_and_resume_requires_current_heartbeat_ack(cont
     assert c.agent.stats.started == [task['assignments'][0]['id'], second['assignments'][0]['id']]
 
 
-def test_private_control_file_is_consumed_before_real_heartbeat_and_poll(contract, tmp_path):
+@pytest.fixture
+def private_control_dir(tmp_path):
+    with tempfile.TemporaryDirectory(dir=tmp_path) as name:
+        yield Path(name)
+
+
+def test_private_control_file_is_consumed_before_real_heartbeat_and_poll(contract, private_control_dir):
     from lastcore_node_agent.local_control import LocalControlReader, write_control_command
     c = contract
-    tmp_path.chmod(0o700)
-    path = tmp_path / 'control.json'
+    path = private_control_dir / 'control.json'
     c.agent.control_reader = LocalControlReader(path)
     write_control_command(path, 'pause-file', False)
     register(c)
