@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable
@@ -127,7 +129,23 @@ def _ensure_weights(model_config, weights_path: Path) -> Path:
     from inference_engine import generate_weights, save_weights
 
     weights_path.parent.mkdir(parents=True, exist_ok=True)
-    save_weights(weights_path, generate_weights(model_config, seed=0))
+    # NumPy appends .npz to other suffixes, so the unique sibling must end in .npz.
+    with tempfile.NamedTemporaryFile(dir=weights_path.parent,
+                                     prefix=f".{weights_path.name}.", suffix=".npz",
+                                     delete=False) as temporary:
+        temporary_path = Path(temporary.name)
+    try:
+        save_weights(temporary_path, generate_weights(model_config, seed=0))
+        with temporary_path.open("r+b") as completed:
+            os.fsync(completed.fileno())
+        try:
+            # First creation only: publish complete bytes atomically without replacing
+            # a checkpoint another initializer may have published in the meantime.
+            os.link(temporary_path, weights_path)
+        except FileExistsError:
+            pass
+    finally:
+        temporary_path.unlink(missing_ok=True)
     return weights_path
 
 
