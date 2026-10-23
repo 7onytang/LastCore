@@ -1,6 +1,6 @@
 # LastCore Android native preview
 
-Native Java application with a pinned official llama.cpp JNI backend for **local whole-model CPU inference**. The optional screen-bound Controller worker registers for explicitly assigned whole-model jobs. Pretrained multi-device layer execution is not integrated. The existing Python android-node and Controller contracts are untouched.
+Native Java application with a pinned official llama.cpp JNI backend for **local whole-model CPU inference**. The optional user-started foreground Service registers for explicitly assigned whole-model jobs; its notification provides Stop while the Activity observes through a same-process LocalBinder. Pretrained multi-device layer execution is not integrated. The existing Python android-node and Controller contracts are untouched.
 
 ## Build
 
@@ -18,13 +18,13 @@ Set JAVA_HOME to an isolated JDK17, ANDROID_HOME to an SDK with platforms;androi
 
 Obtain the pinned `SmolLM2-135M-Instruct-Q4_K_M.gguf` from [the fixed Hugging Face revision](https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/tree/04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b). The app does not download weights or open a server. Choose **Import model** using Android's document picker. It copies at most 105,454,144 bytes into app-private no-backup storage, checks exact size and SHA-256 `bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169`, and atomically commits only the valid model. Invalid/cancelled import preserves any existing model. Verify integrity again before each inference. **Delete imported model** removes this private copy while idle.
 
-Enter a short prompt and choose **Generate locally**. A single worker calls JNI and official llama.cpp C APIs; ChatML formatting follows the pinned SmolLM2 model. CPU only, 2 threads, 256-token context, prompt at most192 tokens, output at most64 tokens /16 KiB, cooperative90-second deadline. Java/native boundaries use UTF-8 byte arrays. Shared native-session ownership prevents concurrent close/cancel from freeing active state; every run frees model/context/sampler on completion or failure. Sessions are single use and limited to four. Cancel, leaving the screen and Activity destruction request abort. No foreground service, boot receiver or background scheduling is added. Actual cancellation latency, native peak memory and Android inference quality still require the selected physical device.
+Enter a short prompt and choose **Generate locally**. A single worker calls JNI and official llama.cpp C APIs; ChatML formatting follows the pinned SmolLM2 model. CPU only, 2 threads, 256-token context, prompt at most192 tokens, output at most64 tokens /16 KiB, cooperative90-second deadline. Java/native boundaries use UTF-8 byte arrays. Shared native-session ownership prevents concurrent close/cancel from freeing active state; every run frees model/context/sampler on completion or failure. Sessions are single use and limited to four. Cancel, leaving the screen and Activity destruction request abort. Local generation remains Activity-bound. The separate cloud worker Service is described below; no boot receiver or automatic scheduling is added. Actual cancellation latency, native peak memory and Android inference quality still require the selected physical device.
 
-Local generation checks ActivityManager memory/low-memory, PowerManager thermal and BatteryManager battery state. It rejects less than512 MiB available memory, severe/unavailable thermal metadata and low/non-measured battery. These are conservative gates, not measured model memory proof. Native logging is suppressed; the UI does not display provider exception paths or credentials. Local generation and cloud work share one screen-bound executor and the JNI backend rejects overlapping native execution. The optional **Check Controller connection** action validates an HTTPS origin, uses default platform certificate and hostname checks, refuses redirects, and reads at most4 KiB of `/healthz` with5-second connect/read timeouts. It sends no credentials or model prompts. A successful `status=ok` persists only the public origin; it proves health/TLS reachability, not cloud job execution. Each read checks the operation cancellation flag and a cooperative10-second request budget. The5-second read timeout applies per read, not to the whole response. Cancellation can wait for a blocking read; DNS/TLS/provider behavior is platform-dependent and a hard overall deadline is not claimed. Leaving the screen suppresses the result. The cloud worker is started separately and explicitly.
+Local generation checks ActivityManager memory/low-memory, PowerManager thermal and BatteryManager battery state. It rejects less than512 MiB available memory, severe/unavailable thermal metadata and low/non-measured battery. These are conservative gates, not measured model memory proof. Native logging is suppressed; the UI does not display provider exception paths or credentials. Local generation/model mutations and cloud work share a process ownership gate across Activity recreation; the unchanged JNI backend also rejects overlapping native execution. A stopping or checkpoint-failed cloud session retains that gate. The optional **Check Controller connection** action validates an HTTPS origin, uses default platform certificate and hostname checks, refuses redirects, and reads at most4 KiB of `/healthz` with5-second connect/read timeouts. It sends no credentials or model prompts. A successful `status=ok` persists only the public origin; it proves health/TLS reachability, not cloud job execution. Each read checks the operation cancellation flag and a cooperative10-second request budget. The5-second read timeout applies per read, not to the whole response. Cancellation can wait for a blocking read; DNS/TLS/provider behavior is platform-dependent and a hard overall deadline is not claimed. Leaving the screen suppresses the result. The cloud worker is started separately and explicitly.
 
 ## Security and licenses
 
-Manifest requests INTERNET only, disables backups and HTTP cleartext; launcher Activity is the only exported component. CredentialVault stores node credentials and the lease ledger: AndroidKeyStore AES-GCM, app-private no-backup AtomicFile, non-exportable key, no plaintext credential journal; registration credentials are entered once in a password field, excluded from saved UI state and cleared on submission. Device execution must verify Keystore tamper/clear, process death/sleep, lifecycle abort, listener absence and memory limits.
+Manifest requests exactly INTERNET, FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE and POST_NOTIFICATIONS. Backups and cleartext stay disabled; the launcher Activity is the only exported component. The single CloudWorkerService is exported=false, uses specialUse with an explicit subtype, and runs in the default app process. No receiver, provider, secondary process, WakeLock or battery-exemption permission is added. CredentialVault stores node credentials and the lease ledger: AndroidKeyStore AES-GCM, app-private no-backup AtomicFile, non-exportable key, no plaintext credential journal; registration credentials are entered once in a password field, excluded from saved UI state and cleared on submission. Device execution must verify Keystore tamper/clear, process death/sleep, lifecycle abort, listener absence and memory limits.
 
 `app/src/main/assets/licenses/` ships complete llama.cpp MIT, model Apache-2.0 and LastCore MIT texts, and the official NDK LLVM/third-party NOTICE for statically linked C++/compiler runtime, plus exact upstream license provenance. Model cards of the pinned GGUF and original model declare Apache-2.0. This preview does not bundle or redistribute weights. llama.cpp C++/GGML code implements the transformer; the project only adds a bounded JNI/lifecycle adapter. Optional KleidiAI/OpenMP/RPC/OpenSSL/dynamic backends are disabled; no extra acceleration dependencies are downloaded.
 
@@ -44,15 +44,122 @@ The user explicitly deferred physical Android verification. Keep device inferenc
 
 Linux CI explicitly provisions the pinned SDK command-line tools with the maintained setup-android action; it does not depend on the hosted runner PATH. Automatic agreement acceptance and default package installation are disabled; only SDK-APPROVAL.json hashes and the explicit required package list are used. Builds stream their real inner diagnostics and preserve a failure log separately. Pull-request CI checks out GitHub merge commits, so its embedded source_commit identifies that exact merge checkout rather than claiming the PR head artifact.
 
-## Screen-bound Controller worker
+## Explicit foreground Controller worker
 
-Import the fixed GGUF, enter the HTTPS origin and first-enrollment registration credential, then use **Register cloud worker**. Registration atomically sends `accepting_tasks:false` with an inert loopback endpoint. The node opens no listener, advertises only the fixed whole-model capability and never accepts legacy layer tasks. **Start cloud worker** recovers saved outcomes first and then waits for explicitly assigned jobs. **Cancel** or leaving the Activity stops it. No background service or new permission is added.
+Import the fixed GGUF, enter the HTTPS origin and first-enrollment registration
+credential, then explicitly choose **Register cloud worker**. **Start cloud
+worker** is a separate user action. The resumed Activity binds the native
+`CloudWorkerService`; only that explicit local Binder command promotes and starts
+work. Registration credentials cross this same-process call temporarily; Intents
+contain only a non-sensitive action/generation. They never carry node tokens,
+registration credentials, execution keys, prompts or model paths. Nothing is
+restored from an Intent to automatically start a worker. Existing encrypted
+credential/ledger files and Keystore aliases are retained.
 
-The process lock spans encrypted private atomic state and actual native shutdown. A random 64-hex execution key is durable before `running` or native launch and is reused for renew/report/stop acknowledgment. Restart reports saved outcome or `worker_restart`; it never reexecutes a saved lease. Unknown registration/claim outcomes retain markers; corrupted or missing credential keys block work rather than assuming cleanup. Do not clear app data to bypass a recovery barrier.
+The Service creates a LOW-importance notification channel and promotes before
+model hashing, state loading or network work. API34+ uses `specialUse` and its
+specific permission/purpose property; API29–33 pass type0. Native Service,
+LocalBinder, Notification and PendingIntent APIs avoid an additional runtime
+framework. AndroidX's Apache-2.0
+[ServiceCompat version guards](https://github.com/androidx/androidx/blob/androidx-main/core/core/src/main/java/androidx/core/app/ServiceCompat.java)
+were reviewed; no AndroidX runtime or copied helper is added.
+The [specialUse rules](https://developer.android.com/develop/background-work/services/fgs/service-types)
+cover otherwise unmatched valid foreground work; this user-visible whole-model
+CPU worker is not labeled media processing or shortService. This is sideload
+source compatibility, not Play approval of the use case.
 
-An independent monotonic watchdog cancels JNI when the confirmed lease, total job budget or native budget expires, including during a blocked HTTP renewal. Stop acknowledgment occurs only after the native thread returned and closed its session. TLS uses platform trust/hostname defaults with redirects refused. Registration/lease secrets and provider diagnostics are absent from app output. JDK host verification of this portable core and actual JNI is distinct from Android device execution, which remains deferred.
+For a visible Stop affordance, this app refuses to start when notification
+permission or the channel is disabled. On API33+, the user requests permission
+from the operation button, then explicitly clicks again after granting it. This
+is an application policy: the
+[platform permits FGS launch without POST_NOTIFICATIONS](https://developer.android.com/develop/ui/views/notifications/notification-permission),
+but may then omit the drawer notification. A permission prompt is not evidence
+that a worker started. Background-start/security rejection never launches a
+backend. The Service returns START_NOT_STICKY; there is no Boot/Alarm/WorkManager
+start, re-delivery execution, or automatic restart.
 
-The lifecycle integration reuses the platform Activity `onStop` and Java executor already used by local generation. Reviewed [AndroidX lifecycle](https://github.com/androidx/androidx/blob/androidx-main/lifecycle/lifecycle-process/src/main/java/androidx/lifecycle/ProcessLifecycleOwner.kt) uses delayed process-stop dispatch; adding it would not strengthen this immediate screen-bound policy and adds Kotlin/AndroidX dependencies. The existing native Activity API satisfies min29 without a new library.
+Activity pause/destruction cancels only local Activity work and removes its cloud
+observer. It does not stop or close the cloud Worker, JNI session or state lock.
+Reopening makes a passive flags0 binding to observe an existing Service; it does
+not start work. A true bind return is only a registration, not proof of a running
+Service or callback. The actual pure Java CloudBindingCoordinator replaces that
+passive registration with a fresh AUTO_CREATE connection only after the explicit
+button. Pause invalidates its generation, clears a pending credential and unbinds
+before old callbacks can act. Rotation never restores a command or allows an old
+connection to submit it. This follows the
+[AOSP15 bindService implementation](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/services/core/java/com/android/server/am/ActiveServices.java#L4024).
+The notification carries a non-sensitive generation in an immutable,
+generation-specific PendingIntent identity. Its STOP action is checked against
+the active Host generation; an old notification cannot stop a new session.
+Activity Stop explicitly controls the current Binder session through the same
+idempotent stop path. During
+STOPPING, new local/cloud/model-mutation work is refused. The Service waits for
+`CloudWorker.run()` to finish its real `awaitStopped()` and guard join, then
+checkpoints the encrypted state and closes the state lock before releasing the
+process gate or removing the notification/stopping itself. There is no timeout
+that declares cleanup successful. If checkpoint/close fails, the gate and
+STOPPING notification remain; **Retry stop confirmation** retries only cleanup,
+never inference. Generation/revision checks and stopSelfResult prevent an older
+completion from removing a newer session. Observer failure cannot cancel work.
+
+Registration atomically sends `accepting_tasks:false` and an inert loopback
+endpoint; this worker opens no listener and never accepts legacy layers.
+The existing random 64-hex execution identity is durable before native launch.
+Uncertain registration/claim, damaged state or missing keys do not reexecute a
+lease. Recovery still precedes model verification. Do not clear app data or keys
+to bypass an ownership/cleanup barrier. A transport failure can leave a stopped
+outcome pending; a stopped local Service does not assert server acknowledgment.
+
+All Java lease, overall, renewal and heartbeat scheduling uses one injected
+clock. Android supplies `SystemClock.elapsedRealtimeNanos`, including deep sleep;
+pure Java fixtures use a controlled supplier. Server-relative deadlines retain
+the conservative margin. The
+[uptime versus elapsed distinction](https://developer.android.com/reference/android/os/SystemClock)
+matters after allowing an Activity to leave: sleep must not extend a lease.
+This does not wake the CPU or promise screen-off execution/network access. On
+resume the existing cooperative cancellation handles elapsed expiry; native
+C++ algorithms and backend selection are unchanged.
+
+App-controlled Stop retains notification/resources until cleanup. System Task
+Manager Stop, force-stop or process death can remove the entire app and
+notification without callbacks; they are not graceful cleanup acknowledgments.
+The next user-started session follows the durable recovery path under the file
+lock. No survival, uninterrupted background execution, cancellation latency,
+thermal/battery or OEM lifecycle result is claimed without physical-device
+verification. Android physical-device testing remains explicitly deferred, and
+[issue53](https://github.com/7onytang/LastCore/issues/53) remains open.
+
+`CloudWorkerHostCheck` exercises the actual pure Java ownership/cleanup state
+machine and LeaseClock with controlled work only. It covers duplicate starts,
+stop during startup, delayed real-work-return fixtures, checkpoint failure and
+cleanup-only retry, stale generations/progress, observer detach/failure, local
+ownership across Activity recreation, and fake elapsed-time budget jumps.
+CloudBindingCoordinatorCheck additionally drives the production binding logic
+with fake framework callbacks: flags0 true without a callback, explicit upgrade,
+once-only Binder submit, pause/rotation/old callbacks, failure and credential
+clearing. These do not execute Activity/Service/Keystore/HTTP/JNI or prove full
+Android lifecycle.
+Run independently with JDK17:
+
+```sh
+mkdir -p verification/host-classes
+javac -d verification/host-classes app/src/main/java/ai/lastcore/android/CloudWorkerHost.java app/src/main/java/ai/lastcore/android/LeaseClock.java app/src/main/java/ai/lastcore/android/CloudBindingCoordinator.java tests/ai/lastcore/android/CloudWorkerHostCheck.java tests/ai/lastcore/android/CloudBindingCoordinatorCheck.java
+java -cp verification/host-classes ai.lastcore.android.CloudWorkerHostCheck
+java -cp verification/host-classes ai.lastcore.android.CloudBindingCoordinatorCheck
+python3 -m unittest discover -s tests-python -p 'test_*.py' -v
+```
+
+The existing build script repeats these host checks before native compilation.
+`artifact-binding.py` validates the compiled APK's exact four permissions,
+unique non-exported Service/type/subtype, launcher and no-extra-component policy;
+negative fixtures exercise that actual validator. Isolated-process, app-zygote,
+external-service and shared-isolated flags may be absent or explicitly compiled
+boolean false only; true, malformed types, android:process and zygote preload
+configuration are rejected. Owner-signing tests still use
+Fake SDK outputs and placeholder files, not keys. APK/Lint/instrumentation
+compilation and source binding are separate from device execution. Do not run
+ADB, connectedAndroidTest, an emulator or actual model/service tasks during this
+source-only phase.
 
 ## Unified interface
 

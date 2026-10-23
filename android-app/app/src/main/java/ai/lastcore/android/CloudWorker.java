@@ -4,8 +4,9 @@ import org.json.JSONObject;
 import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
-/** Screen-bound single whole-model worker. Fixed contract; no automatic execution retries or layer RPC. */
+/** Single whole-model worker; its host owns lifetime, credentials lock and positive cleanup. */
 final class CloudWorker {
     static final AtomicBoolean RUNNING = new AtomicBoolean();
     interface Policy { boolean allowed(); }
@@ -24,16 +25,25 @@ final class CloudWorker {
     private final Backend backend;
     private final Policy policy;
     private final Events events;
+    private final LeaseClock clock;
     private JSONObject state;
     private final AtomicBoolean stop = new AtomicBoolean();
     private volatile Execution active;
     CloudWorker(CloudApi api, CloudState disk, Backend backend, Policy policy, Events events) throws Exception {
+        this(api,disk,backend,policy,events,System::nanoTime);
+    }
+    CloudWorker(CloudApi api, CloudState disk, Backend backend, Policy policy, Events events, LongSupplier clock) throws Exception {
         this.api=api; this.disk=disk; this.backend=backend; this.policy=policy; this.events=events;
+        this.clock=new LeaseClock(clock);
         state=disk.load();
         if (state.has("origin") && !state.getString("origin").equals(api.origin))
             throw new IllegalStateException("Saved credentials belong to another Controller");
     }
     void stop() { stop.set(true); Execution running=active; if(running!=null) running.cancel(); }
+    void checkpointStopped() throws Exception {
+        if(active!=null || RUNNING.get()) throw new IllegalStateException("Worker cleanup is not complete");
+        persist();
+    }
     private static void await(Execution execution) {
         boolean interrupted=false;
         while(!execution.stopped()) {
@@ -99,9 +109,7 @@ final class CloudWorker {
         }
     }
     private static long delta(JSONObject job,String field,long sent) throws Exception {
-        double remaining=job.getDouble(field)-job.getDouble("server_time");
-        if(!Double.isFinite(remaining) || remaining>91 || remaining<=0) throw new IllegalStateException("Lease budget is invalid");
-        return sent + (long)(remaining*1_000_000_000L)-500_000_000L;
+        return LeaseClock.deadline(job.getDouble(field),job.getDouble("server_time"),sent);
     }
     private void validateJob(JSONObject job) throws Exception {
         CloudApi.id(job.getString("id"));
@@ -122,7 +130,7 @@ final class CloudWorker {
         JSONObject ledger=new JSONObject().put("job",saved).put("phase","claimed");
         state.put("ledger",ledger); state.remove("claim_pending"); persist();
         api.lease(saved,node(),token(),"report",new JSONObject().put("status","running"));
-        long sent=System.nanoTime();
+        long sent=clock.now();
         JSONObject renewed=api.lease(saved,node(),token(),"renew",new JSONObject());
         AtomicLong leaseDeadline=new AtomicLong(delta(renewed,"lease_expires",sent));
         long overallDeadline=delta(renewed,"deadline",sent);
@@ -132,7 +140,7 @@ final class CloudWorker {
         AtomicLong cause=new AtomicLong(cancelled.get()?1:0); // 1: local stop/cancel, 2: lease, 3: execution/overall
         Thread guard=new Thread(() -> {
             while(guarding.get()) {
-                long now=System.nanoTime();
+                long now=clock.now();
                 if(stop.get() || cancelled.get() || now>=leaseDeadline.get() || now>=overallDeadline || now>=executionDeadline.get()) {
                     if(now>=overallDeadline || now>=executionDeadline.get()) cause.compareAndSet(0,3);
                     else if(now>=leaseDeadline.get()) cause.compareAndSet(0,2);
@@ -150,21 +158,22 @@ final class CloudWorker {
             if(!policy.allowed()) cancelled.set(true);
             if(!cancelled.get()) {
                 double requested=job.getJSONObject("request").getDouble("execution_timeout_seconds");
-                if(System.nanoTime()>=leaseDeadline.get() || System.nanoTime()>=overallDeadline || cancelled.get())
+                if(clock.now()>=leaseDeadline.get() || clock.now()>=overallDeadline || cancelled.get())
                     throw new IllegalStateException("Lease expired before native launch");
-                int millis=(int)Math.max(1,Math.min(requested*1000,(overallDeadline-System.nanoTime())/1_000_000));
+                int millis=(int)Math.max(1,Math.min(requested*1000,(overallDeadline-clock.now())/1_000_000));
                 if(millis>90000) throw new IllegalStateException("Native budget mismatch");
-                executionDeadline.set(System.nanoTime()+millis*1_000_000L);
+                executionDeadline.set(clock.now()+millis*1_000_000L);
                 ledger.put("phase","active");persist(); // Durable execution identity precedes any native thread.
                 active=backend.start(job.getJSONObject("request").getString("prompt"),job.getJSONObject("request").getInt("max_tokens"),millis,cancelled);
-                long nextRenew=System.nanoTime(), nextPolicy=System.nanoTime();
+                events.status("Cloud job executing.");
+                long nextRenew=clock.now(), nextPolicy=clock.now();
                 while(!active.stopped()) {
-                    if(System.nanoTime()>=nextPolicy) {
+                    if(clock.now()>=nextPolicy) {
                         if(!policy.allowed()) {cancelled.set(true);active.cancel();}
-                        nextPolicy=System.nanoTime()+500_000_000L;
+                        nextPolicy=clock.now()+500_000_000L;
                     }
-                    if(System.nanoTime()>=nextRenew && !cancelled.get()) {
-                        sent=System.nanoTime();
+                    if(clock.now()>=nextRenew && !cancelled.get()) {
+                        sent=clock.now();
                         try {
                             renewed=api.lease(saved,node(),token(),"renew",new JSONObject());
                             if(renewed.optBoolean("cancel_requested",false)) {controllerCancel=true;cancelled.set(true);active.cancel();}
@@ -173,7 +182,7 @@ final class CloudWorker {
                             if(error.status==409 || error.status==401 || error.status==403) {cause.compareAndSet(0,2);cancelled.set(true);active.cancel();}
                             // Unconfirmed renewals never extend the guard's previous deadline.
                         }
-                        nextRenew=System.nanoTime()+2_000_000_000L;
+                        nextRenew=clock.now()+2_000_000_000L;
                     }
                     Thread.sleep(25);
                 }
@@ -181,7 +190,7 @@ final class CloudWorker {
             }
             if(controllerCancel) outcome=new JSONObject().put("status","cancelled");
             else if(active!=null && active.success() && !cancelled.get() && !stop.get()
-                    && System.nanoTime()<overallDeadline && active.elapsed()<=90)
+                    && clock.now()<overallDeadline && active.elapsed()<=90)
                 outcome=new JSONObject().put("status","succeeded").put("result",new JSONObject().put("text",active.text())
                     .put("elapsed_seconds",active.elapsed()).put("model_sha256",CloudApi.MODEL_SHA));
             else outcome=new JSONObject().put("status","failed").put("error_code",cause.get()==3?"deadline":cause.get()==2?"lease_lost":stop.get()?"worker_restart":"backend_error");
@@ -206,9 +215,9 @@ final class CloudWorker {
             int count=0;long heartbeat=0;
             while(!stop.get()) {
                 if(!policy.allowed()) throw new IllegalStateException("Device budget is unavailable");
-                if(System.nanoTime()>=heartbeat) {
+                if(clock.now()>=heartbeat) {
                     api.post("/v1/nodes/"+node()+"/heartbeat",token(),new JSONObject().put("available_memory_mb",512).put("accepting_tasks",false),200);
-                    heartbeat=System.nanoTime()+5_000_000_000L;
+                    heartbeat=clock.now()+5_000_000_000L;
                 }
                 boolean uncertain=state.optBoolean("claim_pending",false);
                 state.put("claim_pending",true);persist();

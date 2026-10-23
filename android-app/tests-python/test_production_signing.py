@@ -16,6 +16,7 @@ from contextlib import contextmanager, ExitStack, redirect_stdout, redirect_stde
 import io
 import inspect
 import tempfile
+from surface_fixture import PERMISSIONS, XML
 
 
 def cases(name, values):
@@ -93,10 +94,10 @@ class FakeSDK:
         elif stage=='apksigner':
             return SimpleNamespace(returncode=0,stdout=self.certificate,stderr='')
         elif stage=='aapt' and command[2]=='badging':
-            return SimpleNamespace(returncode=0,stdout="package: name='ai.lastcore.android' versionCode='2' versionName='0.1.1'\nsdkVersion:'29'\ntargetSdkVersion:'35'\nuses-permission: name='android.permission.INTERNET'\n"+
+            return SimpleNamespace(returncode=0,stdout="package: name='ai.lastcore.android' versionCode='2' versionName='0.1.1'\nsdkVersion:'29'\ntargetSdkVersion:'35'\n"+PERMISSIONS+
                                    ('application-debuggable\n' if self.debuggable else ''),stderr='')
         elif stage=='aapt':
-            return SimpleNamespace(returncode=0,stdout='  A: android:allowBackup(0x01010280)=(type 0x12)0x0\n  A: android:usesCleartextTraffic(0x010104ec)=(type 0x12)0x0\n',stderr='')
+            return SimpleNamespace(returncode=0,stdout=XML,stderr='')
         return SimpleNamespace(returncode=0,stdout='',stderr='')
 
 

@@ -3,7 +3,13 @@ package ai.lastcore.android;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Intent;
+import android.content.ComponentName;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.BatteryManager;
 import android.widget.LinearLayout;
@@ -16,13 +22,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Local and Controller whole-model work share one screen-bound executor. */
+/** Local work remains screen-bound; cloud work is observed/controlled through the same-process Service. */
 public final class MainActivity extends Activity {
     private static final int IMPORT_MODEL = 1;
+    private static final int NOTIFICATIONS = 2;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private volatile AtomicBoolean cancelled = new AtomicBoolean();
     private volatile LocalRuntime runtime;
-    private volatile CloudWorker cloud;
+    private CloudWorkerService.LocalBinder cloud;
+    private CloudWorkerHost.Snapshot cloudState;
+    private final Handler main=new Handler(Looper.getMainLooper());
+    private boolean visible;
+    private CloudBindingCoordinator bindings;
+    private final java.util.Map<Long,ServiceConnection> serviceConnections=new java.util.HashMap<>();
+    private long cloudBindingGeneration=-1;
     private volatile boolean destroyed;
     private boolean busy;
     private TextView status, output, modelStatus;
@@ -33,9 +46,60 @@ public final class MainActivity extends Activity {
     private EditText prompt, endpoint, registration;
     private Button load, generate, clear, cancel, checkConnection, registerCloud, startCloud;
     private ModelStore models;
+    private CloudWorkerHost.Observer cloudObserver;
+    private CloudBindingCoordinator createBindings() {
+        return new CloudBindingCoordinator(new CloudBindingCoordinator.Port() {
+            @Override public boolean bind(long generation,boolean create) {
+                ServiceConnection connection=new ServiceConnection() {
+                    @Override public void onServiceConnected(ComponentName name,IBinder binder) {
+                        if(!bindings.accepts(generation) || destroyed) return;
+                        if(cloud!=null && cloudObserver!=null) cloud.unobserve(cloudObserver);
+                        cloud=(CloudWorkerService.LocalBinder)binder;cloudBindingGeneration=generation;
+                        cloudObserver=value -> {if(bindings.accepts(generation) && cloudBindingGeneration==generation) cloudChanged(value);};
+                        cloud.observe(cloudObserver);bindings.connected(generation,cloud);
+                    }
+                    @Override public void onServiceDisconnected(ComponentName name) {
+                        if(!bindings.accepts(generation)) return;
+                        if(cloud!=null && cloudObserver!=null) cloud.unobserve(cloudObserver);
+                        cloud=null;cloudState=null;cloudObserver=null;cloudBindingGeneration=-1;bindings.disconnected(generation);
+                        if(!destroyed) {output.setText("节点连接已断开；不能据此确认执行停止。");refreshControls();}
+                    }
+                    @Override public void onBindingDied(ComponentName name) {bindings.died(generation);}
+                    @Override public void onNullBinding(ComponentName name) {bindings.died(generation);}
+                };
+                serviceConnections.put(generation,connection);
+                boolean registered=false;
+                try {registered=bindService(new Intent(MainActivity.this,CloudWorkerService.class),connection,create?BIND_AUTO_CREATE:0);}
+                catch(RuntimeException ignored) { /* Report a fixed safe failure below. */ }
+                if(!registered) serviceConnections.remove(generation);
+                return registered;
+            }
+            @Override public void unbind(long generation) {
+                if(cloudBindingGeneration==generation) {
+                    if(cloud!=null && cloudObserver!=null) cloud.unobserve(cloudObserver);
+                    cloud=null;cloudState=null;cloudObserver=null;cloudBindingGeneration=-1;
+                }
+                ServiceConnection connection=serviceConnections.remove(generation);
+                if(connection!=null) unbindService(connection);
+            }
+            @Override public void submitted(long generation,long workerGeneration) {
+                if(!bindings.accepts(generation) || destroyed) return;
+                if(workerGeneration<0) output.setText("节点或本机操作仍在运行／停止，或通知不可见；请确认后重试。");
+                else if(cloud!=null) cloudChanged(cloud.snapshot());
+                refreshControls();
+            }
+            @Override public void rejected() {
+                if(!destroyed) {output.setText("无法连接节点服务，请重试。");refreshControls();}
+            }
+        });
+    }
+    private final Runnable refreshGate=new Runnable() {
+        @Override public void run() {if(visible && !destroyed) {refreshControls();main.postDelayed(this,250);}}
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        bindings=createBindings();
         models = new ModelStore(this);
         getWindow().setStatusBarColor(color(R.color.lc_background));
         getWindow().setNavigationBarColor(color(R.color.lc_background));
@@ -59,6 +123,7 @@ public final class MainActivity extends Activity {
         modelStatus = label("", 13, R.color.lc_muted); model.addView(modelStatus);
         LinearLayout modelActions = new LinearLayout(this); modelActions.setOrientation(LinearLayout.HORIZONTAL); model.addView(modelActions);
         load = button(modelActions, "导入模型", () -> {
+            if(busy || CloudWorkerHost.deviceBusy()) return;
             Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             picker.setType("*/*"); picker.addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(picker, IMPORT_MODEL);
@@ -66,7 +131,10 @@ public final class MainActivity extends Activity {
         clear = button(modelActions, "删除模型", () -> new android.app.AlertDialog.Builder(this)
             .setTitle("删除本机模型？").setMessage("再次生成前需要重新导入。云端凭据与恢复状态会保留。")
             .setNegativeButton("保留", null).setPositiveButton("删除", (dialog, which) -> {
-                if (!busy) { models.delete(); output.setText("已删除本机模型。请重新导入后生成。"); updateModelState(); }
+                CloudWorkerHost.DeviceUse use=busy?null:CloudWorkerHost.acquireLocal();
+                if(use==null) {output.setText("操作尚未结束，请等待停止确认。");return;}
+                try {models.delete();output.setText("已删除本机模型。请重新导入后生成。");}
+                finally {use.close();updateModelState();}
             }).show(), false);
         clear.setTextColor(color(R.color.lc_danger));
         LinearLayout.LayoutParams importButton = new LinearLayout.LayoutParams(0, -2, 1); importButton.topMargin = dp(12); importButton.rightMargin = dp(6); load.setLayoutParams(importButton);
@@ -105,7 +173,7 @@ public final class MainActivity extends Activity {
         registration.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         registration.setSaveEnabled(false); registration.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO);
         registerCloud = button(enrollmentPanel, "注册节点", () -> cloudAction(true), false);
-        cloudPanel.addView(label("仅在当前页面打开时运行，离开页面会请求停止。新任务执行前校验模型；恢复上报不受模型文件缺失阻断。", 12, R.color.lc_muted));
+        cloudPanel.addView(label("手动启动后由前台服务运行；离开页面不会停止云端节点。可在通知或此处停止；新任务前校验模型，恢复上报不依赖模型文件存在。", 12, R.color.lc_muted));
 
         resultPanel = card(layout, "结果", "");
         output = label("等待操作。", 15, R.color.lc_text);
@@ -196,20 +264,14 @@ public final class MainActivity extends Activity {
         boolean present = models.path().isFile() || new java.io.File(models.path() + ".bak").isFile();
         modelStatus.setText(present ? "已导入 · 执行前重新校验" : "未导入 · 请先导入模型");
         load.setText(present ? "替换模型" : "导入模型"); load.setSelected(!present);
-        load.setEnabled(!busy); clear.setEnabled(!busy && present);
+        boolean available=!busy && !CloudWorkerHost.deviceBusy() && !bindings.hasPending();
+        load.setEnabled(available); clear.setEnabled(available && present);
         clear.setVisibility(present ? android.view.View.VISIBLE : android.view.View.GONE);
-        generate.setEnabled(!busy && present);
+        generate.setEnabled(available && present);
         // Keep cloud start available without a model so saved leases can recover.
     }
     private void setBusy(boolean value) {
-        busy = value; status.setText(value ? "处理中" : "就绪");
-        progress.setVisibility(value ? android.view.View.VISIBLE : android.view.View.GONE);
-        updateModelState();
-        prompt.setEnabled(!value); endpoint.setEnabled(!value); checkConnection.setEnabled(!value);
-        registration.setEnabled(!value); registerCloud.setEnabled(!value); startCloud.setEnabled(!value);
-        localMode.setEnabled(!value); cloudMode.setEnabled(!value); enrollmentToggle.setEnabled(!value);
-        cancel.setEnabled(value); cancel.setText("停止");
-        cancel.setVisibility(value ? android.view.View.VISIBLE : android.view.View.GONE);
+        busy=value;refreshControls();
         if (value) {
             android.view.View focus = getCurrentFocus();
             if (focus != null) {
@@ -218,6 +280,51 @@ public final class MainActivity extends Activity {
             }
             scroll.post(() -> scroll.scrollTo(0, resultPanel.getTop()));
         }
+    }
+    private void refreshControls() {
+        if(destroyed || status==null || generate==null) return;
+        boolean cloudBusy=cloudState!=null && cloudState.busy;
+        boolean occupied=busy || bindings.hasPending() || CloudWorkerHost.deviceBusy();
+        if(cloudBusy) status.setText(CloudWorkerService.status(cloudState));
+        else if(busy) status.setText(cancelled.get()?"正在停止 · 等待确认":"处理中");
+        else status.setText(occupied?"另一个操作尚未结束 · 等待确认":"就绪");
+        progress.setVisibility(occupied?android.view.View.VISIBLE:android.view.View.GONE);
+        updateModelState();
+        prompt.setEnabled(!occupied);endpoint.setEnabled(!occupied);checkConnection.setEnabled(!occupied);
+        registration.setEnabled(!occupied);registerCloud.setEnabled(!occupied);startCloud.setEnabled(!occupied);
+        localMode.setEnabled(!occupied);cloudMode.setEnabled(!occupied);enrollmentToggle.setEnabled(!occupied);
+        boolean stopping=cloudBusy && cloudState.phase==CloudWorkerHost.Phase.STOPPING;
+        boolean retry=stopping && cloudState.cleanupPending;
+        cancel.setText(retry?"重试停止确认":stopping || busy && cancelled.get()?"正在停止…":"停止");
+        cancel.setEnabled(bindings.hasPending() || cloudBusy && (!stopping || retry) || busy && !cancelled.get());
+        cancel.setVisibility(occupied?android.view.View.VISIBLE:android.view.View.GONE);
+    }
+    private void cloudChanged(CloudWorkerHost.Snapshot value) {
+        if(!visible || destroyed || cloud==null) return;
+        CloudWorkerHost.Snapshot current=cloud.snapshot();
+        if(value.generation!=current.generation || value.revision!=current.revision) return;
+        cloudState=value;
+        if(value.busy) {if(!busy) selectMode(true);output.setText(CloudWorkerService.status(value));}
+        else if(!busy) output.setText(CloudWorkerService.status(value));
+        refreshControls();
+    }
+    private void submitLocal(Runnable task) {
+        CloudWorkerHost.DeviceUse use=CloudWorkerHost.acquireLocal();
+        if(use==null) {busy=false;output.setText("操作尚未结束，请等待停止确认。");refreshControls();return;}
+        try {worker.execute(() -> {try {task.run();} finally {use.close();main.post(this::refreshControls);}});}
+        catch(java.util.concurrent.RejectedExecutionException error) {use.close();busy=false;refreshControls();}
+    }
+    @Override protected void onResume() {
+        super.onResume();visible=true;bindings.resume();main.post(refreshGate);
+    }
+    @Override protected void onPause() {
+        visible=false;bindings.pause();
+        super.onPause();
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants) {
+        super.onRequestPermissionsResult(request,permissions,grants);
+        if(request==NOTIFICATIONS && !destroyed)
+            output.setText(grants.length>0 && grants[0]==PackageManager.PERMISSION_GRANTED?"通知已允许，请再次点击注册或启动。":"未允许通知，云端节点不会启动。");
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("cloud_mode", cloudModeSelected); super.onSaveInstanceState(state);
@@ -241,7 +348,7 @@ public final class MainActivity extends Activity {
         catch (Exception error) { endpoint.setError("请输入有效的 HTTPS 地址，不包含路径或凭据"); endpoint.requestFocus(); return; }
         AtomicBoolean operation = new AtomicBoolean(); cancelled = operation;
         setBusy(true); output.setText("正在检查安全连接…");
-        worker.execute(() -> {
+        submitLocal(() -> {
             String result;
             try {
                 String body = ControllerEndpoint.health(origin, operation);
@@ -257,14 +364,14 @@ public final class MainActivity extends Activity {
         });
     }
     private void generate() {
-        if (busy || CloudWorker.RUNNING.get()) return;
+        if (busy || CloudWorkerHost.deviceBusy()) return;
         String reason = localRejection(); if (reason != null) { output.setText(reason); return; }
         prompt.setError(null);
         String input = prompt.getText().toString().trim();
         if (input.isEmpty() || input.length() > 512) { prompt.setError("请输入 1–512 字符"); prompt.requestFocus(); return; }
         AtomicBoolean operation = new AtomicBoolean(); cancelled = operation;
         setBusy(true); output.setText("正在校验模型并生成…");
-        worker.execute(() -> {
+        submitLocal(() -> {
             String result;
             try {
                 java.io.File model = models.verified(operation);
@@ -284,47 +391,22 @@ public final class MainActivity extends Activity {
         });
     }
     private void cloudAction(boolean enroll) {
-        if (busy || CloudWorker.RUNNING.get()) return;
-        final String origin, enrollment;
-        endpoint.setError(null); registration.setError(null);
-        try { origin = ControllerEndpoint.origin(endpoint.getText().toString()); }
-        catch (Exception error) { endpoint.setError("请输入有效的 HTTPS 地址"); endpoint.requestFocus(); return; }
-        try { enrollment = enroll ? CloudApi.credential(registration.getText().toString().trim()) : null; }
-        catch (Exception error) { registration.setError("首次注册需要有效凭据"); registration.requestFocus(); return; }
+        if(!visible || busy || bindings.hasPending() || CloudWorkerHost.deviceBusy()) return;
+        final String origin, credential;
+        endpoint.setError(null);registration.setError(null);
+        try {origin=ControllerEndpoint.origin(endpoint.getText().toString());}
+        catch(Exception error) {endpoint.setError("请输入有效的 HTTPS 地址");endpoint.requestFocus();return;}
+        CloudWorkerService.createChannel(this);
+        if(!CloudWorkerService.notificationsVisible(this)) {
+            if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},NOTIFICATIONS);
+            output.setText("启动云端节点需要可见的工作通知；请允许通知权限和运行通知渠道后重试。");return;
+        }
+        try {credential=enroll?CloudApi.credential(registration.getText().toString().trim()):null;}
+        catch(Exception error) {registration.setError("首次注册需要有效凭据");registration.requestFocus();return;}
         registration.setText("");
-        AtomicBoolean operation = new AtomicBoolean(); cancelled = operation;
-        setBusy(true); output.setText(enroll ? "正在校验并注册云端节点…" : "正在恢复并启动前台节点…");
-        worker.execute(() -> {
-            String result;
-            try (AndroidCloudState disk = new AndroidCloudState(this)) {
-                java.io.File model = models.path();
-                String hash;
-                try (java.util.zip.ZipFile apk = new java.util.zip.ZipFile(getApplicationInfo().sourceDir)) {
-                    java.util.zip.ZipEntry entry = apk.getEntry("lib/arm64-v8a/liblastcore_local.so");
-                    if (entry == null) throw new IllegalStateException("Native backend is unavailable");
-                    try (InputStream input = apk.getInputStream(entry)) { hash = JniBackend.hash(input, operation); }
-                }
-                CloudWorker running = new CloudWorker(new CloudApi(origin), disk, new JniBackend(model, hash),
-                    new DevicePolicy(this), message -> runOnUiThread(() -> {
-                        if (!destroyed && !operation.get()) {
-                            switch (message) {
-                                case "Cloud worker registered. Start explicitly to accept whole-model jobs.": output.setText("节点已注册。点击启动后等待任务。"); break;
-                                case "Cloud job finished; native execution stopped.": output.setText("云端任务已结束，原生执行已停止。节点继续等待任务。"); break;
-                                case "Cloud worker ready for one whole-model job at a time.": output.setText("节点已就绪，正在等待整模型任务。"); break;
-                                default: output.setText("云端节点状态已更新。");
-                            }
-                        }
-                    }));
-                cloud = running;
-                if (operation.get()) running.stop();
-                if (enroll) running.register(enrollment); else running.run(0);
-                result = enroll ? "云端节点已注册。请保持此页面打开并手动启动。" : "云端节点已停止，未确认的任务状态已保留以供恢复。";
-            } catch (Exception | LinkageError error) {
-                result = operation.get() ? "云端节点已停止，重新打开并启动可恢复待确认租约。" :
-                    "云端节点无法继续，请检查模型、网络、凭据和恢复状态。注册结果未知或状态损坏时需人工恢复，请勿清除应用数据。";
-            } finally { cloud = null; }
-            complete(result);
-        });
+        output.setText(enroll?"正在连接服务并注册节点…":"正在连接前台节点服务…");
+        bindings.request(new CloudBindingCoordinator.Command(origin,enroll,credential));refreshControls();
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
@@ -332,7 +414,7 @@ public final class MainActivity extends Activity {
         final android.net.Uri uri = data.getData();
         AtomicBoolean operation = new AtomicBoolean(); cancelled = operation;
         setBusy(true); output.setText("正在导入并校验模型…");
-        worker.execute(() -> {
+        submitLocal(() -> {
             String message;
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IllegalStateException("Missing input");
@@ -347,16 +429,25 @@ public final class MainActivity extends Activity {
     private void complete(String result) {
         runOnUiThread(() -> { if (!destroyed) { output.setText(result); setBusy(false); } });
     }
-    private void cancelWork() {
+    private void cancelLocalWork() {
         if (busy && !destroyed) {
             status.setText("正在停止 · 等待确认"); cancel.setText("正在停止…"); cancel.setEnabled(false);
         }
         cancelled.set(true); LocalRuntime active = runtime; if (active != null) active.cancel();
-        CloudWorker running = cloud; if (running != null) running.stop();
     }
-    @Override protected void onStop() { cancelWork(); super.onStop(); }
+    private void cancelWork() {
+        cancelLocalWork();
+        bindings.cancelPending();
+        if(cloud!=null) cloud.stop();
+        refreshControls();
+    }
+    @Override protected void onStop() {
+        visible=false;main.removeCallbacks(refreshGate);cancelLocalWork();
+        bindings.pause();
+        super.onStop();
+    }
     @Override protected void onDestroy() {
-        destroyed = true; cancelWork(); LocalRuntime active = runtime; if (active != null) active.close();
+        destroyed = true; cancelLocalWork(); LocalRuntime active = runtime; if (active != null) active.close();
         worker.shutdown(); super.onDestroy();
     }
 }
