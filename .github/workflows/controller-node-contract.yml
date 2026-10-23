@@ -1,0 +1,27 @@
+name: Controller Node contract
+on:
+  push:
+    branches: [main]
+    paths: ["controller-server/**", "node-agent/**", "tools/contracts/**", ".github/workflows/controller-node-contract.yml"]
+  pull_request:
+    paths: ["controller-server/**", "node-agent/**", "tools/contracts/**", ".github/workflows/controller-node-contract.yml"]
+permissions:
+  contents: read
+env:
+  TZ: Asia/Shanghai
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  contract:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r controller-server/requirements-dev.txt -r node-agent/requirements-dev.txt
+      - run: python -m pytest -q -c tools/contracts/pytest.ini tools/contracts/test_controller_node.py
