@@ -226,3 +226,44 @@ def test_nonfinite_budget_is_a_coded_rejection_not_server_error(scene, literal):
     response = client.post('/v1/tasks',headers={**AUTH,'Content-Type':'application/json'},content=payload)
     assert response.status_code == 422 and response.json()['error_code'] == 'BUDGET_REJECTED'
     assert count(store) == (0,0)
+
+
+def test_actual_idle_smoke_payload_is_admissible_without_legacy_mode(scene):
+    client, store, node, _ = scene
+    source = Path(__file__).parents[1]/'scripts/smoke_idle_expiry.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    call = next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)
+        and n.func.attr == 'post' and n.args and isinstance(n.args[0],ast.Constant)
+        and n.args[0].value == '/v1/tasks')
+    expression = next(k.value for k in call.keywords if k.arg == 'json')
+    payload = {}
+    for key,value in zip(expression.keys,expression.values):
+        name = ast.literal_eval(key)
+        if isinstance(value,ast.Subscript) and isinstance(value.value,ast.Name) and value.value.id == 'node':
+            assert ast.literal_eval(value.slice) == 'node_id'
+            payload[name] = node['node_id']
+        else: payload[name] = ast.literal_eval(value)
+    response = client.post('/v1/tasks',headers=AUTH,json=payload)
+    assert response.status_code == 201 and count(store) == (1,0)
+    assert response.json()['request']['model_id'] == 'lastcore/linear-demo-v1'
+
+
+def test_actual_tiny_bundle_verifier_labels_and_explicitly_selects_compatibility(scene):
+    client, store, _, _ = scene
+    source = Path(__file__).parents[2]/'node-agent/desktop/verify_stage_bundle.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    call = next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+        and n.func.id == 'post' and n.args and isinstance(n.args[0],ast.Constant)
+        and n.args[0].value == '/v1/tasks')
+    payload = ast.literal_eval(call.args[1])
+    strict = client.post('/v1/tasks',headers=AUTH,json=payload)
+    assert strict.status_code == 422 and strict.json()['error_code'] == 'MODEL_METADATA_UNAVAILABLE'
+    env = next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)
+        and n.func.id == 'dict' and any(k.arg == 'CONTROLLER_DATABASE_PATH' for k in n.keywords))
+    assert next(ast.literal_eval(k.value) for k in env.keywords if k.arg == 'CONTROLLER_LEGACY_TASK_MODEL_IDS') == 'true'
+    labels = [ast.literal_eval(v) for n in ast.walk(tree) if isinstance(n,ast.Dict)
+        for k,v in zip(n.keys,n.values) if isinstance(k,ast.Constant) and k.value == 'task_policy_mode']
+    assert labels == ['legacy-compatibility']
+    compat = TestClient(create_app(Settings(ADMIN,REG,legacy_task_model_ids=True),store))
+    try: assert compat.post('/v1/tasks',headers=AUTH,json=payload).status_code == 201
+    finally: compat.close()
