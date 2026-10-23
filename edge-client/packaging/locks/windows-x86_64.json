@@ -18,10 +18,10 @@
     },
     {
       "name": "certifi",
-      "version": "2026.7.22",
-      "wheel": "certifi-2026.7.22-py3-none-any.whl",
-      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
-      "source": "https://pypi.org/pypi/certifi/2026.7.22/json"
+      "version": "2026.10.19",
+      "wheel": "certifi-2026.10.19-py3-none-any.whl",
+      "sha256": "42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b",
+      "source": "https://pypi.org/pypi/certifi/2026.10.19/json"
     },
     {
       "name": "h11",
