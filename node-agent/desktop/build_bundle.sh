@@ -57,6 +57,12 @@ pip_install() {
         install --quiet --disable-pip-version-check "$@"
 }
 
+# Official Python security guidance: bootstrap only the pinned pip wheel,
+# verified by pip itself before any dependency/index request. TLS stays enabled.
+"$venv_dir/bin/python" "$spec_dir/pip_no_sysconf_proxy.py" \
+    --isolated --disable-pip-version-check install --no-index --no-deps --no-cache-dir \
+    "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+
 pip_install --require-hashes -r "$spec_dir/requirements-build-lock.txt"
 
 echo "== build environment =="
