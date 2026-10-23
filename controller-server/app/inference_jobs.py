@@ -16,6 +16,7 @@ MODEL_ID = 'SmolLM2-135M-Instruct-Q4_K_M'
 MODEL_REVISION = '04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b'
 MODEL_SHA256 = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
 BACKEND_COMMIT = '8345f333951c661d166b00e6f9362e553768f292'
+RESULT_OUTPUT_BYTES = 65536
 LEASE_SECONDS = 10
 ACTIVE = ('leased', 'running', 'cancelling')
 
@@ -51,15 +52,15 @@ class LeaseRequest(StrictModel):
 
 
 class Result(StrictModel):
-    text: str = Field(max_length=65536)
+    text: str = Field(max_length=RESULT_OUTPUT_BYTES)
     elapsed_seconds: float = Field(ge=0, le=90, allow_inf_nan=False)
     model_sha256: Literal['bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169']
 
     @field_validator('text')
     @classmethod
     def result_bytes(cls, value):
-        if len(value.encode('utf-8')) > 65536:
-            raise ValueError('result exceeds 65536 UTF-8 bytes')
+        if len(value.encode('utf-8')) > RESULT_OUTPUT_BYTES:
+            raise ValueError(f'result exceeds {RESULT_OUTPUT_BYTES} UTF-8 bytes')
         return value
 
 

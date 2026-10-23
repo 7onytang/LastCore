@@ -22,6 +22,9 @@ admission; no new dependency or remote manifest loader is added.
 Common legacy-schema bounds remain: positive layer-memory declaration ≤10,000,000
 MB; ≤128 nodes; total timeout10–86,400 seconds. The manifest repeats the relevant
 per-profile caps and admission enforces them in addition to existing schemas.
+For v1 the whole-model `output_bytes` must equal the actual fixed65536-byte
+`Result` limit; any different manifest value rejects startup rather than pretending
+to configure report validation. Existing result/report/ACK behavior is unchanged.
 Schema coercion behavior is unchanged; π/log retain their stricter integer rules.
 All models retain `extra=forbid`, including compatibility mode. Model/workload
 mismatch is rejected; no global GGUF allowlist is imposed on arithmetic.

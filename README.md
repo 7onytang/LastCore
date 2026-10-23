@@ -250,15 +250,18 @@ python -m pytest -q -c tools/contracts/pytest.ini tools/contracts/test_assignmen
 
 设 `accepting_tasks=false` 可暂停接收新任务，当前任务仍继续运行。心跳不替代任务回报；节点轮询也不替代心跳。
 
-提交任务示例（model_id 仅为标识，不会自动下载模型）：
+严格模式提交任务示例：使用已批准的内置算术 profile，不下载或执行 Qwen。将 `target_node_id` 替换为已注册、在线空闲且确实支持该线性演示的节点 ID；下面 UUID 只是格式占位，不能原样派发。
 
 ```json
 {
-  "model_id": "Qwen/example",
-  "num_layers": 32,
-  "layer_memory_mb": 512,
-  "max_nodes": 8,
-  "timeout_seconds": 600
+  "model_id": "lastcore/linear-demo-v1",
+  "num_layers": 2,
+  "layer_memory_mb": 1,
+  "max_nodes": 1,
+  "timeout_seconds": 60,
+  "input_vector": [1.0, 0.0],
+  "weight_seed": 7,
+  "target_node_id": "00000000-0000-0000-0000-000000000001"
 }
 ```
 
@@ -305,7 +308,7 @@ Controller 与 Node Agent 的跨模块协议回归见 [`tools/contracts/README.m
 
 兼容修复经 [PR #89](https://github.com/7onytang/LastCore/pull/89) 合入固定源 `73b3d1`，已部署的 [CPU 演示看板](https://8.134.161.123/workloads)位于 `/workloads`；根路径与 `/console` 保留现有工作台。管理员可查看 Worker、任务分片、上下游和回报状态；π 分片估算与日志统计仅分配给实际声明兼容执行器的可用节点，旧节点不会因平台或在线状态自动支持。代码、CI、GET/HEAD、CSP 和同源资源可达已核验，仍未实际派发 π/日志任务或做新设备验收。此路径不代表 activation 接力，也不继承历史 Mac 线性、SmolLM2 整模型或 tiny 模型的执行证据；来源与范围见[当前公开页面说明](submission/evidence/public-deployment-current.md)。
 
-多设备接力推理的可复现验收步骤见 [`docs/RELAY_INFERENCE_DEMO.md`](docs/RELAY_INFERENCE_DEMO.md)。该路径使用 `inference-engine/` 与 Node Agent 的 StageExecutor，将连续模型层分配给多个 Worker，并让 activation 沿 `next_node` 逐跳传递；必须额外满足 Worker endpoint 互通。Controller 仍只接收 Worker 主动发起的心跳和 assignment 轮询，不主动连接 Worker。
+严格默认不会接收新的 tiny 分层任务。只有服务端 owner 明确批准隔离实例使用 `CONTROLLER_LEGACY_TASK_MODEL_IDS=true` 时，才可进行旧 tiny 兼容接力；不能为运行示例自动开启生产 legacy。受控本地脚本只为它自己创建的临时 Controller 显式启用兼容，不修改已有 ECS。多设备接力推理的可复现验收步骤见 [`docs/RELAY_INFERENCE_DEMO.md`](docs/RELAY_INFERENCE_DEMO.md)。该路径使用 `inference-engine/` 与 Node Agent 的 StageExecutor，将连续模型层分配给多个 Worker，并让 activation 沿 `next_node` 逐跳传递；必须额外满足 Worker endpoint 互通。Controller 仍只接收 Worker 主动发起的心跳和 assignment 轮询，不主动连接 Worker。
 
 Controller 测试覆盖连续分层、算力与内存限制、鉴权、节点隔离、回报幂等、并发预留、断线/超时/取消/失败、重启持久化及输入校验。后台扫描测试直接读取 SQLite，验证无请求时 deadline/TTL 清理、启动失败、重试及正常停机；HTTP smoke 使用临时数据库和随机本机端口启动真实 Uvicorn，注册并建任务后停止 HTTP 请求，检查 TTL 终态落盘和资源清理。GitHub Actions 还执行 Compose 校验、镜像构建和容器健康检查。
 

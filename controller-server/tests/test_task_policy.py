@@ -267,3 +267,28 @@ def test_actual_tiny_bundle_verifier_labels_and_explicitly_selects_compatibility
     compat = TestClient(create_app(Settings(ADMIN,REG,legacy_task_model_ids=True),store))
     try: assert compat.post('/v1/tasks',headers=AUTH,json=payload).status_code == 201
     finally: compat.close()
+
+
+@pytest.mark.parametrize('output_bytes',[1,65535,65537])
+def test_v1_manifest_cannot_advertise_an_unimplemented_output_budget(output_bytes):
+    from app.inference_jobs import Result, RESULT_OUTPUT_BYTES
+    assert RESULT_OUTPUT_BYTES == 65536
+    # Existing result acceptance remains unchanged; smaller manifest values must
+    # be rejected at startup rather than silently claiming this report is bounded.
+    assert Result(text='xx',elapsed_seconds=0,model_sha256=MODEL_SHA256).text == 'xx'
+    data = json.loads(MANIFEST.read_text(encoding='utf-8'))
+    data['profiles'][3]['limits']['output_bytes'] = output_bytes
+    with pytest.raises(ValueError,match='enforced result output limit'):
+        TaskPolicy(manifest=data)
+
+
+def test_documented_strict_request_is_admissible_with_an_actual_target(scene):
+    client, store, node, _ = scene
+    readme = (Path(__file__).parents[2]/'README.md').read_text(encoding='utf-8')
+    section = readme.split('严格模式提交任务示例：',1)[1]
+    payload = json.loads(section.split('```json',1)[1].split('```',1)[0])
+    assert payload['target_node_id'] == '00000000-0000-0000-0000-000000000001'
+    payload['target_node_id'] = node['node_id']
+    response = client.post('/v1/tasks',headers=AUTH,json=payload)
+    assert response.status_code == 201 and count(store) == (1,0)
+    assert response.json()['request']['model_id'] == 'lastcore/linear-demo-v1'

@@ -75,13 +75,16 @@ class TaskPolicy:
         self.profiles = {profile.model_id: profile for profile in parsed.profiles}
         if len(self.profiles) != len(parsed.profiles):
             raise ValueError('duplicate model profiles are forbidden')
-        from .inference_jobs import MODEL_ID, MODEL_REVISION, MODEL_SHA256, BACKEND_COMMIT
+        from .inference_jobs import MODEL_ID, MODEL_REVISION, MODEL_SHA256, BACKEND_COMMIT, RESULT_OUTPUT_BYTES
         for profile in self.profiles.values():
             if profile.executable and profile.family == 'whole_model' and (
                     profile.model_id != MODEL_ID or profile.version != MODEL_REVISION
                     or profile.artifact_sha256 != MODEL_SHA256
                     or profile.backend_commit != BACKEND_COMMIT):
                 raise ValueError('profile differs from the actual whole-model backend contract')
+            if (profile.executable and profile.family == 'whole_model'
+                    and profile.limits['output_bytes'] != RESULT_OUTPUT_BYTES):
+                raise ValueError('v1 output budget must match the enforced result output limit')
         self.legacy_model_ids = legacy_model_ids
 
     def admit(self, request, family):
