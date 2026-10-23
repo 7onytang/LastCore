@@ -2,10 +2,10 @@
 import json
 from pathlib import Path
 import subprocess
-import tarfile
 import urllib.request
 
 from runtime import MODEL_SHA256, sha256
+from source_cache import check_existing_binding, ensure_source_tree
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / '.cache'
@@ -37,14 +37,12 @@ def download(url, path, digest, maximum):
 
 def main():
     CACHE.mkdir(exist_ok=True)
+    backend = CACHE / 'backend'
+    check_existing_binding(backend, COMMIT, SOURCE_SHA256)
     source = CACHE / 'backend.tar.gz'
     download(SOURCE_URL, source, SOURCE_SHA256, 100 * 1024 * 1024)
+    ensure_source_tree(source, backend, COMMIT, SOURCE_SHA256)
     download(MODEL_URL, CACHE / 'model.gguf', MODEL_SHA256, 300 * 1024 * 1024)
-    backend = CACHE / 'backend'
-    if not backend.exists():
-        with tarfile.open(source) as archive:
-            archive.extractall(CACHE, filter='data')
-        (CACHE / f'llama.cpp-{COMMIT}').rename(backend)
     cmake = ROOT / '.venv/bin/cmake'
     if not cmake.exists():
         raise RuntimeError('Install local CMake first; see README.md')
@@ -52,6 +50,7 @@ def main():
                     '-DCMAKE_BUILD_TYPE=Release', f'-DLLAMA_BUILD_COMMIT={COMMIT}', '-DLLAMA_BUILD_NUMBER=0', '-DLLAMA_CURL=OFF', '-DGGML_METAL=OFF',
                     '-DLLAMA_BUILD_TESTS=OFF', '-DLLAMA_BUILD_SERVER=OFF'], check=True)
     subprocess.run([str(cmake), '--build', str(backend / 'build'), '--target', 'llama-completion', '-j', '4'], check=True)
+    ensure_source_tree(source, backend, COMMIT, SOURCE_SHA256)
     manifest = {'backend_commit': COMMIT, 'backend_license': 'MIT', 'source_sha256': SOURCE_SHA256,
                 'backend_sha256': sha256(backend / 'build/bin/llama-completion'),
                 'model_revision': REVISION, 'model_license': 'Apache-2.0',
