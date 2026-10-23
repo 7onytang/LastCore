@@ -6,6 +6,8 @@ and [SPEC-02 #41](https://github.com/7onytang/LastCore/issues/41), not a claim t
 their original acceptance criteria or platform/device verification are complete.
 Changes to this contract must be checked against the implementation and reviewed.
 The baseline is the code reviewed here, not a claim about the running server.
+The additive own-assignment lookup below extends that baseline; it requires an
+upgraded Controller and node agent.
 
 ## Schema source and verification
 
@@ -69,6 +71,7 @@ There is no refresh/revoke endpoint in this baseline.
 | `GET /v1/nodes` | admin | 200 | `{nodes:[Node]}` |
 | `POST /v1/nodes/{node_id}/heartbeat` | this node | 200 | `Node` |
 | `GET /v1/nodes/{node_id}/assignments` | this node | 200 | `{assignments:[Assignment + task_status,request,deadline]}` |
+| `GET /v1/nodes/{node_id}/assignments/{assignment_id}` | this node | 200 | one `Assignment + task_status,request,deadline`, independent of history window |
 | `POST /v1/nodes/{node_id}/assignments/{assignment_id}/report` | this node | 200 | full `Task`, including its assignments |
 | `POST /v1/tasks` | admin | 201 | full `Task`; no creation idempotency key |
 | `GET /v1/tasks` | admin | 200 | `{tasks:[Task]}`, latest 100 |
@@ -89,6 +92,31 @@ Polling selects the latest 100 related **tasks**, including terminal tasks, then
 returns only this node's assignments. There is no durable delivery cursor or
 acknowledged command queue. Task times and deadlines are UTC epoch seconds;
 display/business interpretation uses `Asia/Shanghai`.
+
+The single-assignment lookup authenticates the node token before checking the
+assignment ID and restricts the lookup to that node's ownership. An unknown ID
+and an ID owned by another node both return `404 {detail:"assignment not found"}`;
+a wrong/missing token returns 401. It returns only the owned assignment using the
+same fields and peer metadata as a list row, not the full task's other results.
+It performs one addressed task lookup in a transaction, introduces no delivery
+queue or event retention, and leaves the existing latest-100 list unchanged.
+
+When its known active assignment is absent from a successful history poll, the
+upgraded node agent queries that ID. A matching `cancelled`/`failed` task requests
+local cancellation. The worker must still finish before the agent releases its
+local active slot or starts another task. Receiving a terminal state is not a
+physical-stop acknowledgement. This protects a **known active assignment**;
+it does not guarantee delivery or journaling of all historical terminal tasks.
+
+Upgrade the Controller and agent to obtain this protection. With an old
+Controller, FastAPI's route-missing `404 {detail:"Not Found"}` (or 405/501) causes
+a warning and legacy history-only fallback cached until agent restart. Restart
+the agent after upgrading the Controller. During fallback, cancellation beyond
+the latest-100 window can still wait for the local deadline/heartbeat watchdog.
+An endpoint's unknown-assignment 404, network failure, malformed response or
+other server failure does not acknowledge cancellation, release the worker or
+disable future lookup retries; 401 retains the existing credential rejection
+path. Old agents remain history-window limited even against a new Controller.
 
 ## Request validation
 
