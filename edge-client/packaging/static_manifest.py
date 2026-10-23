@@ -9,6 +9,7 @@ import re
 import struct
 import subprocess
 import sys
+import types
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -17,15 +18,28 @@ ROOT=Path(__file__).resolve().parents[2]
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def require_control_module(executable, archive_factory=None):
+def require_control_module(executable, archive_factory=None, source=None):
     # Inspect the frozen PYZ without starting the client, GUI, node or a task.
     if archive_factory is None:
         from PyInstaller.archive.readers import CArchiveReader
         archive_factory = CArchiveReader
     archive = archive_factory(str(executable))
     required = 'lastcore_node_agent.local_control'
+    source = source or ROOT / 'node-agent/lastcore_node_agent/local_control.py'
+    expected = compile(source.read_bytes(), str(source), 'exec', dont_inherit=True, optimize=0)
+    def normalized(code):
+        if isinstance(code, types.CodeType):
+            return code.replace(co_filename='<bound-source>', co_consts=tuple(normalized(v) for v in code.co_consts))
+        if isinstance(code, tuple):
+            return tuple(normalized(v) for v in code)
+        return code
     for name, entry in archive.toc.items():
-        if entry[-1] == 'z' and required in archive.open_embedded_archive(name).toc:
+        if entry[-1] != 'z':
+            continue
+        pyz = archive.open_embedded_archive(name)
+        if required in pyz.toc:
+            if normalized(pyz.extract(required)) != normalized(expected):
+                raise RuntimeError('Frozen local control helper differs from fixed source')
             return required
     raise RuntimeError('Required local control helper missing from frozen executable')
 
