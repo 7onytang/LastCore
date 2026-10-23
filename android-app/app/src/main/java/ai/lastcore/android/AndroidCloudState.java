@@ -37,5 +37,5 @@ final class AndroidCloudState implements CloudState {
         byte[] bytes=state.toString().getBytes(StandardCharsets.UTF_8);
         try {vault.save(bytes);} finally {java.util.Arrays.fill(bytes,(byte)0);}
     }
-    @Override public void close() throws Exception {try {lock.release();} finally {channel.close();}}
+    @Override public void close() throws Exception {try {if(lock.isValid()) lock.release();} finally {if(channel.isOpen()) channel.close();}}
 }
