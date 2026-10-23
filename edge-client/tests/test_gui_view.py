@@ -15,7 +15,7 @@ class Variable:
 
 def callback(name,context):
     source=Path(__file__).resolve().parents[1]/'gui.py'
-    main=next(n for n in ast.parse(source.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='main')
+    main=next(n for n in ast.parse(source.read_text(encoding="utf-8")).body if isinstance(n,ast.FunctionDef) and n.name=='main')
     body=next(n for n in main.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[body],type_ignores=[]),str(source),'exec'),context)
     return context[name]
@@ -114,3 +114,17 @@ def test_refresh_shows_actual_session_origin_and_configured_resources():
     assert view['actual_origin'].value=='https://actual.invalid'
     assert '配置上报内存 512 MiB' in view['resources'].value
     assert '非占用测量' in view['resources'].value
+
+
+def test_callbacks_decode_utf8_source_under_a_legacy_windows_default(monkeypatch):
+    """Exercise the actual callback loader with a non-UTF8 default on every OS."""
+    original_open = Path.open
+    def legacy_open(path, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
+        if 'b' not in mode and encoding in (None, 'locale'):
+            encoding = 'cp1252'
+        return original_open(path, mode, buffering, encoding, errors, newline)
+    monkeypatch.setattr(Path, 'open', legacy_open)
+    view = fixture('A', [.125], active='B')
+    callback('refresh', view)()
+    assert view['task'].value == 'B'
+    assert view['result'].value == '已确认任务 A：0.12500000'

@@ -162,3 +162,21 @@ source-only fix.
 ```
 
 新增运行依赖 `local_status.py`、`local_control.py` 已列入 portable 的必需源码绑定清单；没有重生成锁、许可证或历史预览包。Fake 控件只承接真实回调输出，不等于完整 Tk GUI 或真实设备验收。
+
+### Cross-platform text regression
+
+Source-text readers in the callback/binding tests explicitly use UTF-8. The
+callback regression also simulates a legacy Windows cp1252 default on every OS,
+so a missing encoding fails locally on macOS/Linux instead of first failing in
+Windows CI. Do not hide the issue by globally forcing PYTHONUTF8 or skipping the
+Windows job. Before pushing callback changes, run the same portable checks from
+the same directory as the Desktop controls workflow:
+
+```sh
+cd edge-client
+python -m pytest -q tests/test_gui_view.py tests/test_admission_view.py tests/test_runtime_binding_inputs.py
+```
+
+These are pure callback/Fake-core checks: no Tk window, actual model, device,
+Controller service or external network is started. Platform CI remains the
+final check; a local pass does not establish that every platform passed.

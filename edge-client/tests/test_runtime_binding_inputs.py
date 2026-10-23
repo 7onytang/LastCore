@@ -6,7 +6,7 @@ from pathlib import Path
 def test_runtime_input_assignment_includes_all_new_control_and_snapshot_modules():
     root=Path(__file__).resolve().parents[2]
     source=root/'edge-client/packaging/static_manifest.py'
-    tree=ast.parse(source.read_text())
+    tree=ast.parse(source.read_text(encoding="utf-8"))
     assignment=next(node for node in ast.walk(tree) if isinstance(node,ast.Assign)
         and any(isinstance(target,ast.Name) and target.id=='runtime_inputs' for target in node.targets))
     context={}
