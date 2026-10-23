@@ -53,10 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--complete-after", type=int,
                         default=int(os.environ.get("NODE_AGENT_COMPLETE_AFTER", "1") or 0),
                         help="report completed after N served requests (0 = serve until cancelled)")
-    parser.add_argument("--no-accept", action="store_true",
+    parser.add_argument("--no-accept", action="store_true", default=bool(os.environ.get('NODE_AGENT_NO_ACCEPT', '')),
                         help="start in drain mode (accepting_tasks=false)")
     parser.add_argument("--request-timeout", type=float, default=10.0)
     parser.add_argument("--ui-status-file",help=argparse.SUPPRESS)
+    parser.add_argument("--ui-control-file",help=argparse.SUPPRESS)
     parser.add_argument("--verbose", action="store_true")
     return parser
 
@@ -107,9 +108,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.ui_status_file:
         from .local_status import LocalStatusWriter
         observer = LocalStatusWriter(args.ui_status_file)
+    control_reader = None
+    if args.ui_control_file:
+        from .local_control import LocalControlReader
+        control_reader = LocalControlReader(args.ui_control_file)
     agent = NodeAgent(config, ControllerClient(config.controller_url,
                                                timeout=config.request_timeout),
-                      executor_factory=executor_factory,observer=observer)
+                      executor_factory=executor_factory,observer=observer,control_reader=control_reader)
 
     def handle_signal(signum, frame):
         agent.shutdown()

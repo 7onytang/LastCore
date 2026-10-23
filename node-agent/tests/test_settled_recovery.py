@@ -30,7 +30,7 @@ def test_startup_corruption_stops_before_registration_or_execution(tmp_path, con
     with pytest.raises(StateError):
         agent.run_forever()
     assert agent.stop_event.is_set()
-    observer.assert_called_with({"connection": "recovery-required"})
+    observer.assert_called_with({"connection": "recovery-required", "admission": agent.admission_state()})
     assert client.mock_calls == []
     executor.assert_not_called()
     assert path.read_text() == contents
@@ -48,7 +48,7 @@ def test_corruption_during_settle_sets_recovery_and_preserves_pending(tmp_path):
     with pytest.raises(StateError):
         agent._settle("a", "completed")
     assert agent.stop_event.is_set()
-    observer.assert_called_with({"connection": "recovery-required"})
+    observer.assert_called_with({"connection": "recovery-required", "admission": agent.admission_state()})
     assert path.read_text() == contents
     assert pending.read_bytes() == saved
     assert client.mock_calls == []

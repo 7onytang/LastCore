@@ -25,3 +25,4 @@ jobs:
           python-version: "3.12"
       - run: pip install -r controller-server/requirements-dev.txt -r node-agent/requirements-dev.txt
       - run: python -m pytest -q -c tools/contracts/pytest.ini tools/contracts
+      - run: python -m pytest -q -c node-agent/pytest.ini node-agent/tests/test_admission_control.py

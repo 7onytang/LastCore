@@ -221,3 +221,63 @@ def test_restart_reuses_private_identity_and_updates_resources_without_logging_t
     finally:
         restarted.shutdown()
         second_client.close()
+
+
+def test_pause_drains_active_work_and_resume_requires_current_heartbeat_ack(contract):
+    c = contract
+    register(c)
+    task = start(c)
+    run = c.agent._current_run()
+    c.agent.set_accepting_tasks(False, 'pause-active')
+    assert c.agent.admission_state()['status'] == 'pending'
+    c.agent._poll_once()
+    assert c.agent._current_run() is run and not run.context.cancel.is_set()
+    c.agent._send_heartbeat()
+    assert c.agent.admission_state()['confirmed'] is False
+    assert c.agent.admission_state()['confirmed_request_id'] == 'pause-active'
+    assert c.agent.admission_state()['status'] == 'confirmed'
+    c.executor.complete.set()
+    finish_worker(c)
+    assert admin_request(c, 'GET', f"/v1/tasks/{task['id']}")['status'] == 'completed'
+    assert not c.agent._pending
+    c.agent.set_accepting_tasks(True, 'resume-old')
+    heartbeat = c.client.heartbeat
+    def stale_ack(*args, **kwargs):
+        response = heartbeat(*args, **kwargs)
+        c.agent.set_accepting_tasks(False, 'pause-new')
+        c.agent.set_accepting_tasks(True, 'resume-new')
+        return response
+    c.client.heartbeat = stale_ack
+    c.agent._send_heartbeat()
+    state = c.agent.admission_state()
+    assert state['status'] == 'pending' and state['request_id'] == 'resume-new'
+    assert state['confirmed_request_id'] == 'pause-active'
+    second = admin_request(c, 'POST', '/v1/tasks', json={
+        'model_id': 'second-contract', 'num_layers': 1, 'layer_memory_mb': 1, 'timeout_seconds': 120})
+    c.agent._poll_once()
+    assert c.agent.stats.started == [task['assignments'][0]['id']]
+    c.client.heartbeat = heartbeat
+    c.agent._send_heartbeat()
+    assert c.agent.admission_state()['status'] == 'confirmed'
+    assert c.agent.admission_state()['confirmed_request_id'] == 'resume-new'
+    c.agent._poll_once()
+    assert c.agent.stats.started == [task['assignments'][0]['id'], second['assignments'][0]['id']]
+
+
+def test_private_control_file_is_consumed_before_real_heartbeat_and_poll(contract, tmp_path):
+    from lastcore_node_agent.local_control import LocalControlReader, write_control_command
+    c = contract
+    tmp_path.chmod(0o700)
+    path = tmp_path / 'control.json'
+    c.agent.control_reader = LocalControlReader(path)
+    write_control_command(path, 'pause-file', False)
+    register(c)
+    assert c.agent.admission_state()['desired'] is False
+    assert c.agent.admission_state()['status'] == 'confirmed'
+    assert admin_request(c, 'GET', '/v1/nodes')['nodes'][0]['accepting_tasks'] is False
+    write_control_command(path, 'resume-file', True)
+    c.agent._poll_once()
+    assert c.agent.admission_state()['status'] == 'pending'
+    c.agent._send_heartbeat()
+    assert c.agent.admission_state()['confirmed_request_id'] == 'resume-file'
+    assert admin_request(c, 'GET', '/v1/nodes')['nodes'][0]['accepting_tasks'] is True

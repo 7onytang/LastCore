@@ -78,7 +78,8 @@ class FakeController:
                 raise self.heartbeat_error
             node["last_seen"] = self.clock[0]
             self.heartbeats.append((node_id, self.clock[0]))
-            return httpx.Response(200, json={"status": "available"})
+            return httpx.Response(200, json={"status": "available",
+                                            "accepting_tasks": json.loads(request.content)["accepting_tasks"]})
         if method == "GET" and path.startswith("/v1/nodes/") and path.endswith("/assignments"):
             node, node_id = self._node_from_path(request)
             if node is None:
