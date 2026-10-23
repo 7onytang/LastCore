@@ -5,6 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import Settings, create_app
+
+# Historical arbitrary-model route/ACK fixtures explicitly exercise compatibility mode.
+# Strict-default admission is tested independently in test_task_policy.py.
 from app.store import Store
 
 
@@ -20,7 +23,7 @@ def auth(token):
 def setup(tmp_path):
     now = [1000.0]
     store = Store(str(tmp_path / "controller.sqlite3"), 30, clock=lambda: now[0])
-    return TestClient(create_app(Settings(ADMIN, REGISTRATION), store)), store, now
+    return TestClient(create_app(Settings(ADMIN, REGISTRATION, legacy_task_model_ids=True), store)), store, now
 
 
 def register(client, weight=1):

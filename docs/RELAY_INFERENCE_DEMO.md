@@ -2,6 +2,15 @@
 
 本文描述当前仓库已经实现的接力推理路径。演示目标是证明同一个 tiny decoder-only 模型拆到多个 Worker 后，结果与单机前向逐字节一致；圆周率估算和日志统计适合作为调度看板的辅助负载，不替代这条推理验收。
 
+## 严格策略前置条件
+
+当前严格默认拒绝新建 `lastcore/tiny-cpu` 分层任务，因为可信本地权重／资源 profile 尚未绑定。
+旧接力只能在服务端 owner 明确批准的隔离兼容实例中进行，由该实例显式设置
+`CONTROLLER_LEGACY_TASK_MODEL_IDS=true`；这不构成严格策略、硬件预算或真实设备验收。
+不要为执行本文步骤自动开启现有生产 Controller 的 legacy 模式，也不要伪装成算术模型 ID 绕过策略。
+下述本地脚本仅为它自己创建的临时 Controller／临时数据库显式选择兼容模式，不更改已有 ECS。
+本轮仍暂停新增真实任务／设备验收；本文是后续授权后的操作说明。
+
 ## 运行关系
 
 ```text
@@ -51,7 +60,7 @@ pytest -q tests/test_two_node_e2e.py tests/test_pipeline_over_tcp.py \
 
 ## 接入 ECS 和真实设备
 
-1. 在 ECS 上运行 Controller，并通过 HTTPS 暴露 `/healthz`、`/v1` 和 `/docs`。
+1. 先由服务端 owner 确认使用明确授权的隔离 legacy 兼容实例；严格默认会拒绝 tiny 新建任务。不得自动改动已有生产配置。然后在该 ECS 上运行 Controller，并通过 HTTPS 暴露 `/healthz`、`/v1` 和 `/docs`。
 2. 每台设备运行 Node Agent，首次只用注册 token 调用注册接口；成功后持久化返回的 `node_id` 和 `node_token`。
 3. `NODE_AGENT_ENDPOINT` 必须是**其他 Worker 可访问且实际监听**的地址。云端设备不能登记 `http://127.0.0.1:9000`，也不能登记只在家庭局域网可见的地址，除非所有 Worker 在同一网络或已经建立 VPN/端口转发。
 4. Agent 使用 `--executor stage`、同一份模型配置和 checkpoint。模型 `model_id`、层数和权重必须匹配，否则 assignment 会被拒绝。

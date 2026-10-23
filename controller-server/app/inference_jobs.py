@@ -10,10 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field, field_validator
 
 from .models import StrictModel
+from .task_policy import PolicyError
 
 MODEL_ID = 'SmolLM2-135M-Instruct-Q4_K_M'
+MODEL_REVISION = '04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b'
 MODEL_SHA256 = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
 BACKEND_COMMIT = '8345f333951c661d166b00e6f9362e553768f292'
+RESULT_OUTPUT_BYTES = 65536
 LEASE_SECONDS = 10
 ACTIVE = ('leased', 'running', 'cancelling')
 
@@ -49,15 +52,15 @@ class LeaseRequest(StrictModel):
 
 
 class Result(StrictModel):
-    text: str = Field(max_length=65536)
+    text: str = Field(max_length=RESULT_OUTPUT_BYTES)
     elapsed_seconds: float = Field(ge=0, le=90, allow_inf_nan=False)
     model_sha256: Literal['bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169']
 
     @field_validator('text')
     @classmethod
     def result_bytes(cls, value):
-        if len(value.encode('utf-8')) > 65536:
-            raise ValueError('result exceeds 65536 UTF-8 bytes')
+        if len(value.encode('utf-8')) > RESULT_OUTPUT_BYTES:
+            raise ValueError(f'result exceeds {RESULT_OUTPUT_BYTES} UTF-8 bytes')
         return value
 
 
@@ -152,7 +155,7 @@ class Jobs:
                      'ready': bool(row['ready']), 'current_job_id': row['current_job_id']}
                     for row in db.execute('SELECT w.*,n.last_seen FROM inference_workers w JOIN nodes n ON n.id=w.node_id').fetchall()]
 
-    def create(self, request):
+    def create(self, request, policy=None):
         data = request.model_dump()
         key = data.pop('idempotency_key')
         canonical = json.dumps(data, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
@@ -163,6 +166,8 @@ class Jobs:
                 if old['request_hash'] != request_hash:
                     raise HTTPException(409, 'idempotency key has a different request')
                 return self._view(old)
+            if policy is not None:
+                policy.admit(request, 'whole_model')
             node = db.execute('SELECT n.* FROM inference_workers w JOIN nodes n ON n.id=w.node_id WHERE node_id=?', (request.worker_node_id,)).fetchone()
             if node is None or node['last_seen'] <= self.store.clock() - self.store.ttl:
                 raise HTTPException(409, 'compatible worker is not online')
@@ -209,6 +214,8 @@ class Jobs:
         with self.transaction() as db:
             row = self._lease(db, job_id, request, token)
             if row['status'] not in ACTIVE:
+                if row['error_code'] in ('deadline', 'lease_lost', 'cancel_lease_expired'):
+                    raise PolicyError(409, 'inference lease is terminal', 'ASSIGNMENT_EXPIRED')
                 raise HTTPException(409, 'inference lease is terminal')
             db.execute('UPDATE nodes SET last_seen=?,accepting_tasks=0 WHERE id=?', (self.store.clock(), request.node_id))
             if row['status'] != 'cancelling':
@@ -224,6 +231,8 @@ class Jobs:
             if row['status'] == request.status and row['result'] == payload and row['error_code'] == request.error_code:
                 return self._view(row)
             if row['status'] not in ACTIVE:
+                if row['error_code'] in ('deadline', 'lease_lost', 'cancel_lease_expired'):
+                    raise PolicyError(409, 'inference job is terminal', 'ASSIGNMENT_EXPIRED')
                 raise HTTPException(409, 'inference job is terminal')
             if row['status'] == 'cancelling' and request.status != 'cancelled':
                 raise HTTPException(409, 'cancellation acknowledgment required')
@@ -260,7 +269,7 @@ class Jobs:
             return self._view(self._get(db, job_id))
 
 
-def router(jobs, credential, require_admin):
+def router(jobs, credential, require_admin, policy):
     api = APIRouter(prefix='/v1/inference')
     Token = Annotated[str, Depends(credential)]
 
@@ -278,7 +287,7 @@ def router(jobs, credential, require_admin):
 
     @api.post('/jobs', status_code=201, dependencies=[Depends(require_admin)])
     def create(request: JobRequest):
-        return jobs.create(request)
+        return jobs.create(request, policy=policy)
 
     @api.get('/jobs/{job_id}', dependencies=[Depends(require_admin)])
     def get(job_id: str):

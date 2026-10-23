@@ -5,6 +5,9 @@ Scope: only mirrors LC-223 already-located gaps; no app source changes.
 from fastapi.testclient import TestClient
 
 from app.main import Settings, create_app
+
+# Historical arbitrary-model route/ACK fixtures explicitly exercise compatibility mode.
+# Strict-default admission is tested independently in test_task_policy.py.
 from app.store import Store
 
 
@@ -19,7 +22,7 @@ def auth(token):
 def _setup(tmp_path):
     now = [1000.0]
     store = Store(str(tmp_path / "lc228.sqlite3"), 30, clock=lambda: now[0])
-    client = TestClient(create_app(Settings(ADMIN, REGISTRATION), store))
+    client = TestClient(create_app(Settings(ADMIN, REGISTRATION, legacy_task_model_ids=True), store))
     return client, store, now
 
 
