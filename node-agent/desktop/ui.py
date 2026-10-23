@@ -19,7 +19,7 @@ import uuid
 from env_file import read_env_file
 from resource_snapshot import ResourceSampler
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
-from lastcore_node_agent.local_status import safe_task, safe_admission
+from lastcore_node_agent.local_status import safe_task, safe_admission, ERROR_CODES
 
 UI = Path(__file__).resolve().parents[2] / 'controller-server' / 'app' / 'ui'
 
@@ -67,6 +67,11 @@ class NodeProcess:
                     observation['task']=safe_task(raw.get('task'))
                     observation['admission']=safe_admission(raw.get('admission'))
                     observation['control_error']='invalid-command' if raw.get('control_error')=='invalid-command' else None
+                    history = raw.get('recent_errors')
+                    if isinstance(history,list):
+                        for code in history[-8:]:
+                            if isinstance(code,str) and code in ERROR_CODES and code not in self.recent_errors:
+                                self.recent_errors = (self.recent_errors + [code])[-8:]
         except (OSError,ValueError): pass
         if not running: observation['connection']='stopped'
         elif isinstance(observation.get('last_heartbeat'),(int,float)) and isinstance(observation.get('heartbeat_ttl'),(int,float)) and time.time()-observation['last_heartbeat']>observation['heartbeat_ttl']:

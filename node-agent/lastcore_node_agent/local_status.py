@@ -13,6 +13,9 @@ import time
 TASK_FIELDS = {'task_id','assignment_id','model_id','executor','layer_start','layer_end',
                'status','error_code','cleanup_confirmed','report_status','result'}
 RESULT_FIELDS = {'output_shape','output_preview','local_seconds','parameter_bytes'}
+ERROR_CODES = {'unreachable','heartbeat-failed','heartbeat-stale','rejected','recovery-required',
+    'poll-unavailable','poll-rejected','deadline','heartbeat-stall','execution_failed',
+    'executor_unavailable','cleanup_timeout','invalid-command'}
 
 
 def safe_task(value):
@@ -61,6 +64,7 @@ def safe_admission(value):
 class LocalStatusWriter:
     def __init__(self,path):
         self.path=Path(path); self.lock=threading.Lock()
+        self.error_channels = {}
         self.value={'connection':'starting','last_heartbeat':None,'heartbeat_ttl':None,'task':None}
 
     def __call__(self,updates):
@@ -77,6 +81,20 @@ class LocalStatusWriter:
             patch=safe_task(updates.get('task_update'))
             if patch and self.value['task'] and patch.get('assignment_id')==self.value['task'].get('assignment_id'):
                 self.value['task'].update(patch)
+            candidates = {}
+            if 'connection' in updates: candidates['connection'] = updates['connection']
+            if 'poll_status' in updates: candidates['poll'] = 'poll-' + str(updates['poll_status'])
+            if 'control_error' in updates: candidates['control'] = updates['control_error']
+            if 'task' in updates: candidates['task'] = (safe_task(updates['task']) or {}).get('error_code')
+            if patch and patch.get('assignment_id') == (self.value.get('task') or {}).get('assignment_id') and 'error_code' in patch:
+                candidates['task'] = patch['error_code']
+            errors = self.value.setdefault('recent_errors', [])
+            for channel, candidate in candidates.items():
+                code = candidate if isinstance(candidate,str) and candidate in ERROR_CODES else None
+                if code is not None and self.error_channels.get(channel) != code:
+                    errors.append(code)
+                self.error_channels[channel] = code
+            self.value['recent_errors'] = errors[-8:]
             self.value['observed_at']=time.time()
             self.path.parent.mkdir(parents=True,exist_ok=True)
             fd,name=tempfile.mkstemp(prefix='.ui-status-',dir=self.path.parent)

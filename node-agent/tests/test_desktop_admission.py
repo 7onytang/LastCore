@@ -197,3 +197,19 @@ def test_actual_core_reader_observer_and_parent_confirm_only_after_real_heartbea
         assert not node.stop_requested and not agent.stop_event.is_set()
     finally:
         client.close()
+
+
+def test_transient_errors_survive_recovery_before_the_parent_next_samples(node):
+    writer=LocalStatusWriter(node.status_path)
+    writer({'connection':'heartbeat-failed','poll_status':'unavailable'})
+    writer({'connection':'connected','poll_status':'ok','admission':ack()})
+    state=node.state()
+    assert state['observation']['connection']=='connected'
+    assert state['recent_errors']==['heartbeat-failed','poll-unavailable']
+    for _ in range(12):
+        writer({'connection':'heartbeat-failed'})
+        writer({'connection':'connected'})
+    stored=json.loads(node.status_path.read_text())
+    assert len(stored['recent_errors'])==8
+    writer({'connection':'private-token','control_error':'private-token'})
+    assert 'private-token' not in str(json.loads(node.status_path.read_text())['recent_errors'])
