@@ -14,6 +14,8 @@ on every send and receive iteration (writes are sliced rather than one blocking
 
 from __future__ import annotations
 
+import math
+import selectors
 import socket
 import time
 from typing import Any, Mapping
@@ -31,6 +33,19 @@ DEFAULT_CONNECT_TIMEOUT = 10.0
 def _remaining(deadline: float | None) -> float | None:
     """Seconds left before an epoch-seconds deadline; ``None`` when none is set."""
     return None if deadline is None else max(deadline - time.time(), 0.0)
+
+
+def _connect_remaining(started, timeout, deadline, cancel):
+    """One monotonic connection budget plus the existing epoch task deadline."""
+    if cancel is not None and cancel.is_set():
+        raise TaskCancelled("cancelled while connecting")
+    left = _remaining(deadline)
+    if left is not None and left <= 0:
+        raise ChannelTimeout("task deadline exceeded while connecting")
+    budget = None if timeout is None else timeout - (time.monotonic() - started)
+    if budget is not None and budget <= 0:
+        raise ChannelTimeout("timed out while connecting")
+    return left if budget is None else budget if left is None else min(left, budget)
 
 
 def _recv_exactly(sock: socket.socket, size: int, deadline: float | None, cancel,
@@ -126,13 +141,65 @@ class Channel:
     @classmethod
     def connect(cls, address: tuple[str, int] | str, *, connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
                 **kwargs) -> "Channel":
+        # Follow the stdlib address fallback, but poll a single nonblocking
+        # attempt instead of restarting a connect whenever a cancel slice ends.
         host, port = _split_address(address)
+        if connect_timeout is not None and (not math.isfinite(connect_timeout) or connect_timeout < 0):
+            raise ValueError("connect_timeout must be finite and nonnegative, or None")
+        started = time.monotonic()
+        deadline, cancel = kwargs.get("deadline"), kwargs.get("cancel")
+
+        def remaining():
+            return _connect_remaining(started, connect_timeout, deadline, cancel)
+
+        remaining()
         try:
-            sock = socket.create_connection((host, port), timeout=connect_timeout)
+            # System DNS resolution is synchronous: it cannot be interrupted
+            # here. Time spent resolving still consumes the shared budget.
+            addresses = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
         except OSError as exc:
+            remaining()
             raise ChannelClosed(f"cannot connect to {host}:{port}: {exc}") from exc
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        return cls(sock, **kwargs)
+        remaining()
+        last_error = None
+        for family, kind, protocol, _canonname, sockaddr in addresses:
+            remaining()
+            sock = None
+            try:
+                sock = socket.socket(family, kind, protocol)
+                sock.setblocking(False)
+                try:
+                    sock.connect(sockaddr)
+                except (BlockingIOError, InterruptedError):
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(sock, selectors.EVENT_WRITE)
+                        while True:
+                            left = remaining()
+                            wait = CANCEL_POLL_SECONDS if left is None else min(CANCEL_POLL_SECONDS, left)
+                            ready = selector.select(wait)
+                            remaining()  # A late writable event is not permission to proceed.
+                            if ready:
+                                error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+                                if error:
+                                    raise OSError(error, "connection failed")
+                                break
+                remaining()
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                sock.settimeout(connect_timeout)  # Preserve the returned socket mode.
+                remaining()
+                channel = cls(sock, **kwargs)
+                sock = None  # Ownership transfers only after complete setup.
+                return channel
+            except OSError as exc:
+                last_error = exc
+            finally:
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
+        remaining()
+        raise ChannelClosed(f"cannot connect to {host}:{port}: {last_error or 'no addresses'}")
 
     def _check_cancel(self) -> None:
         if self.cancel is not None and self.cancel.is_set():
