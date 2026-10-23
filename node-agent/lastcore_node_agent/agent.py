@@ -15,8 +15,11 @@ from .controller import ControllerClient, ControllerError
 from .credentials import (
     NodeCredentials,
     StateError,
+    begin_registration,
+    clear_registration_pending,
     clear_pending_report,
     load_credentials,
+    load_registration_pending,
     load_pending_report_results,
     load_pending_reports,
     load_settled,
@@ -87,6 +90,7 @@ class NodeAgent:
         self._admission_request_id = None
         self._admission_confirmed_request_id = None
         self._admission_requests = {}
+        self._registration_attempted = False
 
     def admission_state(self) -> dict:
         with self._admission_lock:
@@ -140,18 +144,55 @@ class NodeAgent:
                 "cleanup_confirmed": False, "report_status": "running-reported", "result": None}
 
     def ensure_credentials(self) -> NodeCredentials:
+        pending = load_registration_pending(self.config.state_dir)
+        if pending:
+            self._registration_attempted = True
         credentials = load_credentials(self.config.state_dir)
+        if self.credentials is not None and credentials != self.credentials:
+            raise StateError('known node identity changed or disappeared; preserve state for recovery')
         if credentials is None:
+            if pending or self._registration_attempted:
+                raise StateError('registration outcome is unknown; preserve state for operator recovery')
             if not self.config.registration_token:
                 raise RuntimeError("no persisted node credentials and no registration token configured")
-            response = self.client.register(self.config.registration_token,
-                                            {**self.config.registration_payload(), "supported_workloads": list(self.supported_workloads)})
-            credentials = NodeCredentials.from_record(response)
-            save_credentials(self.config.state_dir, credentials)
+            token = self.config.registration_token
+            if not isinstance(token, str) or any(ord(char) < 33 or ord(char) > 126 for char in token):
+                raise StateError('first enrollment requires a valid local registration credential')
+            payload = {**self.config.registration_payload(), "supported_workloads": list(self.supported_workloads)}
+            try:
+                json.dumps(payload, allow_nan=False)
+            except (ValueError, TypeError):
+                raise StateError('invalid local registration input; no request sent') from None
+            begin_registration(self.config.state_dir)
+            self._registration_attempted = True
+            if not load_registration_pending(self.config.state_dir):
+                raise StateError('registration intent disappeared; preserve state for operator recovery')
+            try:
+                response = self.client.register(token, payload)
+            except (httpx.HTTPError, ControllerError, ValueError):
+                # A status/body alone cannot prove whether an intermediary or server
+                # already created a node. There is no idempotency key on this wire.
+                raise StateError('registration outcome is unknown; preserve state for operator recovery') from None
+            try:
+                credentials = NodeCredentials.from_record(response)
+            except StateError:
+                raise StateError('registration response is unusable; outcome unknown, preserve state for recovery') from None
+            try:
+                save_credentials(self.config.state_dir, credentials)
+                if load_credentials(self.config.state_dir) != credentials:
+                    raise StateError('saved registration identity could not be verified')
+            except (OSError, StateError):
+                raise StateError('registration identity persistence failed; preserve state for operator recovery') from None
             LOG.info("registered as node %s", credentials.node_id)
         else:
             LOG.info("reusing persisted credentials for node %s", credentials.node_id)
         self.credentials = credentials
+        if pending or self._registration_attempted:
+            try:
+                clear_registration_pending(self.config.state_dir)
+            except OSError:
+                raise StateError('registration identity saved but intent cleanup failed; preserve state for recovery') from None
+        self._registration_attempted = False
         return credentials
 
     def run_forever(self) -> None:
