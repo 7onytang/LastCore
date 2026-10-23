@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +18,7 @@ CREDENTIALS_FILE = "node-credentials.json"
 JOURNAL_FILE = "journal.json"
 PENDING_REPORTS_FILE = "pending-reports.json"
 LOCK_FILE = "agent.lock"
+REGISTRATION_PENDING_FILE = "registration.pending"
 JOURNAL_LIMIT = 512
 SETTLED_STATUSES = frozenset({"completed", "failed", "stopped", "skipped-terminal"})
 
@@ -103,6 +106,58 @@ def load_credentials(state_dir: Path) -> NodeCredentials | None:
     if data is None:
         return None
     return NodeCredentials.from_record(data)
+
+
+def load_registration_pending(state_dir: Path) -> bool:
+    path = Path(state_dir) / REGISTRATION_PENDING_FILE
+    try:
+        # A broken symlink is evidence too, not an absent first-enrollment state.
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            return False
+        if not stat.S_ISREG(info.st_mode):
+            raise StateError('registration intent is invalid; operator recovery required')
+        if os.name != 'nt' and (info.st_uid != os.getuid() or info.st_mode & 0o077):
+            raise StateError('registration intent is not private')
+        data = _read_json(path)
+        if data is None:
+            raise StateError('known registration intent disappeared')
+        if (set(data) != {'version', 'phase'} or type(data['version']) is not int
+                or data['version'] != 1 or data['phase'] != 'pending'):
+            raise StateError('invalid registration intent')
+    except (OSError, StateError):
+        raise StateError('registration intent is invalid; preserve state for operator recovery') from None
+    return True
+
+
+def begin_registration(state_dir: Path) -> None:
+    """Fsync a private intent and publish it exclusively before any registration POST."""
+    state_dir = Path(state_dir)
+    path = state_dir / REGISTRATION_PENDING_FILE
+    staging = state_dir / ('.registration-stage-' + uuid.uuid4().hex)
+    try:
+        _atomic_write_json(staging, {'version': 1, 'phase': 'pending'})
+        # Unlike replace(), link() never overwrites an already reserved intent.
+        os.link(staging, path)
+        if os.name != 'nt':
+            directory = os.open(state_dir, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    except OSError:
+        raise StateError('cannot reserve registration intent; preserve state for operator recovery') from None
+    finally:
+        try:
+            staging.unlink(missing_ok=True)
+        except OSError:
+            pass  # The exclusive pending marker remains the admission barrier.
+
+
+def clear_registration_pending(state_dir: Path) -> None:
+    # Called only after the validated node identity is durably saved/read back.
+    (Path(state_dir) / REGISTRATION_PENDING_FILE).unlink()
 
 
 def _settled_entries(data) -> list[dict]:

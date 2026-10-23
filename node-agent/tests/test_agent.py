@@ -270,16 +270,18 @@ def test_oldest_task_starts_first(fake, client, clock, tmp_path):
     stop_agent(thread, captured)
 
 
-def test_agent_retries_until_controller_reachable(fake, client, clock, tmp_path):
+def test_existing_identity_retries_until_controller_reachable(fake, client, clock, tmp_path):
     config = make_config(tmp_path / "state")
     factory = FactoryRecorder(lambda: SliceDemoExecutor(slices=2, slice_seconds=0.01))
     agent = make_agent(fake, client, config, clock, factory.create)
-    fake.register_error = httpx.ConnectError("controller down")
+    agent.ensure_credentials()
+    fake.heartbeat_error = httpx.ConnectError("controller down")
     thread, captured = run_in_thread(agent)
     time.sleep(0.15)
-    assert fake.register_calls == 0
-    fake.register_error = None
-    assert wait_until(lambda: fake.register_calls == 1)
+    assert fake.register_calls == 1 and agent.stats.heartbeats_ok == 0
+    fake.heartbeat_error = None
+    assert wait_until(lambda: agent.stats.heartbeats_ok >= 1)
+    assert fake.register_calls == 1
     task_id, assignment_id = fake.add_task("node-1")
     assert wait_until(lambda: fake.tasks[task_id]["status"] == "completed")
     agent.stop_event.set()
