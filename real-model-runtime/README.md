@@ -23,7 +23,26 @@ python3 -m unittest discover -s real-model-runtime/tests -v
 python3 real-model-runtime/verify_real.py
 ```
 
-Setup verifies archive/model hashes and records the built executable hash in `.cache/installed.json`. Both initialization and every generation verify executable/model hashes before launch, so a reused instance rejects replaced artifacts. The installation must remain trusted and unchanged during generation; this is not protection against concurrent filesystem tampering. Cached native libraries remain a trusted local installation; this is not a signed distribution or a sandbox for untrusted models. Setup uses no remote Python model code. Delete `.cache` and rebuild to replace damaged source/build artifacts.
+Setup verifies archive/model hashes, binds every backend source file to the verified archive, and records the built executable hash in `.cache/installed.json`. Both initialization and every generation verify executable/model hashes before launch, so a reused instance rejects replaced artifacts. The installation must remain trusted and unchanged during generation; this is not protection against concurrent filesystem tampering. Cached native libraries remain a trusted local installation; this is not a signed distribution or a sandbox for untrusted models. Setup uses no remote Python model code. Preserve or move aside a rejected backend tree before explicitly creating a fresh one; setup never adopts or overwrites an unbound, partial or changed tree.
+
+
+### Cached backend source binding
+
+The existing SHA-256 mechanism is reused for the pinned source archive and every cached source file. Setup hashes and parses the same open archive, accepts only bounded ordinary file/directory members under the expected `llama.cpp-<commit>` root, and rejects unsafe paths, duplicate/conflicting members, links and special files before extraction. First extraction exclusively creates `.cache/backend`; `.lastcore-source-binding.json` is written only after the complete extracted source matches. A failed extraction leaves its partial tree unbound and preserved.
+
+On every reuse, setup requires that exact completion binding **and** compares source paths, types, sizes and file hashes against the verified archive. A matching marker alone is never sufficient. Missing, changed, extra or linked source entries fail before model download or CMake, preserving the old tree and any `installed.json`. Setup repeats the source check after CMake and before writing a new installed receipt. A known unbound/incorrect marker is rejected before any download.
+
+The only source-inventory exception is a real, non-symlink top-level `backend/build/`, matching the existing `cmake -B` output directory. Its generated files, CMake cache and native dependencies remain **trusted local build state**; source binding is not a reproducible-build, signed-binary or complete build-output integrity guarantee. A linked build root is rejected. Source/build/cache files must remain trusted and unchanged during setup; this does not defend against concurrent filesystem tampering.
+
+For an older or interrupted cache without this binding, preserve it by moving `.cache/backend` to an owner-selected backup outside the active backend path, then explicitly rerun setup for a fresh tree. Keep the hash-verified `backend.tar.gz` and `model.gguf` caches to avoid unnecessary downloads. Do not copy a completion marker into an old tree as a migration shortcut. Setup never automatically deletes or repairs the rejected tree.
+
+Offline binding regression only:
+
+```sh
+python3 -m unittest discover -s real-model-runtime/tests -p test_bootstrap_source.py -v
+```
+
+These tests use synthetic tar/temp fixtures with download/subprocess mocked, including normal first install/reuse, partial and forged bindings, source changes, path/link/size rejection, generated-build compatibility and preservation of installed receipts. They do not download weights, run CMake or execute a real model. This local guard does not implement the separate historical model-manager module in PR #6/#10.
 
 The CLI returns JSON with generated text, timing, scope, and backend diagnostics. `--tokens` limits generated tokens to 1–256; prompt input is limited to 4096 UTF-8 bytes. Context is 2048 tokens. Ctrl-C requests cancellation. Backend execution deadline, cancellation, backend error, output overflow, or caller exception terminates the dedicated process group and reaps its child. Each stdout/stderr stream is limited to 1 MiB; crossing that limit raises an explicit failure and cleans up the process group, including after a fast backend exit. Successful output is never silently truncated. Integrity hashing precedes the backend deadline. Unit lifecycle tests use synthetic subprocesses and are separate from the real model smoke evidence.
 
