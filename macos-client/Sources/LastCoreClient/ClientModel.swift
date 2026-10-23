@@ -8,7 +8,14 @@ final class ClientModel: ObservableObject {
     @Published var nodeName = UserDefaults.standard.string(forKey: "nodeName") ?? Host.current().localizedName ?? "Mac"
     @Published var endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? "http://127.0.0.1:9000"
     @Published var registrationToken = ""
-    @Published var acceptingTasks = true
+    @Published var acceptingTasks = true {
+        didSet { if oldValue != acceptingTasks { acceptingRevision &+= 1 } }
+    }
+    enum ConnectionState { case stopped, connecting, connected, retrying, unreachable, stopping }
+    @Published private(set) var connectionState: ConnectionState = .stopped
+    @Published private(set) var confirmedAcceptingTasks: Bool?
+    @Published private(set) var sessionOrigin: String?
+    @Published private(set) var lastHeartbeatAt: Date?
     @Published private(set) var isRunning = false
     @Published private(set) var nodeID: String?
     @Published private(set) var currentTask = "空闲"
@@ -21,6 +28,10 @@ final class ClientModel: ObservableObject {
     private var nodeToken: String?
     private var startedAssignments = Set<String>()
     private let memoryMB = 4096
+    private let computeWeight = 1.0
+    private var sessionGeneration = UUID()
+    private var acceptingRevision: UInt64 = 0
+    private var confirmedRevision: UInt64?
     private var activeControllerURL = ""
     private let session: URLSession
     let reports: PendingReports
@@ -37,9 +48,38 @@ final class ClientModel: ObservableObject {
         self.reports = PendingReports(url: journalURL ?? defaultJournal)
     }
 
+    var isConnectionConfirmed: Bool { connectionState == .connected }
+    var isStopping: Bool { connectionState == .stopping }
+    var acceptanceText: String {
+        guard isRunning, !isStopping else { return "接单状态未确认" }
+        guard connectionState == .connected, confirmedRevision == acceptingRevision,
+              confirmedAcceptingTasks == acceptingTasks else {
+            return acceptingTasks ? "接收新任务待心跳确认" : "暂停接单待心跳确认"
+        }
+        return acceptingTasks ? "接收新任务 · 心跳已确认" : "暂停新任务 · 心跳已确认"
+    }
+    var configuredMemoryText: String { "\(memoryMB) MB · 配置声明，非系统实测" }
+    var configuredComputeText: String { "\(computeWeight) · 配置权重，非基准测试" }
+    var heartbeatText: String {
+        guard let lastHeartbeatAt else { return "尚未确认" }
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: lastHeartbeatAt) + "（北京时间）"
+    }
     var statusText: String {
-        guard isRunning else { return "已停止" }
-        return acceptingTasks ? "已连接 · 接收任务" : "已连接 · 暂停接单"
+        switch connectionState {
+        case .stopped: return "已停止"
+        case .connecting: return "连接中 · 等待认证心跳"
+        case .connected: return "已连接 · " + acceptanceText
+        case .retrying: return "连接未确认 · 正在重试"
+        case .unreachable: return "未连接 · 请检查错误后重试"
+        case .stopping: return "停止中 · 等待会话清理"
+        }
+    }
+    private var canClaimNewWork: Bool {
+        isRunning && !isStopping && acceptingTasks && connectionState == .connected
+            && confirmedRevision == acceptingRevision && confirmedAcceptingTasks == true
     }
 
     func start() {
@@ -69,28 +109,48 @@ final class ClientModel: ObservableObject {
         lastResult = nil
         lastCompletedTaskID = nil
         startedAssignments.removeAll()
+        sessionGeneration = UUID()
+        let generation = sessionGeneration
+        sessionOrigin = activeControllerURL
+        confirmedAcceptingTasks = nil
+        confirmedRevision = nil
+        lastHeartbeatAt = nil
+        connectionState = .connecting
         isRunning = true
         lastError = nil
-        loopTask = Task { await runLoop() }
+        loopTask = Task { await runLoop(generation: generation) }
     }
 
     func stop() {
+        guard loopTask != nil, !isStopping else { return }
+        connectionState = .stopping
+        confirmedAcceptingTasks = nil
+        confirmedRevision = nil
         loopTask?.cancel()
-        isRunning = false
-        currentTask = "空闲"
-        addMessage("节点已停止")
+        addMessage("正在停止，等待原会话清理")
     }
 
-    private func runLoop() async {
+    private func runLoop(generation: UUID) async {
+        defer {
+            if generation == sessionGeneration {
+                isRunning = false
+                loopTask = nil
+                currentTask = "空闲"
+                confirmedAcceptingTasks = nil
+                confirmedRevision = nil
+                if connectionState != .unreachable { connectionState = .stopped }
+                addMessage(connectionState == .stopped ? "节点已停止" : "会话已结束，请检查错误")
+            }
+        }
         var retryDelay: UInt64 = 1
         while !Task.isCancelled {
             do {
                 try await loadOrRegister()
-                try await heartbeat()
+                try await heartbeat(generation: generation)
                 if let nodeID, let nodeToken {
                     try await replayPendingReports(origin: activeControllerURL, nodeID: nodeID, token: nodeToken)
                 }
-                if acceptingTasks { try await pollAssignments() }
+                if canClaimNewWork { try await pollAssignments() }
                 lastError = nil
                 retryDelay = 1
                 try await Task.sleep(for: .seconds(2))
@@ -98,19 +158,19 @@ final class ClientModel: ObservableObject {
                 break
             } catch {
                 if Task.isCancelled { break }
+                confirmedAcceptingTasks = nil
+                confirmedRevision = nil
                 lastError = error.localizedDescription
-                addMessage("连接错误：\(error.localizedDescription)")
+                addMessage("会话错误：\(error.localizedDescription)")
                 if error is CocoaError || (nodeID == nil && nodeToken == nil) {
-                    isRunning = false
-                    loopTask = nil
+                    connectionState = .unreachable
                     return
                 }
+                connectionState = .retrying
                 do { try await Task.sleep(for: .seconds(retryDelay)) } catch { break }
                 retryDelay = min(retryDelay * 2, 30)
             }
         }
-        isRunning = false
-        loopTask = nil
     }
 
     private func loadOrRegister() async throws {
@@ -128,7 +188,7 @@ final class ClientModel: ObservableObject {
             "platform": "macOS-\(ProcessInfo.processInfo.processArchitecture)",
             "endpoint": endpoint,
             "available_memory_mb": memoryMB,
-            "compute_weight": 1.0
+            "compute_weight": computeWeight
         ])
         guard let id = response["node_id"] as? String,
               let token = response["node_token"] as? String else {
@@ -143,12 +203,24 @@ final class ClientModel: ObservableObject {
         addMessage("节点注册完成：\(id)")
     }
 
-    private func heartbeat() async throws {
+    private func heartbeat(generation: UUID) async throws {
         guard let nodeID, let nodeToken else { throw ClientError.message("节点凭据尚未载入") }
-        _ = try await request("POST", "/v1/nodes/\(nodeID)/heartbeat", token: nodeToken, body: [
+        let desired = acceptingTasks, revision = acceptingRevision
+        let response = try await request("POST", "/v1/nodes/\(nodeID)/heartbeat", token: nodeToken, body: [
             "available_memory_mb": memoryMB,
-            "accepting_tasks": acceptingTasks
+            "accepting_tasks": desired
         ])
+        try Task.checkCancellation()
+        guard generation == sessionGeneration, !isStopping, revision == acceptingRevision else { return }
+        guard response["id"] as? String == nodeID,
+              let acknowledged = response["accepting_tasks"] as? NSNumber,
+              CFGetTypeID(acknowledged) == CFBooleanGetTypeID(), acknowledged.boolValue == desired else {
+            throw ClientError.message("认证心跳未确认同一节点与接单设置")
+        }
+        confirmedAcceptingTasks = desired
+        confirmedRevision = revision
+        lastHeartbeatAt = Date()
+        connectionState = .connected
     }
 
     private func pollAssignments() async throws {
@@ -157,6 +229,7 @@ final class ClientModel: ObservableObject {
         guard let assignments = response["assignments"] as? [[String: Any]] else { return }
         for assignment in assignments {
             try Task.checkCancellation()
+            guard canClaimNewWork else { break }
             guard let id = assignment["id"] as? String,
                   !startedAssignments.contains(id) else { continue }
             if ["completed", "failed", "cancelled"].contains(assignment["status"] as? String ?? "") {
@@ -298,10 +371,10 @@ final class ClientModel: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.fragmentsAllowed, .sortedKeys])
         }
         let (data, response) = try await session.data(for: request)
+        try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw ClientError.message("Controller 未返回 HTTP 响应") }
         guard (200..<300).contains(http.statusCode) else {
-            let detail = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            throw ClientError.message("待回报记录保留；HTTP \(http.statusCode)：\(String(describing: detail?["detail"] ?? "请求失败"))")
+            throw ClientError.message("HTTP \(http.statusCode)：请求尚未确认，待回报记录已保留")
         }
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ClientError.message("Controller 返回了无效 JSON")

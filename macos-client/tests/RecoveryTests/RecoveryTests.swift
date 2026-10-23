@@ -16,6 +16,9 @@ func XCTAssertThrowsError<T>(_ value: @autoclosure () throws -> T) {
 
 private final class FixtureProtocol: URLProtocol {
     static var holdCompletion = false
+    static var heldPaths = Set<String>()
+    static var held: [FixtureProtocol] = []
+    private var heldReply: (Int, [String: Any])?
     static var waiting: FixtureProtocol?
     static var handler: ((URLRequest) throws -> (Int, [String: Any]))!
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -23,12 +26,28 @@ private final class FixtureProtocol: URLProtocol {
     override func startLoading() {
         do {
             let (status, body) = try Self.handler(request)
-            if Self.holdCompletion && request.url!.path.hasSuffix("/report") { Self.waiting = self; return }
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: try JSONSerialization.data(withJSONObject: body))
-            client?.urlProtocolDidFinishLoading(self)
+            if Self.holdCompletion && request.url!.path.hasSuffix("/report") {
+                Self.waiting = self
+                return
+            }
+            if Self.heldPaths.contains(request.url!.path) {
+                heldReply = (status, body)
+                Self.held.append(self)
+                return
+            }
+            try deliver(status, body)
         } catch { client?.urlProtocol(self, didFailWithError: error) }
+    }
+    func finishHeld() throws {
+        guard let (status, body) = heldReply else { return }
+        heldReply = nil
+        try deliver(status, body)
+    }
+    private func deliver(_ status: Int, _ body: [String: Any]) throws {
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
 }
@@ -188,7 +207,7 @@ final class RecoveryTests {
         FixtureProtocol.handler = { request in
             switch request.url!.path {
             case "/v1/nodes/register": return (200, ["node_id": "node", "node_token": "fixture-node"])
-            case "/v1/nodes/node/heartbeat": return (200, [:])
+            case "/v1/nodes/node/heartbeat": return (200, ["id": "node", "accepting_tasks": try requestBody(request)["accepting_tasks"]!])
             case "/v1/nodes/node/assignments":
                 return (200, ["assignments": [["id": "assignment", "task_id": "task", "status": "pending",
                     "task_status": "queued", "deadline": Date().timeIntervalSince1970 + 60,
@@ -232,7 +251,7 @@ final class RecoveryTests {
         FixtureProtocol.handler = { request in
             switch request.url!.path {
             case "/v1/nodes/register": return (200, ["node_id": "node", "node_token": "fixture-node"])
-            case "/v1/nodes/node/heartbeat": return (200, [:])
+            case "/v1/nodes/node/heartbeat": return (200, ["id": "node", "accepting_tasks": try requestBody(request)["accepting_tasks"]!])
             case "/v1/nodes/node/assignments": return (200, ["assignments": []])
             default:
                 let body = try requestBody(request)
@@ -289,13 +308,231 @@ final class RecoveryTests {
         XCTAssertTrue(model.isRunning)
         model.stop()
         model.start()
-        XCTAssertFalse(model.isRunning, "Restart must wait for cancelled old loop cleanup")
+        XCTAssertTrue(model.isRunning, "Stopping must retain the old loop until cleanup")
+        XCTAssertTrue(model.isStopping)
         try await Task.sleep(for: .milliseconds(20))
         model.start()
         XCTAssertTrue(model.isRunning)
         model.stop()
         try await Task.sleep(for: .milliseconds(20))
         XCTAssertFalse(model.isRunning)
+    }
+
+    @MainActor
+    func waitUntil(_ description: String, _ predicate: () -> Bool) async throws {
+        for _ in 0..<500 {
+            if predicate() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Timed out: " + description)
+    }
+
+    func sessionReply(_ request: URLRequest) throws -> (Int, [String: Any]) {
+        switch request.url!.path {
+        case "/v1/nodes/register": return (200, ["node_id": "node", "node_token": "fixture-node"])
+        case "/v1/nodes/node/heartbeat": return (200, ["id": "node", "accepting_tasks": try requestBody(request)["accepting_tasks"]!])
+        case "/v1/nodes/node/assignments": return (200, ["assignments": []])
+        default: XCTFail("Unexpected route"); return (500, [:])
+        }
+    }
+
+    @MainActor
+    func testConnectingRequiresAuthenticatedHeartbeatAndUsesSessionConfiguration() async throws {
+        let (model, directory) = try fixture()
+        defer { FixtureProtocol.heldPaths=[]; FixtureProtocol.held=[]; try? FileManager.default.removeItem(at: directory) }
+        FixtureProtocol.handler = sessionReply
+        FixtureProtocol.heldPaths=["/v1/nodes/register"]
+        model.controllerURL=record.origin
+        model.registrationToken="PRIVATE_FIXTURE_REGISTRATION"
+        model.start()
+        XCTAssertTrue(model.connectionState == .connecting)
+        XCTAssertFalse(model.isConnectionConfirmed)
+        XCTAssertNil(model.confirmedAcceptingTasks)
+        try await waitUntil("held registration") { FixtureProtocol.held.count == 1 }
+        let registration=try requestBody(FixtureProtocol.held[0].request)
+        XCTAssertEqual(registration["available_memory_mb"] as? Int,4096)
+        XCTAssertEqual(registration["compute_weight"] as? Double,1.0)
+        XCTAssertTrue(model.configuredMemoryText.contains("非系统实测"))
+        XCTAssertTrue(model.configuredComputeText.contains("非基准测试"))
+        model.controllerURL="https://changed.invalid"
+        FixtureProtocol.heldPaths=["/v1/nodes/node/heartbeat"]
+        try FixtureProtocol.held[0].finishHeld()
+        try await waitUntil("held first heartbeat") { FixtureProtocol.held.count == 2 }
+        XCTAssertFalse(model.isConnectionConfirmed)
+        XCTAssertEqual(model.sessionOrigin,record.origin)
+        XCTAssertEqual(FixtureProtocol.held[1].request.url?.host,"fixture.invalid")
+        XCTAssertFalse(model.statusText.contains("PRIVATE_FIXTURE"))
+        XCTAssertEqual(FixtureProtocol.held[1].request.value(forHTTPHeaderField:"Authorization"),"Bearer fixture-node")
+        try FixtureProtocol.held[1].finishHeld()
+        try await waitUntil("confirmed connection") { model.isConnectionConfirmed }
+        XCTAssertEqual(model.confirmedAcceptingTasks,true)
+        XCTAssertTrue(model.heartbeatText.contains("北京时间"))
+        model.stop()
+        XCTAssertTrue(model.isStopping && model.isRunning)
+        try await waitUntil("stopped cleanup") { !model.isRunning }
+        XCTAssertTrue(model.connectionState == .stopped)
+    }
+
+    @MainActor
+    func testNetworkFailureIsNotConnectedAndSuccessfulHeartbeatRecovers() async throws {
+        let (model, directory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var heartbeats=0
+        FixtureProtocol.handler = { request in
+            if request.url!.path.hasSuffix("/heartbeat") {
+                heartbeats += 1
+                if heartbeats == 1 { throw URLError(.networkConnectionLost) }
+            }
+            return try self.sessionReply(request)
+        }
+        model.controllerURL=record.origin; model.registrationToken="fixture"
+        model.start()
+        try await waitUntil("retry state") { model.connectionState == .retrying }
+        XCTAssertFalse(model.isConnectionConfirmed)
+        XCTAssertNil(model.confirmedAcceptingTasks)
+        XCTAssertTrue(model.lastError != nil)
+        try await waitUntil("heartbeat recovered") { model.isConnectionConfirmed }
+        XCTAssertTrue(heartbeats >= 2)
+        model.stop(); try await waitUntil("cleanup") { !model.isRunning }
+    }
+
+    @MainActor
+    func testAuthenticatedSessionErrorClearsConfirmationWithoutLeakingServerDetail() async throws {
+        let (model,directory)=try fixture()
+        defer { try? FileManager.default.removeItem(at:directory) }
+        FixtureProtocol.handler={ request in
+            if request.url!.path.hasSuffix("/assignments") {
+                return (500,["detail":"PRIVATE_SERVER_TOKEN_PLACEHOLDER"])
+            }
+            return try self.sessionReply(request)
+        }
+        model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+        try await waitUntil("authenticated session now retrying") { model.connectionState == .retrying }
+        XCTAssertTrue(model.lastHeartbeatAt != nil,"Must have had an actual authenticated heartbeat first")
+        XCTAssertFalse(model.isConnectionConfirmed);XCTAssertNil(model.confirmedAcceptingTasks)
+        XCTAssertFalse((model.lastError ?? "").contains("PRIVATE_SERVER_TOKEN"))
+        XCTAssertFalse(model.messages.joined().contains("PRIVATE_SERVER_TOKEN"))
+        model.stop();try await waitUntil("cleanup") { !model.isRunning }
+    }
+
+    @MainActor
+    func testInitialNetworkFailureEndsUnconfirmed() async throws {
+        let (model,directory)=try fixture()
+        defer { try? FileManager.default.removeItem(at:directory) }
+        FixtureProtocol.handler={ _ in throw URLError(.cannotConnectToHost) }
+        model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+        try await waitUntil("unreachable registration") { !model.isRunning }
+        XCTAssertTrue(model.connectionState == .unreachable)
+        XCTAssertFalse(model.isConnectionConfirmed)
+        XCTAssertNil(model.lastHeartbeatAt)
+    }
+
+    @MainActor
+    func testMalformedOrUnmatchedHeartbeatNeverConfirms() async throws {
+        for bad in [[String:Any](), ["id":"other", "accepting_tasks":true], ["id":"node", "accepting_tasks":1], ["id":"node", "accepting_tasks":false]] {
+            let (model,directory)=try fixture()
+            FixtureProtocol.handler={ request in
+                if request.url!.path.hasSuffix("/heartbeat") { return (200,bad) }
+                return try self.sessionReply(request)
+            }
+            model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+            try await waitUntil("bad heartbeat rejected") { model.connectionState == .retrying }
+            XCTAssertFalse(model.isConnectionConfirmed);XCTAssertNil(model.lastHeartbeatAt)
+            model.stop();try await waitUntil("cleanup") { !model.isRunning }
+            try? FileManager.default.removeItem(at:directory)
+        }
+    }
+
+    @MainActor
+    func testDesiredRevisionRejectsDelayedHeartbeatEvenWhenValueReturnsToSame() async throws {
+        let (model,directory)=try fixture()
+        defer { FixtureProtocol.heldPaths=[];FixtureProtocol.held=[];try? FileManager.default.removeItem(at:directory) }
+        FixtureProtocol.handler=sessionReply
+        FixtureProtocol.heldPaths=["/v1/nodes/node/heartbeat"]
+        model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+        try await waitUntil("first held heartbeat") { FixtureProtocol.held.count == 1 }
+        model.acceptingTasks=false;model.acceptingTasks=true
+        try FixtureProtocol.held[0].finishHeld()
+        try await Task.sleep(for:.milliseconds(30))
+        XCTAssertFalse(model.isConnectionConfirmed)
+        XCTAssertNil(model.confirmedAcceptingTasks)
+        try await waitUntil("new revision heartbeat") { FixtureProtocol.held.count == 2 }
+        try FixtureProtocol.held[1].finishHeld()
+        try await waitUntil("new revision confirmed") { model.isConnectionConfirmed }
+        model.stop();try await waitUntil("cleanup") { !model.isRunning }
+    }
+
+    @MainActor
+    func testPauseAndResumeWaitForMatchingHeartbeat() async throws {
+        let (model,directory)=try fixture()
+        defer { FixtureProtocol.heldPaths=[];FixtureProtocol.held=[];try? FileManager.default.removeItem(at:directory) }
+        FixtureProtocol.handler=sessionReply
+        model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+        try await waitUntil("connected") { model.isConnectionConfirmed }
+        FixtureProtocol.heldPaths=["/v1/nodes/node/heartbeat"]
+        model.acceptingTasks=false
+        XCTAssertTrue(model.acceptanceText.contains("待心跳确认"))
+        try await waitUntil("held pause") { FixtureProtocol.held.count == 1 }
+        try XCTAssertEqual(try requestBody(FixtureProtocol.held[0].request)["accepting_tasks"] as? Bool,false)
+        try FixtureProtocol.held[0].finishHeld()
+        try await waitUntil("pause confirmed") { model.confirmedAcceptingTasks == false }
+        XCTAssertTrue(model.acceptanceText.contains("暂停新任务 · 心跳已确认"))
+        model.acceptingTasks=true
+        XCTAssertTrue(model.acceptanceText.contains("待心跳确认"))
+        try await waitUntil("held resume") { FixtureProtocol.held.count == 2 }
+        try FixtureProtocol.held[1].finishHeld()
+        try await waitUntil("resume confirmed") { model.confirmedAcceptingTasks == true }
+        model.stop();try await waitUntil("cleanup") { !model.isRunning }
+    }
+
+    @MainActor
+    func testPauseKeepsCurrentReportAndBlocksNextAssignmentWithoutComputing() async throws {
+        let (model,directory)=try fixture()
+        defer { FixtureProtocol.heldPaths=[];FixtureProtocol.held=[];try? FileManager.default.removeItem(at:directory) }
+        let pending=PendingReport(origin:record.origin,nodeID:"node",taskID:"task-a",assignmentID:"a",modelID:record.modelID,layerStart:0,layerEnd:1,status:"failed",result:nil,error:"unsupported or invalid bounded linear workload")
+        var posts=0
+        FixtureProtocol.handler={ request in
+            if request.url!.path.hasSuffix("/assignments") {
+                return (200,["assignments":["a","b"].map { id in ["id":id,"task_id":"task-"+id,"status":"pending","task_status":"queued","deadline":Date().timeIntervalSince1970+60,"layer_start":0,"layer_end":1,"request":["model_id":self.record.modelID]] as [String:Any] }])
+            }
+            if request.url!.path.hasSuffix("/report") {
+                XCTAssertTrue(request.url!.path.hasSuffix("/a/report"),"Pause must not claim B")
+                posts += 1
+                try XCTAssertEqual(try requestBody(request)["status"] as? String,"failed")
+                return (200,self.acknowledgement(pending))
+            }
+            return try self.sessionReply(request)
+        }
+        FixtureProtocol.heldPaths=["/v1/nodes/node/assignments/a/report"]
+        model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+        try await waitUntil("current report held") { FixtureProtocol.held.count == 1 }
+        model.acceptingTasks=false
+        XCTAssertEqual(model.currentTask,"task-a")
+        XCTAssertTrue(model.isRunning && !model.isStopping)
+        try XCTAssertEqual(model.reports.load(),[pending])
+        try FixtureProtocol.held[0].finishHeld()
+        try await waitUntil("current report cleanup") { model.currentTask == "空闲" }
+        XCTAssertEqual(posts,1)
+        try XCTAssertTrue(model.reports.load().isEmpty)
+        model.stop();try await waitUntil("cleanup") { !model.isRunning }
+    }
+
+    @MainActor
+    func testStopRejectsLateHeartbeatAndKeepsStartDisabledUntilCleanup() async throws {
+        let (model,directory)=try fixture()
+        defer { FixtureProtocol.heldPaths=[];FixtureProtocol.held=[];try? FileManager.default.removeItem(at:directory) }
+        FixtureProtocol.handler=sessionReply
+        FixtureProtocol.heldPaths=["/v1/nodes/node/heartbeat"]
+        model.controllerURL=record.origin;model.registrationToken="fixture";model.start()
+        try await waitUntil("held heartbeat") { FixtureProtocol.held.count == 1 }
+        model.stop();model.start()
+        XCTAssertTrue(model.isStopping && model.isRunning)
+        XCTAssertFalse(model.isConnectionConfirmed)
+        try FixtureProtocol.held[0].finishHeld()
+        try await waitUntil("cleanup") { !model.isRunning }
+        XCTAssertTrue(model.connectionState == .stopped)
+        XCTAssertNil(model.confirmedAcceptingTasks)
+        XCTAssertNil(model.lastHeartbeatAt)
     }
 
 }
@@ -312,6 +549,15 @@ struct RecoveryFixtureRunner {
         try await tests.testRunningReportOutageRetriesWithoutComputingOrFailing()
         try await tests.testStopDuringCompletionAwaitPreservesOutcomeThenReplays()
         try await tests.testStopCannotStartAConcurrentOldLoop()
-        print("8 recovery fixture tests passed; no real network, GUI or calculation")
+        try await tests.testConnectingRequiresAuthenticatedHeartbeatAndUsesSessionConfiguration()
+        try await tests.testNetworkFailureIsNotConnectedAndSuccessfulHeartbeatRecovers()
+        try await tests.testAuthenticatedSessionErrorClearsConfirmationWithoutLeakingServerDetail()
+        try await tests.testInitialNetworkFailureEndsUnconfirmed()
+        try await tests.testMalformedOrUnmatchedHeartbeatNeverConfirms()
+        try await tests.testDesiredRevisionRejectsDelayedHeartbeatEvenWhenValueReturnsToSame()
+        try await tests.testPauseAndResumeWaitForMatchingHeartbeat()
+        try await tests.testPauseKeepsCurrentReportAndBlocksNextAssignmentWithoutComputing()
+        try await tests.testStopRejectsLateHeartbeatAndKeepsStartDisabledUntilCleanup()
+        print("17 recovery/session fixture tests passed; no real network, GUI or calculation")
     }
 }

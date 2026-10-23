@@ -2,9 +2,9 @@ name: macOS Packaging Fake Checks
 on:
   push:
     branches: [main]
-    paths: ["macos-client/scripts/**", "macos-client/README.md", ".github/workflows/macos-packaging.yml"]
+    paths: ["macos-client/Sources/**", "macos-client/tests/**", "macos-client/Package.swift", "macos-client/scripts/**", "macos-client/README.md", ".github/workflows/macos-packaging.yml"]
   pull_request:
-    paths: ["macos-client/scripts/**", "macos-client/README.md", ".github/workflows/macos-packaging.yml"]
+    paths: ["macos-client/Sources/**", "macos-client/tests/**", "macos-client/Package.swift", "macos-client/scripts/**", "macos-client/README.md", ".github/workflows/macos-packaging.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,3 +25,29 @@ jobs:
       # All subprocesses are fakes; no build, keys, Apple services or app launch.
       - name: Run synthetic packaging tests only
         run: python -m unittest discover -s macos-client/scripts -p 'test_build_dmg.py' -v
+  swift-session:
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Record existing Swift toolchain
+        run: swiftc --version
+      # Compile a command-line test harness, never the SwiftUI App entry point.
+      # All URLSession requests are intercepted by FixtureProtocol; no Keychain use.
+      - name: Compile production-model URLProtocol fixtures
+        run: >-
+          swiftc -parse-as-library -module-cache-path "$RUNNER_TEMP/swift-module-cache"
+          macos-client/Sources/LastCoreClient/ClientModel.swift
+          macos-client/Sources/LastCoreClient/PendingReports.swift
+          macos-client/tests/RecoveryTests/RecoveryTests.swift
+          -o "$RUNNER_TEMP/lastcore-swift-recovery-fixtures"
+      - name: Run recovery and session fixtures without live network or GUI
+        run: '"$RUNNER_TEMP/lastcore-swift-recovery-fixtures"'
+      - name: Type-check all production SwiftUI source without launching an App
+        run: >-
+          swiftc -parse-as-library -typecheck -module-cache-path "$RUNNER_TEMP/swift-module-cache"
+          macos-client/Sources/LastCoreClient/*.swift

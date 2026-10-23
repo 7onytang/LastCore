@@ -211,3 +211,46 @@ The maintained [Swift Foundation](https://github.com/swiftlang/swift-foundation)
 (Apache-2.0) and [SwiftNIO](https://github.com/apple/swift-nio) (Apache-2.0)
 were reviewed; adding a network framework would not replace the required
 application outcome journal, so no new dependency is introduced.
+
+## Session and acceptance feedback
+
+The native status text, indicator and controls bind to the production
+`ClientModel` session state. Starting shows connecting until a successful
+node-authenticated heartbeat returns the same node ID and the requested boolean
+`accepting_tasks`. Registration alone is not a connected state. A session error
+clears current confirmation and shows retrying; an initial registration failure
+ends unconfirmed for manual retry, preserving the existing behavior rather than
+silently creating another registration after an unknown response.
+
+The acceptance toggle is the desired setting, separate from its heartbeat
+confirmation. Each change advances a revision; an older in-flight heartbeat
+cannot confirm a newer pause/resume, even if the value was toggled back. While
+confirmation is pending the client does not claim new work. Pausing preserves
+an in-flight task/report and only blocks the next assignment. A matching
+heartbeat confirms the setting. Connection errors, delayed responses and stop
+cannot optimistically publish confirmed acceptance.
+
+Stop shows stopping and disables restart until the original loop actually exits
+and performs its cleanup. It does not immediately replace the current task with
+idle. Pending-result save/replay and exact ACK validation stay intact. The
+recent-heartbeat label explicitly uses Beijing time; it denotes the last ACK,
+not a guarantee of current connectivity. The validated session origin is frozen
+for the session and omits user info, paths, queries and fragments. Server error
+bodies are not displayed because they may echo sensitive configuration.
+
+The resource summary reports the actual configured declaration used by this
+client: 4096 MB advertised memory and compute weight 1.0. It explicitly labels
+these as configuration, **not OS-measured free memory or a benchmark**. This
+change does not add hardware measurement or new supported workloads.
+
+The existing URLProtocol runner above now runs 17 production-model fixtures:
+the eight recovery fixtures plus connecting/authenticated-heartbeat, network
+retry/recovery, initial failure, malformed/wrong-node/wrong-boolean ACK,
+revision isolation, confirmed pause/resume, paused in-flight report and stopping
+with delayed ACK cases. It includes a synthetic server-detail privacy check.
+No live network, GUI/app launch, Keychain access, native calculation, device,
+DMG rebuild, signature or notarization is part of this validation. SwiftUI source
+type-checking verifies the property bindings, not visual or real-device acceptance.
+The implementation reuses Apple's [ObservableObject](https://developer.apple.com/documentation/combine/observableobject)
+and [cooperative task cancellation](https://developer.apple.com/documentation/swift/task/cancel%28%29)
+without adding dependencies.

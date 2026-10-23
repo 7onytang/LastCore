@@ -37,7 +37,12 @@ struct ContentView: View {
                     LabeledContent("节点 ID", value: model.nodeID ?? "尚未注册")
                     LabeledContent("设备", value: "macOS-\(ProcessInfo.processInfo.processArchitecture)")
                     Toggle("接收新任务", isOn: $model.acceptingTasks)
-                        .disabled(!model.isRunning)
+                        .disabled(!model.isRunning || model.isStopping)
+                    LabeledContent("接单确认", value: model.acceptanceText)
+                    LabeledContent("本次／最近会话 Controller", value: model.sessionOrigin ?? "尚未建立会话")
+                    LabeledContent("最近确认心跳", value: model.heartbeatText)
+                    LabeledContent("声明内存", value: model.configuredMemoryText)
+                    LabeledContent("声明算力", value: model.configuredComputeText)
                     LabeledContent("当前任务", value: model.currentTask)
                 }
 
@@ -72,9 +77,10 @@ struct ContentView: View {
                     .lineLimit(2)
                 Spacer()
                 if model.isRunning {
-                    Button("停止", systemImage: "stop.fill", role: .destructive) {
+                    Button(model.isStopping ? "停止中…" : "停止", systemImage: "stop.fill", role: .destructive) {
                         model.stop()
                     }
+                    .disabled(model.isStopping)
                 } else {
                     Button("连接节点", systemImage: "network") {
                         model.start()
@@ -98,11 +104,11 @@ struct ContentView: View {
                 Text("LastCoreClient 0.1.1 · 线性任务").font(.caption2).foregroundStyle(.secondary)
                 Text(model.statusText)
                     .font(.caption)
-                    .foregroundStyle(model.isRunning ? .green : .secondary)
+                    .foregroundStyle(model.isConnectionConfirmed ? .green : model.isRunning ? .orange : .secondary)
             }
             Spacer()
             Circle()
-                .fill(model.isRunning ? Color.green : Color.gray.opacity(0.5))
+                .fill(model.isConnectionConfirmed ? Color.green : model.isRunning ? Color.orange : Color.gray.opacity(0.5))
                 .frame(width: 9, height: 9)
                 .accessibilityLabel(model.statusText)
         }
