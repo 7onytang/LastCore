@@ -60,6 +60,11 @@ def verify_surface(badging, xml):
     app = only('application')
     false(app, 'android:allowBackup');false(app, 'android:usesCleartextTraffic')
     if any('android:process' in node['attrs'] for node in nodes): raise SystemExit('unexpected secondary process')
+    for node in nodes:
+        for flag in ('android:isolatedProcess', 'android:useAppZygote', 'android:externalService', 'android:allowSharedIsolatedProcess'):
+            if flag in node['attrs'] and node['attrs'][flag] != '(type 0x12)0x0':
+                raise SystemExit('unexpected isolated service configuration')
+        if 'android:zygotePreloadName' in node['attrs']: raise SystemExit('unexpected app zygote preload')
     if any(node['tag'] in ('receiver', 'provider', 'activity-alias') for node in nodes):
         raise SystemExit('unexpected background or exported component')
     service, activity = only('service'), only('activity')

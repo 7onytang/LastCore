@@ -116,10 +116,12 @@ final class CloudWorkerHost {
         }
         notifyObserver(value);
     }
-    void stop() {
+    void stop() {requestStop(0);}
+    boolean stop(long generation) {return generation>0 && requestStop(generation);}
+    private boolean requestStop(long generation) {
         final Run run;final Snapshot value;final boolean retry;
         synchronized(this) {
-            run=active;if(run==null) return;
+            run=active;if(run==null || generation>0 && run.use.generation!=generation) return false;
             run.stop.set(true);
             retry=run.executionDone && !run.closing;
             value=set(run,Phase.STOPPING,state.cleanupPending,state.cleanupPending?"CLEANUP_REQUIRED":null);
@@ -128,6 +130,7 @@ final class CloudWorkerHost {
         Session session=run.session;
         if(session!=null) {try {session.stop();} catch(RuntimeException ignored) { /* Still wait for execute/close. */ }}
         if(retry) new Thread(() -> cleanup(run),"lastcore-cloud-cleanup").start();
+        return true;
     }
     private void cleanup(Run run) {
         synchronized(this) {

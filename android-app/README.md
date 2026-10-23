@@ -80,8 +80,19 @@ start, re-delivery execution, or automatic restart.
 
 Activity pause/destruction cancels only local Activity work and removes its cloud
 observer. It does not stop or close the cloud Worker, JNI session or state lock.
-Reopening binds only to observe an existing Service; it does not start work.
-The ongoing notification and Activity Stop use one idempotent stop path. During
+Reopening makes a passive flags0 binding to observe an existing Service; it does
+not start work. A true bind return is only a registration, not proof of a running
+Service or callback. The actual pure Java CloudBindingCoordinator replaces that
+passive registration with a fresh AUTO_CREATE connection only after the explicit
+button. Pause invalidates its generation, clears a pending credential and unbinds
+before old callbacks can act. Rotation never restores a command or allows an old
+connection to submit it. This follows the
+[AOSP15 bindService implementation](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/services/core/java/com/android/server/am/ActiveServices.java#L4024).
+The notification carries a non-sensitive generation in an immutable,
+generation-specific PendingIntent identity. Its STOP action is checked against
+the active Host generation; an old notification cannot stop a new session.
+Activity Stop explicitly controls the current Binder session through the same
+idempotent stop path. During
 STOPPING, new local/cloud/model-mutation work is refused. The Service waits for
 `CloudWorker.run()` to finish its real `awaitStopped()` and guard join, then
 checkpoints the encrypted state and closes the state lock before releasing the
@@ -123,20 +134,28 @@ machine and LeaseClock with controlled work only. It covers duplicate starts,
 stop during startup, delayed real-work-return fixtures, checkpoint failure and
 cleanup-only retry, stale generations/progress, observer detach/failure, local
 ownership across Activity recreation, and fake elapsed-time budget jumps.
-It does not execute Service/Keystore/HTTP/JNI or prove full Android lifecycle.
+CloudBindingCoordinatorCheck additionally drives the production binding logic
+with fake framework callbacks: flags0 true without a callback, explicit upgrade,
+once-only Binder submit, pause/rotation/old callbacks, failure and credential
+clearing. These do not execute Activity/Service/Keystore/HTTP/JNI or prove full
+Android lifecycle.
 Run independently with JDK17:
 
 ```sh
 mkdir -p verification/host-classes
-javac -d verification/host-classes app/src/main/java/ai/lastcore/android/CloudWorkerHost.java app/src/main/java/ai/lastcore/android/LeaseClock.java tests/ai/lastcore/android/CloudWorkerHostCheck.java
+javac -d verification/host-classes app/src/main/java/ai/lastcore/android/CloudWorkerHost.java app/src/main/java/ai/lastcore/android/LeaseClock.java app/src/main/java/ai/lastcore/android/CloudBindingCoordinator.java tests/ai/lastcore/android/CloudWorkerHostCheck.java tests/ai/lastcore/android/CloudBindingCoordinatorCheck.java
 java -cp verification/host-classes ai.lastcore.android.CloudWorkerHostCheck
+java -cp verification/host-classes ai.lastcore.android.CloudBindingCoordinatorCheck
 python3 -m unittest discover -s tests-python -p 'test_*.py' -v
 ```
 
 The existing build script repeats these host checks before native compilation.
 `artifact-binding.py` validates the compiled APK's exact four permissions,
 unique non-exported Service/type/subtype, launcher and no-extra-component policy;
-negative fixtures exercise that actual validator. Owner-signing tests still use
+negative fixtures exercise that actual validator. Isolated-process, app-zygote,
+external-service and shared-isolated flags may be absent or explicitly compiled
+boolean false only; true, malformed types, android:process and zygote preload
+configuration are rejected. Owner-signing tests still use
 Fake SDK outputs and placeholder files, not keys. APK/Lint/instrumentation
 compilation and source binding are separate from device execution. Do not run
 ADB, connectedAndroidTest, an emulator or actual model/service tasks during this

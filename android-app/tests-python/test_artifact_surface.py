@@ -37,5 +37,15 @@ class CompiledSurfaceTests(unittest.TestCase):
     def test_other_node_attributes_cannot_satisfy_service_policy(self):
         missing=XML.replace('      A: android:exported(0x01010010)=(type 0x12)0x0\n','')
         with self.assertRaises(SystemExit):binding.verify_surface(BADGING,missing)
+    def test_isolation_and_zygote_flags_allow_only_absent_or_explicit_false(self):
+        for flag in ('isolatedProcess','useAppZygote','externalService','allowSharedIsolatedProcess'):
+            prefix='      A: android:'+flag+'(0x010103a9)='
+            false=XML.replace('    E: activity',prefix+'(type 0x12)0x0\n    E: activity')
+            binding.verify_surface(BADGING,false)
+            for value in ('(type 0x12)0xffffffff','(type 0x12)0x1','(type 0x10)0x0','"false"'):
+                source=XML.replace('    E: activity',prefix+value+'\n    E: activity')
+                with self.subTest(flag=flag,value=value),self.assertRaises(SystemExit):binding.verify_surface(BADGING,source)
+        with self.assertRaises(SystemExit):
+            binding.verify_surface(BADGING,XML.replace('    E: activity','      A: android:zygotePreloadName(0x01010003)="unexpected"\n    E: activity'))
 
 if __name__=='__main__':unittest.main()

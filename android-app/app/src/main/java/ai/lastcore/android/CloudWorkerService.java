@@ -48,7 +48,8 @@ public final class CloudWorkerService extends Service {
         } catch(RuntimeException error) {return false;}
     }
     private Notification notification(CloudWorkerHost.Snapshot snapshot) {
-        Intent stop=new Intent(this,CloudWorkerService.class).setAction(STOP);
+        Intent stop=new Intent(this,CloudWorkerService.class).setAction(STOP)
+            .setData(android.net.Uri.parse("lastcore-worker://stop/"+snapshot.generation)).putExtra(GENERATION,snapshot.generation);
         PendingIntent stopAction=PendingIntent.getService(this,0,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         PendingIntent show=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -91,7 +92,7 @@ public final class CloudWorkerService extends Service {
         latestStartId=startId;
         String action=intent==null?null:intent.getAction();
         if(STOP.equals(action)) {
-            host.stop();
+            host.stop(intent.getLongExtra(GENERATION,-1));
             if(!host.snapshot().busy) {if(promoted) {stopForeground(STOP_FOREGROUND_REMOVE);promoted=false;}stopSelfResult(startId);}
         } else if(HOLD.equals(action)) {
             long generation=intent.getLongExtra(GENERATION,-1);
@@ -109,12 +110,12 @@ public final class CloudWorkerService extends Service {
         // Host retains its process gate and state lock until actual cleanup/checkpoint. No join on the main thread.
         super.onDestroy();
     }
-    public final class LocalBinder extends Binder {
+    public final class LocalBinder extends Binder implements CloudBindingCoordinator.Peer {
         CloudWorkerHost.Snapshot snapshot() {return host.snapshot();}
         void observe(CloudWorkerHost.Observer observer) {observers.addIfAbsent(observer);observer.changed(host.snapshot());}
         void unobserve(CloudWorkerHost.Observer observer) {observers.remove(observer);}
         void stop() {host.stop();}
-        long start(String origin,boolean enroll,String registrationToken) {
+        @Override public long start(String origin,boolean enroll,String registrationToken) {
             if(Looper.myLooper()!=Looper.getMainLooper()) throw new IllegalStateException("Visible UI control required");
             if(destroyed || !notificationsVisible(CloudWorkerService.this)) return -1;
             final String verified;

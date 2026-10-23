@@ -32,8 +32,10 @@ public final class MainActivity extends Activity {
     private CloudWorkerService.LocalBinder cloud;
     private CloudWorkerHost.Snapshot cloudState;
     private final Handler main=new Handler(Looper.getMainLooper());
-    private boolean visible, bindRequested;
-    private PendingCloud pendingCloud;
+    private boolean visible;
+    private CloudBindingCoordinator bindings;
+    private final java.util.Map<Long,ServiceConnection> serviceConnections=new java.util.HashMap<>();
+    private long cloudBindingGeneration=-1;
     private volatile boolean destroyed;
     private boolean busy;
     private TextView status, output, modelStatus;
@@ -44,29 +46,60 @@ public final class MainActivity extends Activity {
     private EditText prompt, endpoint, registration;
     private Button load, generate, clear, cancel, checkConnection, registerCloud, startCloud;
     private ModelStore models;
-    private static final class PendingCloud {
-        final String origin; final boolean enroll; String credential;
-        PendingCloud(String origin,boolean enroll,String credential) {this.origin=origin;this.enroll=enroll;this.credential=credential;}
-        void clear() {credential=null;}
+    private CloudWorkerHost.Observer cloudObserver;
+    private CloudBindingCoordinator createBindings() {
+        return new CloudBindingCoordinator(new CloudBindingCoordinator.Port() {
+            @Override public boolean bind(long generation,boolean create) {
+                ServiceConnection connection=new ServiceConnection() {
+                    @Override public void onServiceConnected(ComponentName name,IBinder binder) {
+                        if(!bindings.accepts(generation) || destroyed) return;
+                        if(cloud!=null && cloudObserver!=null) cloud.unobserve(cloudObserver);
+                        cloud=(CloudWorkerService.LocalBinder)binder;cloudBindingGeneration=generation;
+                        cloudObserver=value -> {if(bindings.accepts(generation) && cloudBindingGeneration==generation) cloudChanged(value);};
+                        cloud.observe(cloudObserver);bindings.connected(generation,cloud);
+                    }
+                    @Override public void onServiceDisconnected(ComponentName name) {
+                        if(!bindings.accepts(generation)) return;
+                        if(cloud!=null && cloudObserver!=null) cloud.unobserve(cloudObserver);
+                        cloud=null;cloudState=null;cloudObserver=null;cloudBindingGeneration=-1;bindings.disconnected(generation);
+                        if(!destroyed) {output.setText("节点连接已断开；不能据此确认执行停止。");refreshControls();}
+                    }
+                    @Override public void onBindingDied(ComponentName name) {bindings.died(generation);}
+                    @Override public void onNullBinding(ComponentName name) {bindings.died(generation);}
+                };
+                serviceConnections.put(generation,connection);
+                boolean registered=false;
+                try {registered=bindService(new Intent(MainActivity.this,CloudWorkerService.class),connection,create?BIND_AUTO_CREATE:0);}
+                catch(RuntimeException ignored) { /* Report a fixed safe failure below. */ }
+                if(!registered) serviceConnections.remove(generation);
+                return registered;
+            }
+            @Override public void unbind(long generation) {
+                if(cloudBindingGeneration==generation) {
+                    if(cloud!=null && cloudObserver!=null) cloud.unobserve(cloudObserver);
+                    cloud=null;cloudState=null;cloudObserver=null;cloudBindingGeneration=-1;
+                }
+                ServiceConnection connection=serviceConnections.remove(generation);
+                if(connection!=null) unbindService(connection);
+            }
+            @Override public void submitted(long generation,long workerGeneration) {
+                if(!bindings.accepts(generation) || destroyed) return;
+                if(workerGeneration<0) output.setText("节点或本机操作仍在运行／停止，或通知不可见；请确认后重试。");
+                else if(cloud!=null) cloudChanged(cloud.snapshot());
+                refreshControls();
+            }
+            @Override public void rejected() {
+                if(!destroyed) {output.setText("无法连接节点服务，请重试。");refreshControls();}
+            }
+        });
     }
-    private final CloudWorkerHost.Observer cloudObserver=this::cloudChanged;
-    private final ServiceConnection connection=new ServiceConnection() {
-        @Override public void onServiceConnected(ComponentName name,IBinder binder) {
-            if(!visible || destroyed) return;
-            cloud=(CloudWorkerService.LocalBinder)binder;
-            cloud.observe(cloudObserver);submitCloud();
-        }
-        @Override public void onServiceDisconnected(ComponentName name) {
-            cloud=null;cloudState=null;
-            if(!destroyed) {output.setText("节点连接已断开；不能据此确认执行停止。");refreshControls();}
-        }
-    };
     private final Runnable refreshGate=new Runnable() {
         @Override public void run() {if(visible && !destroyed) {refreshControls();main.postDelayed(this,250);}}
     };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        bindings=createBindings();
         models = new ModelStore(this);
         getWindow().setStatusBarColor(color(R.color.lc_background));
         getWindow().setNavigationBarColor(color(R.color.lc_background));
@@ -231,7 +264,7 @@ public final class MainActivity extends Activity {
         boolean present = models.path().isFile() || new java.io.File(models.path() + ".bak").isFile();
         modelStatus.setText(present ? "已导入 · 执行前重新校验" : "未导入 · 请先导入模型");
         load.setText(present ? "替换模型" : "导入模型"); load.setSelected(!present);
-        boolean available=!busy && !CloudWorkerHost.deviceBusy() && pendingCloud==null;
+        boolean available=!busy && !CloudWorkerHost.deviceBusy() && !bindings.hasPending();
         load.setEnabled(available); clear.setEnabled(available && present);
         clear.setVisibility(present ? android.view.View.VISIBLE : android.view.View.GONE);
         generate.setEnabled(available && present);
@@ -251,7 +284,7 @@ public final class MainActivity extends Activity {
     private void refreshControls() {
         if(destroyed || status==null || generate==null) return;
         boolean cloudBusy=cloudState!=null && cloudState.busy;
-        boolean occupied=busy || pendingCloud!=null || CloudWorkerHost.deviceBusy();
+        boolean occupied=busy || bindings.hasPending() || CloudWorkerHost.deviceBusy();
         if(cloudBusy) status.setText(CloudWorkerService.status(cloudState));
         else if(busy) status.setText(cancelled.get()?"正在停止 · 等待确认":"处理中");
         else status.setText(occupied?"另一个操作尚未结束 · 等待确认":"就绪");
@@ -263,30 +296,17 @@ public final class MainActivity extends Activity {
         boolean stopping=cloudBusy && cloudState.phase==CloudWorkerHost.Phase.STOPPING;
         boolean retry=stopping && cloudState.cleanupPending;
         cancel.setText(retry?"重试停止确认":stopping || busy && cancelled.get()?"正在停止…":"停止");
-        cancel.setEnabled(pendingCloud!=null || cloudBusy && (!stopping || retry) || busy && !cancelled.get());
+        cancel.setEnabled(bindings.hasPending() || cloudBusy && (!stopping || retry) || busy && !cancelled.get());
         cancel.setVisibility(occupied?android.view.View.VISIBLE:android.view.View.GONE);
     }
     private void cloudChanged(CloudWorkerHost.Snapshot value) {
-        if(!visible || destroyed || cloud==null || value.revision!=cloud.snapshot().revision) return;
+        if(!visible || destroyed || cloud==null) return;
+        CloudWorkerHost.Snapshot current=cloud.snapshot();
+        if(value.generation!=current.generation || value.revision!=current.revision) return;
         cloudState=value;
         if(value.busy) {if(!busy) selectMode(true);output.setText(CloudWorkerService.status(value));}
         else if(!busy) output.setText(CloudWorkerService.status(value));
         refreshControls();
-    }
-    private void bindCloud(boolean create) {
-        if(bindRequested) return;
-        bindRequested=bindService(new Intent(this,CloudWorkerService.class),connection,create?BIND_AUTO_CREATE:0);
-        if(!bindRequested && pendingCloud!=null) {pendingCloud.clear();pendingCloud=null;output.setText("无法连接节点服务，请重试。");refreshControls();}
-    }
-    private void submitCloud() {
-        PendingCloud command=pendingCloud;
-        if(!visible || destroyed || cloud==null || command==null) return;
-        pendingCloud=null;
-        try {
-            long generation=cloud.start(command.origin,command.enroll,command.credential);
-            if(generation<0) output.setText("节点或本机操作仍在运行／停止，或通知不可见；请确认后重试。");
-            else cloudChanged(cloud.snapshot());
-        } finally {command.clear();refreshControls();}
     }
     private void submitLocal(Runnable task) {
         CloudWorkerHost.DeviceUse use=CloudWorkerHost.acquireLocal();
@@ -295,10 +315,10 @@ public final class MainActivity extends Activity {
         catch(java.util.concurrent.RejectedExecutionException error) {use.close();busy=false;refreshControls();}
     }
     @Override protected void onResume() {
-        super.onResume();visible=true;bindCloud(false);main.post(refreshGate);
+        super.onResume();visible=true;bindings.resume();main.post(refreshGate);
     }
     @Override protected void onPause() {
-        visible=false;if(pendingCloud!=null) {pendingCloud.clear();pendingCloud=null;}
+        visible=false;bindings.pause();
         super.onPause();
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants) {
@@ -371,7 +391,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void cloudAction(boolean enroll) {
-        if(!visible || busy || pendingCloud!=null || CloudWorkerHost.deviceBusy()) return;
+        if(!visible || busy || bindings.hasPending() || CloudWorkerHost.deviceBusy()) return;
         final String origin, credential;
         endpoint.setError(null);registration.setError(null);
         try {origin=ControllerEndpoint.origin(endpoint.getText().toString());}
@@ -384,9 +404,9 @@ public final class MainActivity extends Activity {
         }
         try {credential=enroll?CloudApi.credential(registration.getText().toString().trim()):null;}
         catch(Exception error) {registration.setError("首次注册需要有效凭据");registration.requestFocus();return;}
-        registration.setText("");pendingCloud=new PendingCloud(origin,enroll,credential);
-        output.setText(enroll?"正在连接服务并注册节点…":"正在连接前台节点服务…");refreshControls();
-        if(cloud!=null) submitCloud();else bindCloud(true);
+        registration.setText("");
+        output.setText(enroll?"正在连接服务并注册节点…":"正在连接前台节点服务…");
+        bindings.request(new CloudBindingCoordinator.Command(origin,enroll,credential));refreshControls();
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
@@ -417,15 +437,13 @@ public final class MainActivity extends Activity {
     }
     private void cancelWork() {
         cancelLocalWork();
-        if(pendingCloud!=null) {pendingCloud.clear();pendingCloud=null;}
+        bindings.cancelPending();
         if(cloud!=null) cloud.stop();
         refreshControls();
     }
     @Override protected void onStop() {
         visible=false;main.removeCallbacks(refreshGate);cancelLocalWork();
-        if(cloud!=null) cloud.unobserve(cloudObserver);
-        cloud=null;cloudState=null;
-        if(bindRequested) {unbindService(connection);bindRequested=false;}
+        bindings.pause();
         super.onStop();
     }
     @Override protected void onDestroy() {

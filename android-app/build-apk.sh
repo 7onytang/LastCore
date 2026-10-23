@@ -26,8 +26,9 @@ java -version >/dev/null 2>&1 || { echo "BLOCKED: Java runtime unavailable" >&2;
 command -v gradle >/dev/null 2>&1 || { echo "BLOCKED: isolated Gradle8.13 missing" >&2; exit 2; }
 test -d "$ANDROID_HOME/platforms/android-35" || { echo "BLOCKED: Android platform35 missing" >&2; exit 2; }
 mkdir -p verification/host-classes
-javac -d verification/host-classes app/src/main/java/ai/lastcore/android/CloudWorkerHost.java app/src/main/java/ai/lastcore/android/LeaseClock.java tests/ai/lastcore/android/CloudWorkerHostCheck.java
+javac -d verification/host-classes app/src/main/java/ai/lastcore/android/CloudWorkerHost.java app/src/main/java/ai/lastcore/android/LeaseClock.java app/src/main/java/ai/lastcore/android/CloudBindingCoordinator.java tests/ai/lastcore/android/CloudWorkerHostCheck.java tests/ai/lastcore/android/CloudBindingCoordinatorCheck.java
 java -cp verification/host-classes ai.lastcore.android.CloudWorkerHostCheck
+java -cp verification/host-classes ai.lastcore.android.CloudBindingCoordinatorCheck
 python3 bootstrap-native.py
 python3 artifact-binding.py prepare
 gradle --no-daemon --console=plain assembleDebug assembleDebugAndroidTest assembleRelease lintDebug

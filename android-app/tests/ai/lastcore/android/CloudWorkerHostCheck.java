@@ -99,6 +99,16 @@ public final class CloudWorkerHostCheck {
         finally {host.stop();finish(host,work);}
         checks++;
     }
+    private static void oldNotificationStopCannotCancelNewRun() throws Exception {
+        CloudWorkerHost host=new CloudWorkerHost(s -> {});Work old=start(host);long oldGeneration=host.snapshot().generation;
+        finish(host,old);Work current=start(host);long generation=host.snapshot().generation;
+        try {
+            require(!host.stop(oldGeneration) && !host.stop(-1),"old/unknown notification stop accepted");
+            require(current.stopped.getCount()==1 && host.snapshot().phase==CloudWorkerHost.Phase.EXECUTING,"old STOP cancelled current worker");
+            require(host.stop(generation),"current notification could not stop");await(current.stopped);
+        } finally {finish(host,current);}
+        checks++;
+    }
     private static void clockAccountsForInjectedSleepAndBudgets() {
         AtomicLong elapsed=new AtomicLong(1_000_000_000L);LeaseClock clock=new LeaseClock(elapsed::get);
         long deadline=LeaseClock.deadline(110,100,clock.now());
@@ -119,6 +129,7 @@ public final class CloudWorkerHostCheck {
         dedupAndDelayedCleanup();checkpointFailureRetainsOwnership();cancelBeforeFactory();
         rejectedForegroundNeverCreatesWork();observerDetachAndFailureDoNotCancel();
         staleGenerationCannotFinishNewSession();recreatedActivityCannotBypassLocalGate();
+        oldNotificationStopCannotCancelNewRun();
         clockAccountsForInjectedSleepAndBudgets();
         require(!CloudWorkerHost.deviceBusy(),"fixture leaked ownership");
         System.out.println("Foreground Host/Clock: "+checks+" pure Java checks passed; no Android/JNI/model/service executed.");
