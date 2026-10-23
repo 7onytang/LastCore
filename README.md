@@ -199,7 +199,7 @@ docker cp "$(docker compose ps -q controller):/data/backups/$BACKUP_NAME" "backu
 ## API 与权限
 
 当前源码的请求约束、响应字段、鉴权、错误状态、重试／兼容和安全缺口统一记录在
-[Agent / Controller 契约](controller-server/API_CONTRACT.md)；固定模型、许可与硬件证据范围见
+[Agent / Controller 契约](controller-server/API_CONTRACT.md)；新建任务的严格执行族／预算／拒绝码见[版本化任务策略](controller-server/TASK_POLICY.md)；固定模型、许可与硬件证据范围见
 [模型选择记录](controller-server/MODEL_SELECTION.md)。这些是源码与已有证据的核对记录，不表示未完成的跨平台、真机或签名验收已经通过。
 
 节点对当前运行分配增加按 ID 补查：当它被最近 100 条历史挤出时，仍可收到取消或失败状态。
@@ -423,3 +423,5 @@ Android 仍按 `android-app/README.md` 使用固定 SDK/NDK 构建；资源/Java
 ### Desktop 接单控制离线回归
 
 本机面板与 portable 线性 GUI 新增暂停/恢复接单及安全地址、配置资源和近期错误状态。暂停只禁新执行，保留当前任务、取消观察与回报；仅同 request ID 的心跳 ACK 确认接单状态。Python desktop 和 portable 分别沿用 tiny/demo 子进程与线性会话 backend，不混同能力。运行入口保持各模块 README；逻辑回归见 [desktop 接单控制](node-agent/desktop/README.md#接单控制与本机状态) 和 [portable 状态确认](edge-client/README.md#本机暂停恢复与状态确认)。本次源码与 Fake/NodeVM 证据不代表历史下载附件已更新或 GUI/设备已验收。
+
+新 Controller 源码默认按版本化策略拒绝未知模型；现有生产 a924 部署未因此更改。受控本地 tiny 分层脚本显式使用 `CONTROLLER_LEGACY_TASK_MODEL_IDS=true`，仅保留历史兼容，不构成严格策略或硬件预算验收。

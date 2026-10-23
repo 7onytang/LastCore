@@ -6,6 +6,9 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import Settings, create_app
+
+# Historical arbitrary-model route/ACK fixtures explicitly exercise compatibility mode.
+# Strict-default admission is tested independently in test_task_policy.py.
 from app.models import TaskRequest
 from app.scheduler import allocate
 from app.store import Store
@@ -28,7 +31,7 @@ def assert_bearer_challenge(response):
 def setup(tmp_path):
     now = [1000.0]
     store = Store(str(tmp_path / "controller.sqlite3"), 30, clock=lambda: now[0])
-    client = TestClient(create_app(Settings(ADMIN, REGISTRATION), store))
+    client = TestClient(create_app(Settings(ADMIN, REGISTRATION, legacy_task_model_ids=True), store))
     return client, store, now
 
 
@@ -171,7 +174,7 @@ def test_restart_preserves_credentials_and_reservations(setup):
     node = register(client)
     plan = task(client, layers=4).json()
     reopened = Store(store.path, 30, clock=lambda: now[0])
-    other = TestClient(create_app(Settings(ADMIN, REGISTRATION), reopened))
+    other = TestClient(create_app(Settings(ADMIN, REGISTRATION, legacy_task_model_ids=True), reopened))
     assert heartbeat(other, node).json()["status"] == "busy"
     assert task(other, layers=1).status_code == 409
     assert other.get(f"/v1/tasks/{plan['id']}", headers=auth(ADMIN)).json() == plan

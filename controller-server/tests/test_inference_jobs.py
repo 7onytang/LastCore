@@ -133,7 +133,7 @@ def test_whole_worker_cannot_become_eligible_for_legacy_tasks(setup):
     c,n,h,_,_=setup
     heartbeat=c.post('/v1/nodes/'+n['node_id']+'/heartbeat',headers=h,json={'available_memory_mb':2048,'accepting_tasks':True})
     assert heartbeat.json()['accepting_tasks'] is False
-    legacy=c.post('/v1/tasks',headers={'Authorization':'Bearer '+ADMIN},json={'model_id':'tiny','num_layers':1,'layer_memory_mb':64})
+    legacy=c.post('/v1/tasks',headers={'Authorization':'Bearer '+ADMIN},json={'model_id':'lastcore/linear-demo-v1','num_layers':1,'layer_memory_mb':64,'max_nodes':1,'target_node_id':n['node_id'],'input_vector':[1.0],'weight_seed':0})
     assert legacy.status_code==409
 
 def test_atomic_nonlegacy_registration_and_single_execution_owner(setup):

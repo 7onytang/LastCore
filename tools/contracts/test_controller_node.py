@@ -64,7 +64,7 @@ def contract(tmp_path, monkeypatch):
         pytest.fail('contract test attempted a socket bind')
     now = [1000.0]
     store = Store(str(tmp_path / 'controller.sqlite3'), 5, clock=lambda: now[0])
-    settings = Settings(ADMIN, REGISTRATION, heartbeat_ttl_seconds=5)
+    settings = Settings(ADMIN, REGISTRATION, heartbeat_ttl_seconds=5, legacy_task_model_ids=True)
     with TestClient(create_app(settings, store)) as admin:
         # Windows asyncio creates an internal loopback socketpair at portal startup.
         # The actual application requests below must never bind a server socket.

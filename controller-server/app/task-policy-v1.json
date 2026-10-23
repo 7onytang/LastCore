@@ -1,0 +1,88 @@
+{
+  "policy_version": "lastcore-task-policy-v1",
+  "profiles": [
+    {
+      "model_id": "lastcore/linear-demo-v1",
+      "family": "linear",
+      "version": "v1",
+      "executable": true,
+      "source": "bundled_algorithm",
+      "limits": {
+        "num_layers": 4096,
+        "layer_memory_mb": 10000000,
+        "max_nodes": 1,
+        "timeout_seconds": 86400,
+        "input_values": 256,
+        "input_abs": 1000000
+      },
+      "memory_policy": "declared_admission_only",
+      "native_hard_memory_limit_mb": null,
+      "measured_peak_memory_mb": null
+    },
+    {
+      "model_id": "lastcore/pi-monte-carlo-v1",
+      "family": "pi",
+      "version": "v1",
+      "executable": true,
+      "source": "bundled_algorithm",
+      "limits": {
+        "num_layers": 100000,
+        "layer_memory_mb": 10000000,
+        "max_nodes": 128,
+        "timeout_seconds": 86400,
+        "total_samples": 100000000
+      },
+      "memory_policy": "declared_admission_only",
+      "native_hard_memory_limit_mb": null,
+      "measured_peak_memory_mb": null
+    },
+    {
+      "model_id": "lastcore/log-statistics-v1",
+      "family": "log_stats",
+      "version": "v1",
+      "executable": true,
+      "source": "bundled_algorithm",
+      "limits": {
+        "num_layers": 10000,
+        "layer_memory_mb": 10000000,
+        "max_nodes": 128,
+        "timeout_seconds": 86400,
+        "log_lines": 10000,
+        "line_characters": 4096,
+        "total_characters": 1000000
+      },
+      "memory_policy": "declared_admission_only",
+      "native_hard_memory_limit_mb": null,
+      "measured_peak_memory_mb": null
+    },
+    {
+      "model_id": "SmolLM2-135M-Instruct-Q4_K_M",
+      "family": "whole_model",
+      "version": "04f7f8a05a8e4bc208e88d11e8c9122be36c2f9b",
+      "executable": true,
+      "source": "pinned_gguf",
+      "artifact_sha256": "bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169",
+      "backend_commit": "8345f333951c661d166b00e6f9362e553768f292",
+      "limits": {
+        "prompt_bytes": 4096,
+        "max_tokens": 64,
+        "timeout_seconds": 90,
+        "execution_timeout_seconds": 90,
+        "output_bytes": 65536
+      },
+      "memory_policy": "declared_admission_only",
+      "native_hard_memory_limit_mb": null,
+      "measured_peak_memory_mb": null
+    },
+    {
+      "model_id": "lastcore/tiny-cpu",
+      "family": "local_stage",
+      "version": "unqualified-local-profile",
+      "executable": false,
+      "source": "unqualified_local_weights",
+      "limits": null,
+      "memory_policy": "unavailable",
+      "blocker": "Trusted local config/NPZ identity and resource profile are not bound by the task API"
+    }
+  ]
+}

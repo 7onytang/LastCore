@@ -279,6 +279,7 @@ PYTHONPATH="$ROOT/inference-engine:$ROOT/communication" "$ENGINE_PY" \
 env CONTROLLER_ADMIN_TOKEN="$ADMIN_TOKEN" \
     CONTROLLER_REGISTRATION_TOKEN="$REGISTRATION_TOKEN" \
     CONTROLLER_DATABASE_PATH="$RUN_DIR/controller.sqlite3" \
+    CONTROLLER_LEGACY_TASK_MODEL_IDS=true \
     "$CONTROLLER_PY" -m uvicorn app.main:create_app --factory \
     --app-dir "$ROOT/controller-server" --host 127.0.0.1 --port "$CPORT" \
     > "$LOG_DIR/controller.log" 2>&1 &

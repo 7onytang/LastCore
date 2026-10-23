@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from .scheduler import allocate
+from .task_policy import PolicyError
 
 
 ACTIVE = ("queued", "running")
@@ -361,6 +362,8 @@ class Store:
                     raise HTTPException(409, "assignment retry conflicts with the saved result")
                 return task
             if task["status"] not in ACTIVE or assignment["status"] not in ("pending", "running"):
+                if task["status"] == "failed" and task["deadline"] <= self.clock():
+                    raise PolicyError(409, "assignment is terminal", "ASSIGNMENT_EXPIRED")
                 raise HTTPException(409, "assignment is terminal")
             db.execute("UPDATE assignments SET status=?, error=? WHERE id=?",
                        (report.status, report.error if report.status == "failed" else None, assignment_id))
