@@ -46,9 +46,12 @@ with tempfile.TemporaryDirectory(prefix="lastcore-expiry-") as directory:
                                              "endpoint": "http://127.0.0.1:9000",
                                              "available_memory_mb": 1024, "compute_weight": 1})
                 assert response.status_code == 201, response.text
+                node = response.json()
                 response = client.post("/v1/tasks", headers={"Authorization": f"Bearer {admin}"},
-                                       json={"model_id": "smoke", "num_layers": 1,
-                                             "layer_memory_mb": 512, "timeout_seconds": 60})
+                                       json={"model_id": "lastcore/linear-demo-v1", "num_layers": 1,
+                                             "layer_memory_mb": 512, "timeout_seconds": 60,
+                                             "max_nodes": 1, "target_node_id": node["node_id"],
+                                             "input_vector": [0.0], "weight_seed": 0})
                 assert response.status_code == 201, response.text
                 task = response.json()
                 # No further HTTP requests: directly inspect persisted state.

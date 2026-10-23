@@ -223,7 +223,7 @@ They are not a sandbox for a hostile operator or hostile local installation.
 
 | Family | Actual acceptance/rejection layer | Limits and unresolved boundary |
 | --- | --- | --- |
-| Legacy `linear`, including tiny/layer identifiers | Controller accepts any nonempty bounded `model_id` unless it conflicts with a known typed workload. `StageExecutor` checks assignment against its locally configured model/layer plan. Legacy demo simulates slices and does not reject every unknown model. | **No global Controller model allowlist or downloadable manifest**. Identifiers do not trigger downloads. Unknown legacy IDs are not uniformly rejected; tracked by #41. |
+| Legacy `linear`, including tiny/layer identifiers | New strict admission uses the versioned task-policy manifest. Unknown IDs are rejected; local tiny is unavailable without trusted metadata. Explicit server compatibility mode retains historical arbitrary IDs. | See [task policy](TASK_POLICY.md). Compatibility is not strict #41 acceptance; historical reads/ACKs are unchanged. |
 | `lastcore/linear-demo-v1` | Controller validates targeted vector/seed/one-node bounds; compatible native/edge linear executors perform bounded arithmetic. | This is not GGUF or tensor relay; a heartbeat alone does not prove compatibility. |
 | π/log | Controller model/workload pairing plus declared node capability; built-in demo executor independently validates bounded payload. | No unknown typed model or task type; malformed requests are 422. New device execution remains separately unverified. |
 | Whole-model `/v1/inference` | Literal fixed model/source hashes in `Capability/JobRequest/Result`; worker checks pinned model/backend before each native run. | Whole model on one device; local-file integrity is not hardware attestation or protection against concurrent trusted-owner tampering. |
@@ -242,9 +242,10 @@ and two-physical-device acceptance remain [#49](https://github.com/7onytang/Last
 ## Error inventory
 
 HTTP failures use FastAPI's `{detail: ...}` response, a string for explicit
-HTTPException or structured validation details for schema errors. There is no
-uniform machine-readable application error-code enum on `/v1/tasks`. Clients
-must branch on status and context, not treat mutable English strings as codes.
+HTTPException or structured validation details for schema errors. New admission/capability rejections add the stable application `error_code` described
+in [TASK_POLICY.md](TASK_POLICY.md), while retaining the existing HTTP status and
+`detail`. Other legacy errors keep their old shape; clients must not parse mutable
+English strings as codes. HTTP policy codes are separate from stored job outcomes.
 
 | Code/layer | Conditions | Client action |
 | --- | --- | --- |
@@ -305,9 +306,10 @@ Android foreground-service/device acceptance.
 
 - [#40](https://github.com/7onytang/LastCore/issues/40): review this inventory;
   response typing/automated compatibility enforcement is absent, not promised.
-- [#41](https://github.com/7onytang/LastCore/issues/41): freeze the policy and
-  decide backward-compatible legacy model allowlisting, manifest-derived memory
-  budgets and stable rejection codes. This documentation does not implement them.
+- [#41](https://github.com/7onytang/LastCore/issues/41): the [versioned strict admission policy](TASK_POLICY.md) implements profile
+  allowlisting and coded rejection while preserving historical wire/cache behavior.
+  Non-author policy review and missing hard-memory/peak qualification remain;
+  explicit legacy compatibility is not strict acceptance.
 - [#42](https://github.com/7onytang/LastCore/issues/42): named public hardware
   configuration and measured minimum RAM remain unknown; see model selection.
 - [#43](https://github.com/7onytang/LastCore/issues/43),

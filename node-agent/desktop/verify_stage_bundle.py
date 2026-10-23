@@ -83,12 +83,13 @@ def main():
     url = f'http://127.0.0.1:{ports[0]}'
     processes, logs, agents = [], [], []
     result = {'workdir': str(work), 'bundle': str(bundle), 'controller': 'real local controller-server; no cloud',
-              'model': 'lastcore/tiny-cpu; generated weights, no pretrained LLM', 'passed': False}
+              'model': 'lastcore/tiny-cpu; generated weights, no pretrained LLM', 'passed': False, 'task_policy_mode': 'legacy-compatibility'}
     base_env = {k: v for k, v in os.environ.items() if not k.startswith('NODE_AGENT_') and k != 'PYTHONPATH'}
     base_env['TZ'] = 'Asia/Shanghai'
     try:
         env = dict(base_env, CONTROLLER_ADMIN_TOKEN=admin, CONTROLLER_REGISTRATION_TOKEN=registration,
-                   CONTROLLER_DATABASE_PATH=str(work / 'controller.sqlite3'))
+                   CONTROLLER_DATABASE_PATH=str(work / 'controller.sqlite3'),
+                   CONTROLLER_LEGACY_TASK_MODEL_IDS='true')
         ctrl_log = (work / 'controller.log').open('w')
         logs.append(ctrl_log)
         controller = subprocess.Popen([args.controller_python, '-m', 'uvicorn', 'app.main:create_app', '--factory',

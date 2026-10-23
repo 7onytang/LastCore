@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import json
 import math
+import re
 import os
 import secrets
 import sqlite3
@@ -9,13 +11,17 @@ from dataclasses import dataclass
 from typing import Annotated
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler, http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .models import AssignmentReport, Heartbeat, NodeRegistration, TaskRequest
 from .store import Store
+from .task_policy import TaskPolicy, validation_code, finite_error_values
 
 
 logger = logging.getLogger(__name__)
@@ -29,17 +35,21 @@ class Settings:
     heartbeat_ttl_seconds: int = 30
     expiry_interval_seconds: float = 1.0
     real_jobs_enabled: bool = False
+    legacy_task_model_ids: bool = False
 
     @classmethod
     def from_env(cls):
         flag = os.environ.get("CONTROLLER_REAL_JOBS_ENABLED", "false").lower()
         if flag not in ("true", "false", "1", "0"):
             raise ValueError("CONTROLLER_REAL_JOBS_ENABLED must be true or false")
+        legacy = os.environ.get("CONTROLLER_LEGACY_TASK_MODEL_IDS", "false").lower()
+        if legacy not in ("true", "false", "1", "0"):
+            raise ValueError("CONTROLLER_LEGACY_TASK_MODEL_IDS must be true or false")
         return cls(os.environ.get("CONTROLLER_ADMIN_TOKEN", ""),
                    os.environ.get("CONTROLLER_REGISTRATION_TOKEN", ""),
                    os.environ.get("CONTROLLER_DATABASE_PATH", "data/controller.sqlite3"),
                    int(os.environ.get("CONTROLLER_HEARTBEAT_TTL_SECONDS", "30")),
-                   float(os.environ.get("CONTROLLER_EXPIRY_INTERVAL_SECONDS", "1")), flag in ("true", "1"))
+                   float(os.environ.get("CONTROLLER_EXPIRY_INTERVAL_SECONDS", "1")), flag in ("true", "1"), legacy in ("true", "1"))
 
 
 def create_app(settings: Settings | None = None, store: Store | None = None):
@@ -52,6 +62,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
         raise ValueError("Heartbeat TTL must be between 5 and 3600 seconds")
     if not math.isfinite(settings.expiry_interval_seconds) or not 0.1 <= settings.expiry_interval_seconds <= 60:
         raise ValueError("Expiry interval must be between 0.1 and 60 seconds")
+    policy = TaskPolicy(settings.legacy_task_model_ids)
+    if settings.legacy_task_model_ids:
+        logger.warning("Legacy model-ID compatibility enabled; arbitrary legacy identifiers do not meet strict task policy")
     store = store or Store(settings.database_path, settings.heartbeat_ttl_seconds)
     jobs = None
     if settings.real_jobs_enabled:
@@ -91,6 +104,29 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
             await worker
 
     app = FastAPI(title="LastCore Controller", version="0.1.0", lifespan=lifespan)
+    @app.exception_handler(RequestValidationError)
+    async def policy_validation_error(request: Request, exc: RequestValidationError):
+        admission = request.method == "POST" and (request.url.path in ("/v1/tasks", "/v1/inference/jobs")
+                or re.fullmatch(r"/v1/inference/workers/[^/]+/capability", request.url.path))
+        rendered = RequestValidationError(finite_error_values(exc.errors()), body=exc.body) if admission else exc
+        response = await request_validation_exception_handler(request, rendered)
+        if admission:
+            content = json.loads(response.body)
+            content["error_code"] = validation_code(exc.errors(), exc.body, policy)
+            response.body = json.dumps(content, ensure_ascii=False).encode("utf-8")
+            response.headers["content-length"] = str(len(response.body))
+        return response
+
+    @app.exception_handler(StarletteHTTPException)
+    async def policy_http_error(request: Request, exc: StarletteHTTPException):
+        response = await http_exception_handler(request, exc)
+        if hasattr(exc, "error_code"):
+            content = json.loads(response.body)
+            content["error_code"] = exc.error_code
+            response.body = json.dumps(content, ensure_ascii=False).encode("utf-8")
+            response.headers["content-length"] = str(len(response.body))
+        return response
+
     ui = Path(__file__).parent / "ui"
     app.mount("/ui", StaticFiles(directory=ui), name="ui")
 
@@ -155,6 +191,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
 
     @app.post("/v1/tasks", status_code=201, dependencies=[Depends(require_admin)])
     def create_task(request: TaskRequest):
+        policy.admit(request, request.workload)
         return store.create_task(request)
 
     @app.get("/v1/tasks", dependencies=[Depends(require_admin)])
@@ -171,5 +208,5 @@ def create_app(settings: Settings | None = None, store: Store | None = None):
 
     if jobs is not None:
         from .inference_jobs import router
-        app.include_router(router(jobs, credential, require_admin))
+        app.include_router(router(jobs, credential, require_admin, policy))
     return app
