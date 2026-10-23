@@ -51,7 +51,7 @@ def test_invalid_saved_credentials_stop_before_any_network_and_preserve_state(tm
         agent.run_forever()
     assert agent.stop_event.is_set()
     assert agent.credentials is None
-    observer.assert_called_with({"connection": "recovery-required"})
+    observer.assert_called_with({"connection": "recovery-required", "admission": agent.admission_state()})
     assert client.mock_calls == []
     executor.assert_not_called()
     assert path.read_bytes() == original
@@ -70,7 +70,7 @@ def test_invalid_registration_response_is_not_saved_or_followed_by_heartbeat(tmp
     assert [call[0] for call in client.mock_calls] == ["register"]
     assert agent.stop_event.is_set()
     assert agent.credentials is None
-    observer.assert_called_with({"connection": "recovery-required"})
+    observer.assert_called_with({"connection": "recovery-required", "admission": agent.admission_state()})
     executor.assert_not_called()
     assert not (tmp_path / "node-credentials.json").exists()
     assert not list(tmp_path.iterdir())

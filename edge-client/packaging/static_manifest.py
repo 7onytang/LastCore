@@ -9,12 +9,39 @@ import re
 import struct
 import subprocess
 import sys
+import types
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[2]
 
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def require_control_module(executable, archive_factory=None, source=None):
+    # Inspect the frozen PYZ without starting the client, GUI, node or a task.
+    if archive_factory is None:
+        from PyInstaller.archive.readers import CArchiveReader
+        archive_factory = CArchiveReader
+    archive = archive_factory(str(executable))
+    required = 'lastcore_node_agent.local_control'
+    source = source or ROOT / 'node-agent/lastcore_node_agent/local_control.py'
+    expected = compile(source.read_bytes(), str(source), 'exec', dont_inherit=True, optimize=0)
+    def normalized(code):
+        if isinstance(code, types.CodeType):
+            return code.replace(co_filename='<bound-source>', co_consts=tuple(normalized(v) for v in code.co_consts))
+        if isinstance(code, tuple):
+            return tuple(normalized(v) for v in code)
+        return code
+    for name, entry in archive.toc.items():
+        if entry[-1] != 'z':
+            continue
+        pyz = archive.open_embedded_archive(name)
+        if required in pyz.toc:
+            if normalized(pyz.extract(required)) != normalized(expected):
+                raise RuntimeError('Frozen local control helper differs from fixed source')
+            return required
+    raise RuntimeError('Required local control helper missing from frozen executable')
 
 
 def inspect_binary(path):
@@ -44,6 +71,7 @@ def main():
     target='windows-x86_64' if sys.platform=='win32' else 'linux-x86_64'
     extension='.exe' if sys.platform=='win32' else ''
     binaries={name:inspect_binary(bundle/(name+extension)) for name in ('LastCoreEdge','LastCoreLinearEdge')}
+    control_modules={name:require_control_module(bundle/(name+extension)) for name in binaries}
     license_root=bundle/'_internal/licenses';license_data=json.loads((license_root/'manifest.json').read_text())
     for name,digest in license_data['files'].items():
         if sha(license_root/name)!=digest:raise RuntimeError('License transport mismatch: '+name)
@@ -69,7 +97,7 @@ def main():
     runtime_inputs=['edge-client/linear_edge.py','edge-client/gui.py','edge-client/view_state.py',
                     'node-agent/desktop/env_file.py']+[
                     'node-agent/lastcore_node_agent/'+name for name in
-                    ('__init__.py','agent.py','config.py','controller.py','credentials.py','executor.py')]
+                    ('__init__.py','agent.py','config.py','controller.py','credentials.py','executor.py','local_control.py')]
     build_inputs=['LICENSE','.github/workflows/edge-portable-build.yml',
                   'node-agent/desktop/collect_licenses.py',
                   'edge-client/packaging/prepare_licenses.py','edge-client/packaging/portable.spec',
@@ -115,7 +143,7 @@ def main():
               'distribution':'portable development preview','signed':False,'runtime_acceptance_performed':False,
               'windows_support_target':'Windows 10/11 x64 preview' if sys.platform=='win32' else None,
               'gui_launched':False,'controller_registration_or_jobs_created':0,
-              'binary_headers':binaries,'linux_glibc_required_at_least':maximum,
+              'binary_headers':binaries,'packaged_control_module':control_modules,'linux_glibc_required_at_least':maximum,
               'linux_required_shared_libraries':sorted(external),'source_files':sources,'files':files,
               'source_git_blobs':git_blobs,'runtime_inputs':runtime_inputs,'build_inputs':build_inputs,
               'windows_tcl_tk_static_versions':tk_versions,

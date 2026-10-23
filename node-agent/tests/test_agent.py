@@ -326,7 +326,8 @@ def test_terminal_report_outage_replays_after_recovery(fake, client, clock, tmp_
     fake.report_error = None
     assert wait_until(
         lambda: [r[1] for r in fake.reports if r[0] == assignment_id]
-        == ["running", "failed"] and load_pending_reports(config.state_dir) == {}, timeout=5)
+        == ["running", "failed"] and load_pending_reports(config.state_dir) == {}
+        and agent._pending == {}, timeout=5)
     assert agent._pending == {}
     assert fake.tasks[task_id]["status"] == "failed"
     assert load_settled(config.state_dir).get(assignment_id) == "failed"

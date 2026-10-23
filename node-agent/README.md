@@ -1,5 +1,7 @@
 # LastCore Node Agent
 
+动态接单开关、matching heartbeat ACK、私有控制文件与有界轮询退避的接口及验证命令见 [CONTROL_PROTOCOL.md](CONTROL_PROTOCOL.md)。暂停继续现有任务和结果对账，恢复须当前请求得到实际心跳确认；此协议不增加 Controller heartbeat 字段。
+
 节点侧常驻程序：对接 `controller-server/`（PR #1）的控制平面接口，负责设备入网、凭据持久化、心跳、任务轮询/去重、执行生命周期（上报、取消、超时停止），并通过 `Executor` 接口把实际计算委托给推理引擎（由 `inference-engine/` 提供，见 `PROTOCOL.md`）。
 
 ## 职责边界

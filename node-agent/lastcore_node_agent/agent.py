@@ -59,7 +59,7 @@ class NodeAgent:
                  clock: Callable[[], float] = time.time,
                  executor_factory: Callable[[], Executor] | None = None,
                  stats: RunStats | None = None,
-                 observer: Callable[[dict], None] | None = None):
+                 observer: Callable[[dict], None] | None = None, control_reader=None):
         self.config = config
         self.observer = observer
         self.client = client
@@ -78,10 +78,58 @@ class NodeAgent:
         self._last_heartbeat_ok = 0.0
         self._credential_error: str | None = None
         self._assignment_lookup_supported = True
+        self.control_reader = control_reader
+        self._admission_lock = threading.RLock()
+        self._admission_desired = config.accepting_tasks
+        self._admission_confirmed = None
+        self._admission_generation = 0
+        self._admission_ack_generation = -1
+        self._admission_request_id = None
+        self._admission_confirmed_request_id = None
+        self._admission_requests = {}
+
+    def admission_state(self) -> dict:
+        with self._admission_lock:
+            return {'desired': self._admission_desired, 'confirmed': self._admission_confirmed,
+                    'request_id': self._admission_request_id,
+                    'confirmed_request_id': self._admission_confirmed_request_id,
+                    'status': 'confirmed' if self._admission_ack_generation == self._admission_generation else 'pending'}
+
+    def set_accepting_tasks(self, value: bool, request_id: str | None = None) -> None:
+        if type(value) is not bool:
+            raise ValueError('accepting_tasks must be a boolean')
+        if request_id is not None:
+            from .local_control import validate_request_id
+            validate_request_id(request_id)
+        with self._admission_lock:
+            if request_id is not None and request_id in self._admission_requests:
+                if self._admission_requests[request_id] != value:
+                    raise ValueError('request id reused with different command')
+                return
+            if request_id is not None:
+                self._admission_requests[request_id] = value
+            self._admission_generation += 1
+            self._admission_desired = value
+            self._admission_request_id = request_id
+        self._notify()
+
+    def _accepting_new_work(self) -> bool:
+        with self._admission_lock:
+            return (not self.stop_event.is_set() and self._admission_desired and self._admission_confirmed is True
+                    and self._admission_ack_generation == self._admission_generation)
+
+    def _consume_controls(self) -> None:
+        if self.control_reader is not None:
+            from .local_control import ControlError
+            try:
+                if self.control_reader.consume(self):
+                    self._notify(control_error=None)
+            except (OSError, ControlError):
+                self._notify(control_error='invalid-command')
 
     def _notify(self, **updates) -> None:
         if self.observer is not None:
-            try: self.observer(updates)
+            try: self.observer({**updates, 'admission': self.admission_state()})
             except Exception: LOG.warning("local UI observation unavailable")
 
     def _task_details(self, row: dict) -> dict:
@@ -125,16 +173,22 @@ class NodeAgent:
                                                name="lastcore-watchdog", daemon=True)
             watchdog_thread.start()
         try:
+            poll_delay = self.config.poll_interval
+            poll_cap = max(poll_delay, 30.0)
             while joined and not self.stop_event.is_set() and self._credential_error is None:
                 try:
                     self._poll_once()
                 except httpx.HTTPError as exc:
                     self._notify(poll_status="unavailable")
                     LOG.warning("assignments poll failed: %s", exc)
+                    poll_delay = min(poll_cap, max(self.config.poll_interval, poll_delay * 2))
                 except ControllerError as exc:
                     self._notify(poll_status="rejected")
                     LOG.warning("assignments poll rejected: %s", exc)
-                self.stop_event.wait(self.config.poll_interval)
+                    poll_delay = min(poll_cap, max(self.config.poll_interval, poll_delay * 2))
+                else:
+                    poll_delay = self.config.poll_interval
+                self.stop_event.wait(poll_delay)
             if self._credential_error:
                 raise CredentialRejected(self._credential_error)
         finally:
@@ -186,7 +240,8 @@ class NodeAgent:
     def _watchdog_loop(self) -> None:
         # Runs independently of assignments polling, so local deadline/heartbeat-TTL
         # cancellation still fires while GET is blocked or failing (total outage).
-        while not self.stop_event.wait(self.config.watchdog_interval):
+        while not self.stop_event.wait(min(self.config.watchdog_interval, self.config.poll_interval, 1.0)):
+            self._consume_controls()
             run = self._current_run()
             if run is None:
                 continue
@@ -197,10 +252,21 @@ class NodeAgent:
 
     def _send_heartbeat(self) -> None:
         assert self.credentials is not None
-        self._guarded(self.client.heartbeat)(
+        self._consume_controls()
+        with self._admission_lock:
+            generation = self._admission_generation
+            desired = self._admission_desired
+            request_id = self._admission_request_id
+        response = self._guarded(self.client.heartbeat)(
             self.credentials.node_id, self.credentials.node_token,
-            self.config.available_memory_mb, self.config.accepting_tasks,
+            self.config.available_memory_mb, desired,
             supported_workloads=self.supported_workloads)
+        with self._admission_lock:
+            if (generation == self._admission_generation and isinstance(response, dict)
+                    and type(response.get('accepting_tasks')) is bool and response['accepting_tasks'] == desired):
+                self._admission_confirmed = desired
+                self._admission_ack_generation = generation
+                self._admission_confirmed_request_id = request_id
         with self._heartbeat_lock:
             self._last_heartbeat_ok = self.clock()
         self.stats.heartbeats_ok += 1
@@ -209,6 +275,7 @@ class NodeAgent:
 
     def _poll_once(self) -> None:
         assert self.credentials is not None
+        self._consume_controls()
         rows = self._guarded(self.client.assignments)(self.credentials.node_id,
                                                       self.credentials.node_token)
         self.stats.polls += 1
@@ -220,7 +287,7 @@ class NodeAgent:
         self._flush_pending_reports()
         if self._pending_results:
             return  # Unacknowledged numeric outcomes fence new work, including after restart.
-        if self._current_run() is None:
+        if self._current_run() is None and self._accepting_new_work():
             candidate = self._select_assignment(rows)
             if candidate is not None:
                 self._start_assignment(candidate)
@@ -281,6 +348,8 @@ class NodeAgent:
 
     def _start_assignment(self, row: dict) -> None:
         assert self.credentials is not None
+        if not self._accepting_new_work():
+            return
         assignment_id = row["id"]
         task_id = row["task_id"]
         try:
@@ -325,10 +394,13 @@ class NodeAgent:
                                   name=f"lastcore-exec-{assignment_id[:8]}", daemon=True)
         run = _ActiveRun(context=context, worker=worker,
                          assignment_id=assignment_id, task_id=task_id)
-        with self._active_lock:
-            self._active = run
-        self._notify(task_update={"assignment_id":assignment_id,"status":"running"})
-        worker.start()
+        with self._admission_lock:
+            if not self._accepting_new_work():
+                return
+            with self._active_lock:
+                self._active = run
+            self._notify(task_update={"assignment_id":assignment_id,"status":"running"})
+            worker.start()
         self.stats.started.append(assignment_id)
         LOG.info("started assignment %s (task %s) layers [%s, %s)",
                  assignment_id, task_id, context.layer_start, context.layer_end)
@@ -496,9 +568,7 @@ class NodeAgent:
         if run.worker.is_alive():
             self._notify(task_update={"assignment_id":run.assignment_id,"status":"stop-unconfirmed",
                 "cleanup_confirmed":False,"error_code":"cleanup_timeout","report_status":"not-sent"})
-            LOG.error("executor for %s ignored cancellation within %ss; abandoning thread",
+            LOG.error("executor for %s ignored cancellation within %ss; retaining isolation",
                       run.assignment_id, self.config.stop_grace)
-            with self._active_lock:
-                self._active = None
             return
         self._reap_finished()
