@@ -213,3 +213,18 @@ def test_transient_errors_survive_recovery_before_the_parent_next_samples(node):
     assert len(stored['recent_errors'])==8
     writer({'connection':'private-token','control_error':'private-token'})
     assert 'private-token' not in str(json.loads(node.status_path.read_text())['recent_errors'])
+
+
+@pytest.mark.parametrize('exit_code',[None,0,7])
+def test_recent_error_history_cannot_replace_the_actual_process_exit_code(node,exit_code):
+    node.process=SimpleNamespace(poll=lambda:exit_code)
+    writer=LocalStatusWriter(node.status_path)
+    writer({'connection':'heartbeat-failed'})
+    writer({'connection':'connected','admission':ack()})
+    value=node.state()
+    assert value['exit_code']==exit_code
+    assert type(value['exit_code']) is type(exit_code)
+    assert value['running'] is (exit_code is None)
+    assert value['stopping'] is False
+    assert value['recent_errors']==['heartbeat-failed']
+    assert value['observation']['connection']==('connected' if exit_code is None else 'stopped')
