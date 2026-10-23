@@ -288,6 +288,8 @@ pytest -q
 python scripts/smoke_idle_expiry.py
 ```
 
+Controller 与 Node Agent 的跨模块协议回归见 [`tools/contracts/README.md`](tools/contracts/README.md)：使用实际 FastAPI 路由、临时 SQLite 和 NodeAgent/ControllerClient，在进程内验证注册、心跳、报告、取消、TTL、同身份恢复及日志不含 token。独立 CI 在 Ubuntu、Windows、macOS 15 运行 Fake executor，请求阶段禁止新 socket 绑定；Windows asyncio 启动内部唤醒 socketpair 会使用 loopback。不涉及真实模型或用户设备验收。
+
 ### 浏览器看板与多设备接力推理
 
 兼容修复经 [PR #89](https://github.com/7onytang/LastCore/pull/89) 合入固定源 `73b3d1`，已部署的 [CPU 演示看板](https://8.134.161.123/workloads)位于 `/workloads`；根路径与 `/console` 保留现有工作台。管理员可查看 Worker、任务分片、上下游和回报状态；π 分片估算与日志统计仅分配给实际声明兼容执行器的可用节点，旧节点不会因平台或在线状态自动支持。代码、CI、GET/HEAD、CSP 和同源资源可达已核验，仍未实际派发 π/日志任务或做新设备验收。此路径不代表 activation 接力，也不继承历史 Mac 线性、SmolLM2 整模型或 tiny 模型的执行证据；来源与范围见[当前公开页面说明](submission/evidence/public-deployment-current.md)。
