@@ -1,5 +1,7 @@
 # LastCore
 
+客户端安装、停止后升级、回退、卸载留存与服务端凭据撤销缺口见[生命周期指南](docs/CLIENT_LIFECYCLE.md)；当前文档不代表已完成两平台干净机器安装验收。
+
 维护记录：[2026-10-22 公网只读核对](submission/evidence/maintenance-2026-10-22.json)。运行版本 `73b3d1a` 健康，证书已自动续期；监控离线回归入口见 [HTTPS 运维说明](ops/public-ip-https/README.md#acceptance-and-renewal)。未新增真实计算任务。
 
 正式发行入口：[v0.1.1](https://github.com/7onytang/LastCore/releases/tag/v0.1.1)。安装、运行入口沿用下方及各模块 README；本次发布说明与未验收范围见 [发布记录](submission/RELEASE-v0.1.1.md)。按用户要求，发布整合本身不新增真实任务或设备测试；本轮此前已完成的真实 Mac 线性与 GGUF 验收单独列出。GitHub Release 不自动证明公网服务已更新。
