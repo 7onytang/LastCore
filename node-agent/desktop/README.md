@@ -1,5 +1,9 @@
 # macOS tiny CPU stage bundle
 
+当前安装、停止后升级、回退与卸载留存规则见[客户端生命周期指南](../../docs/CLIENT_LIFECYCLE.md)。
+下方历史基线中的 Windows 限制和入网重试描述不替代当前源码与[入网恢复说明](../ENROLLMENT_RECOVERY.md)；
+凭据被拒时保留身份和恢复日志，不删除凭据绕过故障。本地清理不等于服务端撤销 token。
+
 当前 bundle 支持显式 `NODE_AGENT_EXECUTOR=stage`（真实 tiny CPU 分层推理）与 `demo`（模拟）。缺少模式或自定义模式会拒绝启动；Controller URL 禁止 userinfo、query、fragment；preflight 仅输出状态/异常类型，不回显 URL、远端正文或异常原文；私有配置覆盖继承的 NODE_AGENT 配置。默认 stage checkpoint 是自动生成的小型随机权重，**不是预训练 LLM，也不代表完整产品上线**。包包含 node-agent、inference-engine、communication、NumPy 及其 native 库，不需要用户另装 Python。
 
 构建使用 macOS arm64 / CPython 3.12.14，`requirements-build-lock.txt` 锁定含 NumPy 的完整构建依赖及 wheel SHA256。复用 PyInstaller 官方 `hook-numpy.py` 与 `collect_submodules`，避免自写 native 依赖收集器（https://github.com/pyinstaller/pyinstaller/blob/develop/PyInstaller/hooks/hook-numpy.py）。锁定 NumPy wheel 最低 macOS 14；其他系统/架构需重新构建及验证。
@@ -119,7 +123,7 @@ python desktop/preflight.py --env-file <私有配置文件> [--min-memory-mb 204
 - **无网络 / Controller 不可达**：启动阶段每 1s 重试入网直到成功；运行中仅心跳失败计数与轮询告警，不退出、不影响本地执行。
 - **休眠唤醒后**：进程冻结，唤醒后心跳线程在下一个间隔（默认 10s ≤ TTL 30s）恢复续约；轮询 1s 内恢复；执行中任务若因停机超过 TTL，会在下次轮询按 `heartbeat-stall` 取消，符合「设备休眠→任务超时取消」的既定语义；已持久化凭据复用，不重复注册。
 - **重复任务**：journal 先本地落盘再上报，重启后同一 assignment 不重复执行（进程崩溃窗口内为 at-least-once）。
-- **凭据被拒（401）**：退出码 2，不自动重新注册（防重复身份），需人工删除/修复状态目录凭据。
+- **凭据被拒（401）**：退出码 2，不自动重新注册（防重复身份）；保留状态目录，按[入网恢复说明](../ENROLLMENT_RECOVERY.md)核对原 Controller 与身份，不删除凭据绕过恢复。
 
 ## 五、验证状态
 

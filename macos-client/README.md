@@ -1,5 +1,9 @@
 # LastCoreClient: targeted linear calculation
 
+For installation, stopped-state upgrade/rollback, retained Keychain/recovery data
+and the current server-side revocation gap, see the
+[client lifecycle guide](../docs/CLIENT_LIFECYCLE.md).
+
 This native SwiftUI client executes `lastcore/linear-demo-v1` locally. It does
 not execute the tiny TCP pipeline or a pretrained LLM. The three original
 client files were imported from contributor Yutaotang's commit

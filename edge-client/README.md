@@ -1,5 +1,10 @@
 # Windows/Linux linear edge client — development preview
 
+For complete-folder installation/replacement, existing identity preservation,
+rollback and explicit local removal, see the
+[client lifecycle guide](../docs/CLIENT_LIFECYCLE.md). Local removal does not
+revoke the Controller's existing node token.
+
 This entry point reuses the existing node lifecycle and the contributor's
 cross-platform state lock from PR70 (`4f698b9`, preserved by cherry-pick). It
 executes the same bounded `tanh(Wx+b)` calculation as LastCoreClient, persists
