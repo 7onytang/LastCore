@@ -98,6 +98,8 @@ Mac worker 的三处恢复/凭据修复已通过 [PR #59](https://github.com/7on
 
 各模块 README 提供安装和验证命令。凭据只在本机私有配置中填写，不提交仓库。既有版本安装步骤见 [QUICKSTART.txt](submission/evidence/QUICKSTART.txt)。
 
+开发、commit 和 PR 交付方式见 [贡献与协作说明](CONTRIBUTING.md)；AI 分工与历史证据披露见 [AI_USAGE.md](AI_USAGE.md)。
+
 ## 参赛材料
 
 队伍名：**Tibo重置了吗**。提交截止：**2026 年 10 月 13 日 18:00（北京时间）**。按用户要求，不再追问赛题名称或开赛时间；材料按项目内容和已提供的评分维度整理，不自拟官方等级或赛事合规结论。
